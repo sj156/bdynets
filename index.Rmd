@@ -1,0 +1,70 @@
+---
+title: "Creating the ``r params$package_name`` R package"
+author: "Sheng Jiang"
+date: "`r Sys.Date()`"
+site: bookdown::bookdown_site
+knit: litr::render
+output: litr::litr_gitbook
+params:
+  package_name: "bdynets" # <-- change this to your package name
+  package_parent_dir: "." # <-- relative to this file's location
+documentclass: book
+---
+
+# Introduction
+
+This package implements `bdynets`, a Bayesian mixture of experts model used for
+Bayesian dynamic network models, including model 1, model 2. 
+The documentation and
+package are both created using one simple command:
+
+```{r render, eval = FALSE}
+litr::render("index.Rmd", output_format = litr::litr_gitbook())
+## install.packages("./bdynets/", repos = NULL, type="source") 
+```
+
+This line is purely for testing (to be deleted later!).
+
+```{r, eval = FALSE}
+# Complete development workflow
+my_load <- function(){
+  litr::render("~/repos/bdynets/index.Rmd",  
+               output_format = litr::litr_gitbook(minimal_eval = TRUE))
+  devtools::document("~/repos/bdynets/bdynets")  # Update documentation
+  devtools::load_all("~/repos/bdynets/bdynets")
+}
+
+my_load()
+
+# Step 2: Check the package (optional but recommended)
+devtools::check("~/repos/bdynets/bdynets", document = FALSE)
+
+# Step 3: Install the package locally for full installation
+devtools::install("~/repos/bdynets/bdynets")
+
+# Step 4: Load the installed package (optional, if you want to test installation)
+library(bdynets)
+
+
+```
+```{r, eval = FALSE}
+setwd("~/repos/bdynets/") 
+## 1. Delete the auto-generated _main.Rmd file
+unlink("_main.Rmd")
+unlink("_bookdown_files", recursive = TRUE)
+if(!dir.create("bdynets")){
+  unlink("bdynets", recursive = TRUE)
+}
+
+## 2. Re-run the render command
+litr::render(
+  "index.Rmd", 
+  output_format = litr::litr_gitbook(
+    minimal_eval = FALSE
+    )
+)
+
+## 3. Document and load the package
+devtools::document("bdynets")
+devtools::load_all("bdynets")
+``` 

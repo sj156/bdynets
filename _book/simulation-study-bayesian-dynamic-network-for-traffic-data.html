@@ -1,0 +1,1091 @@
+<!DOCTYPE html>
+<html lang="" xml:lang="">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<title>6 Simulation Study: Bayesian Dynamic Network for Traffic Data | Creating the bdynets R package</title>
+<meta name="description" content="6 Simulation Study: Bayesian Dynamic Network for Traffic Data | Creating the bdynets R package">
+<meta name="generator" content="bookdown 0.40 and GitBook 2.6.7">
+<meta property="og:title" content="6 Simulation Study: Bayesian Dynamic Network for Traffic Data | Creating the bdynets R package">
+<meta property="og:type" content="book">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="6 Simulation Study: Bayesian Dynamic Network for Traffic Data | Creating the bdynets R package">
+<meta name="author" content="Sheng Jiang">
+<meta name="date" content="2026-05-09">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="prev" href="gibbs-sampler.html">
+<link rel="next" href="real-data-example.html">
+<script src="libs/header-attrs-2.28/header-attrs.js"></script><script src="libs/jquery-3.6.0/jquery-3.6.0.min.js"></script><script src="https://cdn.jsdelivr.net/npm/fuse.js@6.4.6/dist/fuse.min.js"></script><link href="libs/gitbook-2.6.7/css/style.css" rel="stylesheet">
+<link href="libs/gitbook-2.6.7/css/plugin-table.css" rel="stylesheet">
+<link href="libs/gitbook-2.6.7/css/plugin-bookdown.css" rel="stylesheet">
+<link href="libs/gitbook-2.6.7/css/plugin-highlight.css" rel="stylesheet">
+<link href="libs/gitbook-2.6.7/css/plugin-search.css" rel="stylesheet">
+<link href="libs/gitbook-2.6.7/css/plugin-fontsettings.css" rel="stylesheet">
+<link href="libs/gitbook-2.6.7/css/plugin-clipboard.css" rel="stylesheet">
+<link href="libs/anchor-sections-1.1.0/anchor-sections.css" rel="stylesheet">
+<link href="libs/anchor-sections-1.1.0/anchor-sections-hash.css" rel="stylesheet">
+<script src="libs/anchor-sections-1.1.0/anchor-sections.js"></script><style type="text/css">
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { display: inline-block; text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { color: #008000; } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { color: #008000; font-weight: bold; } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+</style>
+<style type="text/css">
+  
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+</style>
+<style type="text/css">fieldset.chunkfield {border:1px dotted black;padding-bottom: 0px;padding-top: 0px;margin:0 2px;padding:.35em .625em .75em}
+    legend.chunklegend {padding:0;width:auto;border:0; border-bottom: none; margin-bottom:0}
+    </style>
+</head>
+<body>
+
+
+
+  <div class="book without-animation with-summary font-size-2 font-family-1" data-basepath=".">
+
+    <div class="book-summary">
+      <nav role="navigation"><ul class="summary">
+<li class="chapter" data-level="1" data-path="index.html"><a href="index.html"><i class="fa fa-check"></i><b>1</b> Introduction</a></li>
+<li class="chapter" data-level="2" data-path="package-setup.html"><a href="package-setup.html"><i class="fa fa-check"></i><b>2</b> Package setup</a></li>
+<li class="chapter" data-level="3" data-path="helpers-functions.html"><a href="helpers-functions.html"><i class="fa fa-check"></i><b>3</b> Helpers functions</a></li>
+<li class="chapter" data-level="4" data-path="syntheticdata.html"><a href="syntheticdata.html"><i class="fa fa-check"></i><b>4</b> Generating synthetic data</a></li>
+<li class="chapter" data-level="5" data-path="gibbs-sampler.html">
+<a href="gibbs-sampler.html"><i class="fa fa-check"></i><b>5</b> Gibbs sampler</a>
+<ul>
+<li class="chapter" data-level="5.1" data-path="gibbs-sampler.html"><a href="gibbs-sampler.html#the-main-gibbs-sampler"><i class="fa fa-check"></i><b>5.1</b> The main Gibbs sampler</a></li>
+</ul>
+</li>
+<li class="chapter" data-level="6" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html">
+<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><i class="fa fa-check"></i><b>6</b> Simulation Study: Bayesian Dynamic Network for Traffic Data</a>
+<ul>
+<li class="chapter" data-level="6.1" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html">
+<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#synthetic-data-generation"><i class="fa fa-check"></i><b>6.1</b> 1. Synthetic Data Generation</a>
+<ul>
+<li class="chapter" data-level="6.1.1" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#create-55-grid-road-network"><i class="fa fa-check"></i><b>6.1.1</b> 1.1 Create 5×5 Grid Road Network</a></li>
+<li class="chapter" data-level="6.1.2" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#create-time-structure-4-weeks-48-intervalsday"><i class="fa fa-check"></i><b>6.1.2</b> 1.2 Create Time Structure (4 weeks, 48 intervals/day)</a></li>
+<li class="chapter" data-level="6.1.3" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#generate-true-cluster-structure"><i class="fa fa-check"></i><b>6.1.3</b> 1.3 Generate True Cluster Structure</a></li>
+<li class="chapter" data-level="6.1.4" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#generate-true-parameters"><i class="fa fa-check"></i><b>6.1.4</b> 1.4 Generate True Parameters</a></li>
+<li class="chapter" data-level="6.1.5" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#simulate-count-data"><i class="fa fa-check"></i><b>6.1.5</b> 1.5 Simulate Count Data</a></li>
+</ul>
+</li>
+<li class="chapter" data-level="6.2" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html">
+<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#data-visualization"><i class="fa fa-check"></i><b>6.2</b> 2. Data Visualization</a>
+<ul>
+<li class="chapter" data-level="6.2.1" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#network-structure"><i class="fa fa-check"></i><b>6.2.1</b> 2.1 Network Structure</a></li>
+<li class="chapter" data-level="6.2.2" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#time-series-of-traffic-counts"><i class="fa fa-check"></i><b>6.2.2</b> 2.2 Time Series of Traffic Counts</a></li>
+<li class="chapter" data-level="6.2.3" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#daily-pattern-heatmap"><i class="fa fa-check"></i><b>6.2.3</b> 2.3 Daily Pattern Heatmap</a></li>
+</ul>
+</li>
+<li class="chapter" data-level="6.3" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#run-mcmc"><i class="fa fa-check"></i><b>6.3</b> 3. Run MCMC</a></li>
+<li class="chapter" data-level="6.4" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html">
+<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#mcmc-diagnostics"><i class="fa fa-check"></i><b>6.4</b> 4. MCMC Diagnostics</a>
+<ul>
+<li class="chapter" data-level="6.4.1" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#trace-plots"><i class="fa fa-check"></i><b>6.4.1</b> 4.1 Trace Plots</a></li>
+<li class="chapter" data-level="6.4.2" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#convergence-diagnostics-ari-accuracy"><i class="fa fa-check"></i><b>6.4.2</b> 4.2 Convergence Diagnostics (ARI &amp; Accuracy)</a></li>
+<li class="chapter" data-level="6.4.3" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#posterior-distributions"><i class="fa fa-check"></i><b>6.4.3</b> 4.3 Posterior Distributions</a></li>
+</ul>
+</li>
+<li class="chapter" data-level="6.5" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html">
+<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#estimation-accuracy"><i class="fa fa-check"></i><b>6.5</b> 5. Estimation Accuracy</a>
+<ul>
+<li class="chapter" data-level="6.5.1" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cluster-recovery"><i class="fa fa-check"></i><b>6.5.1</b> 5.1 Cluster Recovery</a></li>
+<li class="chapter" data-level="6.5.2" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#intensity-estimation"><i class="fa fa-check"></i><b>6.5.2</b> 5.2 Intensity Estimation</a></li>
+</ul>
+</li>
+<li class="chapter" data-level="6.6" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#combined-visualization"><i class="fa fa-check"></i><b>6.6</b> 6. Combined Visualization</a></li>
+<li class="chapter" data-level="6.7" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#summary-statistics"><i class="fa fa-check"></i><b>6.7</b> 7. Summary Statistics</a></li>
+<li class="chapter" data-level="6.8" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#session-information"><i class="fa fa-check"></i><b>6.8</b> 8. Session Information</a></li>
+</ul>
+</li>
+<li class="chapter" data-level="7" data-path="real-data-example.html"><a href="real-data-example.html"><i class="fa fa-check"></i><b>7</b> Real data example</a></li>
+<li class="chapter" data-level="8" data-path="documenting-the-package-and-building.html"><a href="documenting-the-package-and-building.html"><i class="fa fa-check"></i><b>8</b> Documenting the package and building</a></li>
+</ul></nav>
+</div>
+
+    <div class="book-body">
+      <div class="body-inner">
+        <div class="book-header" role="navigation">
+          <h1>
+            <i class="fa fa-circle-o-notch fa-spin"></i><a href="./">Creating the <code>bdynets</code> R package</a>
+          </h1>
+        </div>
+
+        <div class="page-wrapper" tabindex="-1" role="main">
+          <div class="page-inner">
+
+            <section class="normal" id="section-"><div id="simulation-study-bayesian-dynamic-network-for-traffic-data" class="section level1 hasAnchor" number="6">
+<h1>
+<span class="header-section-number">6</span> Simulation Study: Bayesian Dynamic Network for Traffic Data<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#simulation-study-bayesian-dynamic-network-for-traffic-data" class="anchor-section" aria-label="Anchor link to header"></a>
+</h1>
+<p>This vignette demonstrates a complete simulation study using <code>bdynets</code> on synthetic traffic data from a grid road network.</p>
+<hr>
+<div id="synthetic-data-generation" class="section level2 hasAnchor" number="6.1">
+<h2>
+<span class="header-section-number">6.1</span> 1. Synthetic Data Generation<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#synthetic-data-generation" class="anchor-section" aria-label="Anchor link to header"></a>
+</h2>
+<div id="create-55-grid-road-network" class="section level3 hasAnchor" number="6.1.1">
+<h3>
+<span class="header-section-number">6.1.1</span> 1.1 Create 5×5 Grid Road Network<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#create-55-grid-road-network" class="anchor-section" aria-label="Anchor link to header"></a>
+</h3>
+<div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb12-1"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-1" tabindex="-1"></a><span id="generate_grid_network">generate_grid_network</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(<span class="at">rows =</span> <span class="dv">5</span>, <span class="at">cols =</span> <span class="dv">5</span>) {</span>
+<span id="cb12-2"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-2" tabindex="-1"></a>  n_nodes <span class="ot">&lt;-</span> rows <span class="sc">*</span> cols</span>
+<span id="cb12-3"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-3" tabindex="-1"></a>  </span>
+<span id="cb12-4"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-4" tabindex="-1"></a>  <span class="do">## Create node coordinates</span></span>
+<span id="cb12-5"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-5" tabindex="-1"></a>  nodes <span class="ot">&lt;-</span> <span class="fu">expand.grid</span>(<span class="at">row =</span> <span class="dv">1</span><span class="sc">:</span>rows, <span class="at">col =</span> <span class="dv">1</span><span class="sc">:</span>cols)</span>
+<span id="cb12-6"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-6" tabindex="-1"></a>  nodes<span class="sc">$</span>node_id <span class="ot">&lt;-</span> <span class="dv">1</span><span class="sc">:</span>n_nodes</span>
+<span id="cb12-7"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-7" tabindex="-1"></a>  </span>
+<span id="cb12-8"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-8" tabindex="-1"></a>  <span class="do">## Create directed edges (each node connects to adjacent nodes)</span></span>
+<span id="cb12-9"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-9" tabindex="-1"></a>  edges <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
+<span id="cb12-10"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-10" tabindex="-1"></a>    <span class="at">from =</span> <span class="fu">integer</span>(),</span>
+<span id="cb12-11"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-11" tabindex="-1"></a>    <span class="at">to =</span> <span class="fu">integer</span>(),</span>
+<span id="cb12-12"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-12" tabindex="-1"></a>    <span class="at">direction =</span> <span class="fu">character</span>()</span>
+<span id="cb12-13"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-13" tabindex="-1"></a>  )</span>
+<span id="cb12-14"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-14" tabindex="-1"></a>  </span>
+<span id="cb12-15"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-15" tabindex="-1"></a>  <span class="cf">for</span> (i <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span>rows) {</span>
+<span id="cb12-16"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-16" tabindex="-1"></a>    <span class="cf">for</span> (j <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span>cols) {</span>
+<span id="cb12-17"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-17" tabindex="-1"></a>      node_id <span class="ot">&lt;-</span> (i <span class="sc">-</span> <span class="dv">1</span>) <span class="sc">*</span> cols <span class="sc">+</span> j</span>
+<span id="cb12-18"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-18" tabindex="-1"></a>      </span>
+<span id="cb12-19"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-19" tabindex="-1"></a>      <span class="do">## Right neighbor</span></span>
+<span id="cb12-20"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-20" tabindex="-1"></a>      <span class="cf">if</span> (j <span class="sc">&lt;</span> cols) {</span>
+<span id="cb12-21"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-21" tabindex="-1"></a>        edges <span class="ot">&lt;-</span> <span class="fu">rbind</span>(edges, <span class="fu">data.frame</span>(</span>
+<span id="cb12-22"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-22" tabindex="-1"></a>          <span class="at">from =</span> node_id,</span>
+<span id="cb12-23"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-23" tabindex="-1"></a>          <span class="at">to =</span> node_id <span class="sc">+</span> <span class="dv">1</span>,</span>
+<span id="cb12-24"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-24" tabindex="-1"></a>          <span class="at">direction =</span> <span class="st">"horizontal"</span></span>
+<span id="cb12-25"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-25" tabindex="-1"></a>        ))</span>
+<span id="cb12-26"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-26" tabindex="-1"></a>        edges <span class="ot">&lt;-</span> <span class="fu">rbind</span>(edges, <span class="fu">data.frame</span>(</span>
+<span id="cb12-27"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-27" tabindex="-1"></a>          <span class="at">from =</span> node_id <span class="sc">+</span> <span class="dv">1</span>,</span>
+<span id="cb12-28"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-28" tabindex="-1"></a>          <span class="at">to =</span> node_id,</span>
+<span id="cb12-29"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-29" tabindex="-1"></a>          <span class="at">direction =</span> <span class="st">"horizontal"</span></span>
+<span id="cb12-30"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-30" tabindex="-1"></a>        ))</span>
+<span id="cb12-31"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-31" tabindex="-1"></a>      }</span>
+<span id="cb12-32"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-32" tabindex="-1"></a>      </span>
+<span id="cb12-33"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-33" tabindex="-1"></a>      <span class="do">## Down neighbor</span></span>
+<span id="cb12-34"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-34" tabindex="-1"></a>      <span class="cf">if</span> (i <span class="sc">&lt;</span> rows) {</span>
+<span id="cb12-35"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-35" tabindex="-1"></a>        edges <span class="ot">&lt;-</span> <span class="fu">rbind</span>(edges, <span class="fu">data.frame</span>(</span>
+<span id="cb12-36"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-36" tabindex="-1"></a>          <span class="at">from =</span> node_id,</span>
+<span id="cb12-37"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-37" tabindex="-1"></a>          <span class="at">to =</span> node_id <span class="sc">+</span> cols,</span>
+<span id="cb12-38"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-38" tabindex="-1"></a>          <span class="at">direction =</span> <span class="st">"vertical"</span></span>
+<span id="cb12-39"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-39" tabindex="-1"></a>        ))</span>
+<span id="cb12-40"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-40" tabindex="-1"></a>        edges <span class="ot">&lt;-</span> <span class="fu">rbind</span>(edges, <span class="fu">data.frame</span>(</span>
+<span id="cb12-41"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-41" tabindex="-1"></a>          <span class="at">from =</span> node_id <span class="sc">+</span> cols,</span>
+<span id="cb12-42"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-42" tabindex="-1"></a>          <span class="at">to =</span> node_id,</span>
+<span id="cb12-43"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-43" tabindex="-1"></a>          <span class="at">direction =</span> <span class="st">"vertical"</span></span>
+<span id="cb12-44"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-44" tabindex="-1"></a>        ))</span>
+<span id="cb12-45"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-45" tabindex="-1"></a>      }</span>
+<span id="cb12-46"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-46" tabindex="-1"></a>    }</span>
+<span id="cb12-47"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-47" tabindex="-1"></a>  }</span>
+<span id="cb12-48"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-48" tabindex="-1"></a>  </span>
+<span id="cb12-49"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-49" tabindex="-1"></a>  <span class="fu">list</span>(</span>
+<span id="cb12-50"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-50" tabindex="-1"></a>    <span class="at">nodes =</span> nodes,</span>
+<span id="cb12-51"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-51" tabindex="-1"></a>    <span class="at">edges =</span> edges,</span>
+<span id="cb12-52"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-52" tabindex="-1"></a>    <span class="at">n_nodes =</span> n_nodes,</span>
+<span id="cb12-53"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-53" tabindex="-1"></a>    <span class="at">n_edges =</span> <span class="fu">nrow</span>(edges)</span>
+<span id="cb12-54"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-54" tabindex="-1"></a>  )</span>
+<span id="cb12-55"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-55" tabindex="-1"></a>}</span>
+<span id="cb12-56"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-56" tabindex="-1"></a></span>
+<span id="cb12-57"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-57" tabindex="-1"></a>network <span class="ot">&lt;-</span> <a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#generate_grid_network">generate_grid_network</a>(<span class="dv">5</span>, <span class="dv">5</span>)</span>
+<span id="cb12-58"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb12-58" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"Network:"</span>, network<span class="sc">$</span>n_nodes, <span class="st">"nodes,"</span>, network<span class="sc">$</span>n_edges, <span class="st">"edges</span><span class="sc">\n</span><span class="st">"</span>)</span></code></pre></div>
+<pre><code>## Network: 25 nodes, 80 edges</code></pre>
+</div>
+<div id="create-time-structure-4-weeks-48-intervalsday" class="section level3 hasAnchor" number="6.1.2">
+<h3>
+<span class="header-section-number">6.1.2</span> 1.2 Create Time Structure (4 weeks, 48 intervals/day)<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#create-time-structure-4-weeks-48-intervalsday" class="anchor-section" aria-label="Anchor link to header"></a>
+</h3>
+<div class="sourceCode" id="cb14"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb14-1"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb14-1" tabindex="-1"></a><span class="do">## Time parameters</span></span>
+<span id="cb14-2"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb14-2" tabindex="-1"></a>intervals_per_day <span class="ot">&lt;-</span> <span class="dv">48</span>  <span class="co"># 30-minute intervals</span></span>
+<span id="cb14-3"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb14-3" tabindex="-1"></a>n_days <span class="ot">&lt;-</span> <span class="dv">28</span>             <span class="co"># 4 weeks</span></span>
+<span id="cb14-4"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb14-4" tabindex="-1"></a>TT <span class="ot">&lt;-</span> intervals_per_day <span class="sc">*</span> n_days  <span class="co"># Total time steps</span></span>
+<span id="cb14-5"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb14-5" tabindex="-1"></a></span>
+<span id="cb14-6"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb14-6" tabindex="-1"></a><span class="do">## Create time index</span></span>
+<span id="cb14-7"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb14-7" tabindex="-1"></a>time_index <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
+<span id="cb14-8"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb14-8" tabindex="-1"></a>  <span class="at">t =</span> <span class="dv">1</span><span class="sc">:</span>TT,</span>
+<span id="cb14-9"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb14-9" tabindex="-1"></a>  <span class="at">day =</span> <span class="fu">rep</span>(<span class="dv">1</span><span class="sc">:</span>n_days, <span class="at">each =</span> intervals_per_day),</span>
+<span id="cb14-10"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb14-10" tabindex="-1"></a>  <span class="at">interval =</span> <span class="fu">rep</span>(<span class="dv">1</span><span class="sc">:</span>intervals_per_day, n_days),</span>
+<span id="cb14-11"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb14-11" tabindex="-1"></a>  <span class="at">hour =</span> <span class="fu">rep</span>(<span class="dv">0</span><span class="sc">:</span><span class="dv">23</span>, <span class="at">each =</span> <span class="dv">2</span>, <span class="at">times =</span> n_days),</span>
+<span id="cb14-12"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb14-12" tabindex="-1"></a>  <span class="at">day_of_week =</span> <span class="fu">rep</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">7</span>, <span class="at">each =</span> intervals_per_day, <span class="at">times =</span> <span class="dv">4</span>)</span>
+<span id="cb14-13"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb14-13" tabindex="-1"></a>)</span>
+<span id="cb14-14"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb14-14" tabindex="-1"></a></span>
+<span id="cb14-15"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb14-15" tabindex="-1"></a><span class="do">## Add peak hour indicators</span></span>
+<span id="cb14-16"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb14-16" tabindex="-1"></a>time_index<span class="sc">$</span>is_morning_peak <span class="ot">&lt;-</span> time_index<span class="sc">$</span>hour <span class="sc">%in%</span> <span class="fu">c</span>(<span class="dv">7</span>, <span class="dv">8</span>, <span class="dv">9</span>)</span>
+<span id="cb14-17"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb14-17" tabindex="-1"></a>time_index<span class="sc">$</span>is_evening_peak <span class="ot">&lt;-</span> time_index<span class="sc">$</span>hour <span class="sc">%in%</span> <span class="fu">c</span>(<span class="dv">17</span>, <span class="dv">18</span>, <span class="dv">19</span>)</span>
+<span id="cb14-18"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb14-18" tabindex="-1"></a>time_index<span class="sc">$</span>is_weekend <span class="ot">&lt;-</span> time_index<span class="sc">$</span>day_of_week <span class="sc">%in%</span> <span class="fu">c</span>(<span class="dv">6</span>, <span class="dv">7</span>)</span></code></pre></div>
+</div>
+<div id="generate-true-cluster-structure" class="section level3 hasAnchor" number="6.1.3">
+<h3>
+<span class="header-section-number">6.1.3</span> 1.3 Generate True Cluster Structure<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#generate-true-cluster-structure" class="anchor-section" aria-label="Anchor link to header"></a>
+</h3>
+<div class="sourceCode" id="cb15"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb15-1"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-1" tabindex="-1"></a><span class="do">## True number of clusters</span></span>
+<span id="cb15-2"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-2" tabindex="-1"></a>K_true <span class="ot">&lt;-</span> <span class="dv">3</span></span>
+<span id="cb15-3"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-3" tabindex="-1"></a></span>
+<span id="cb15-4"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-4" tabindex="-1"></a><span class="do">## Define cluster characteristics (traffic patterns)</span></span>
+<span id="cb15-5"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-5" tabindex="-1"></a><span class="do">## Cluster 1: Low traffic (residential areas)</span></span>
+<span id="cb15-6"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-6" tabindex="-1"></a><span class="do">## Cluster 2: Medium traffic (suburban connectors)</span></span>
+<span id="cb15-7"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-7" tabindex="-1"></a><span class="do">## Cluster 3: High traffic (major arteries/downtown)</span></span>
+<span id="cb15-8"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-8" tabindex="-1"></a></span>
+<span id="cb15-9"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-9" tabindex="-1"></a>cluster_profiles <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb15-10"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-10" tabindex="-1"></a>  <span class="do">## Cluster 1: Low, flat pattern</span></span>
+<span id="cb15-11"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-11" tabindex="-1"></a>  <span class="fu">list</span>(</span>
+<span id="cb15-12"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-12" tabindex="-1"></a>    <span class="at">base =</span> <span class="dv">2</span>,</span>
+<span id="cb15-13"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-13" tabindex="-1"></a>    <span class="at">morning_peak =</span> <span class="fl">1.5</span>,</span>
+<span id="cb15-14"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-14" tabindex="-1"></a>    <span class="at">evening_peak =</span> <span class="fl">1.3</span>,</span>
+<span id="cb15-15"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-15" tabindex="-1"></a>    <span class="at">weekend_effect =</span> <span class="fl">0.7</span></span>
+<span id="cb15-16"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-16" tabindex="-1"></a>  ),</span>
+<span id="cb15-17"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-17" tabindex="-1"></a>  <span class="do">## Cluster 2: Medium, bimodal pattern</span></span>
+<span id="cb15-18"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-18" tabindex="-1"></a>  <span class="fu">list</span>(</span>
+<span id="cb15-19"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-19" tabindex="-1"></a>    <span class="at">base =</span> <span class="dv">5</span>,</span>
+<span id="cb15-20"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-20" tabindex="-1"></a>    <span class="at">morning_peak =</span> <span class="fl">2.5</span>,</span>
+<span id="cb15-21"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-21" tabindex="-1"></a>    <span class="at">evening_peak =</span> <span class="fl">2.0</span>,</span>
+<span id="cb15-22"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-22" tabindex="-1"></a>    <span class="at">weekend_effect =</span> <span class="fl">0.6</span></span>
+<span id="cb15-23"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-23" tabindex="-1"></a>  ),</span>
+<span id="cb15-24"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-24" tabindex="-1"></a>  <span class="do">## Cluster 3: High, strong peaks</span></span>
+<span id="cb15-25"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-25" tabindex="-1"></a>  <span class="fu">list</span>(</span>
+<span id="cb15-26"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-26" tabindex="-1"></a>    <span class="at">base =</span> <span class="dv">10</span>,</span>
+<span id="cb15-27"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-27" tabindex="-1"></a>    <span class="at">morning_peak =</span> <span class="fl">3.5</span>,</span>
+<span id="cb15-28"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-28" tabindex="-1"></a>    <span class="at">evening_peak =</span> <span class="fl">3.0</span>,</span>
+<span id="cb15-29"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-29" tabindex="-1"></a>    <span class="at">weekend_effect =</span> <span class="fl">0.5</span></span>
+<span id="cb15-30"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-30" tabindex="-1"></a>  )</span>
+<span id="cb15-31"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-31" tabindex="-1"></a>)</span>
+<span id="cb15-32"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-32" tabindex="-1"></a></span>
+<span id="cb15-33"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-33" tabindex="-1"></a><span class="do">## Assign edges to clusters (with some spatial structure)</span></span>
+<span id="cb15-34"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-34" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">20260509</span>)</span>
+<span id="cb15-35"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-35" tabindex="-1"></a>edge_cluster <span class="ot">&lt;-</span> <span class="fu">rep</span>(<span class="dv">1</span><span class="sc">:</span>K_true, <span class="at">length.out =</span> network<span class="sc">$</span>n_edges)</span>
+<span id="cb15-36"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-36" tabindex="-1"></a><span class="do">## Add some spatial correlation</span></span>
+<span id="cb15-37"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-37" tabindex="-1"></a>edge_cluster <span class="ot">&lt;-</span> <span class="fu">sample</span>(edge_cluster, <span class="at">replace =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb15-38"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-38" tabindex="-1"></a></span>
+<span id="cb15-39"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-39" tabindex="-1"></a><span class="do">## Create design matrix Fmat (TT x p)</span></span>
+<span id="cb15-40"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-40" tabindex="-1"></a>p <span class="ot">&lt;-</span> <span class="dv">4</span>  <span class="co"># Intercept, morning peak, evening peak, weekend</span></span>
+<span id="cb15-41"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-41" tabindex="-1"></a>Fmat <span class="ot">&lt;-</span> <span class="fu">model.matrix</span>(</span>
+<span id="cb15-42"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-42" tabindex="-1"></a>  <span class="sc">~</span> is_morning_peak <span class="sc">+</span> is_evening_peak <span class="sc">+</span> is_weekend,</span>
+<span id="cb15-43"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-43" tabindex="-1"></a>  <span class="at">data =</span> time_index</span>
+<span id="cb15-44"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-44" tabindex="-1"></a>)</span>
+<span id="cb15-45"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb15-45" tabindex="-1"></a><span class="fu">colnames</span>(Fmat) <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"intercept"</span>, <span class="st">"morning_peak"</span>, <span class="st">"evening_peak"</span>, <span class="st">"weekend"</span>)</span></code></pre></div>
+</div>
+<div id="generate-true-parameters" class="section level3 hasAnchor" number="6.1.4">
+<h3>
+<span class="header-section-number">6.1.4</span> 1.4 Generate True Parameters<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#generate-true-parameters" class="anchor-section" aria-label="Anchor link to header"></a>
+</h3>
+<div class="sourceCode" id="cb16"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb16-1"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb16-1" tabindex="-1"></a><span class="do">## True theta parameters (K x TT x p)</span></span>
+<span id="cb16-2"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb16-2" tabindex="-1"></a>theta_true <span class="ot">&lt;-</span> <span class="fu">array</span>(<span class="dv">0</span>, <span class="at">dim =</span> <span class="fu">c</span>(K_true, TT, p))</span>
+<span id="cb16-3"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb16-3" tabindex="-1"></a></span>
+<span id="cb16-4"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb16-4" tabindex="-1"></a><span class="cf">for</span> (k <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span>K_true) {</span>
+<span id="cb16-5"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb16-5" tabindex="-1"></a>  profile <span class="ot">&lt;-</span> cluster_profiles[[k]]</span>
+<span id="cb16-6"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb16-6" tabindex="-1"></a>  </span>
+<span id="cb16-7"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb16-7" tabindex="-1"></a>  <span class="do">## Base intercept</span></span>
+<span id="cb16-8"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb16-8" tabindex="-1"></a>  theta_true[k, , <span class="dv">1</span>] <span class="ot">&lt;-</span> <span class="fu">log</span>(profile<span class="sc">$</span>base)</span>
+<span id="cb16-9"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb16-9" tabindex="-1"></a>  </span>
+<span id="cb16-10"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb16-10" tabindex="-1"></a>  <span class="do">## Peak effects</span></span>
+<span id="cb16-11"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb16-11" tabindex="-1"></a>  theta_true[k, , <span class="dv">2</span>] <span class="ot">&lt;-</span> <span class="fu">log</span>(profile<span class="sc">$</span>morning_peak)</span>
+<span id="cb16-12"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb16-12" tabindex="-1"></a>  theta_true[k, , <span class="dv">3</span>] <span class="ot">&lt;-</span> <span class="fu">log</span>(profile<span class="sc">$</span>evening_peak)</span>
+<span id="cb16-13"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb16-13" tabindex="-1"></a>  theta_true[k, , <span class="dv">4</span>] <span class="ot">&lt;-</span> <span class="fu">log</span>(profile<span class="sc">$</span>weekend_effect)</span>
+<span id="cb16-14"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb16-14" tabindex="-1"></a>}</span>
+<span id="cb16-15"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb16-15" tabindex="-1"></a></span>
+<span id="cb16-16"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb16-16" tabindex="-1"></a><span class="do">## Add small time-varying component (smooth variation)</span></span>
+<span id="cb16-17"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb16-17" tabindex="-1"></a><span class="cf">for</span> (k <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span>K_true) {</span>
+<span id="cb16-18"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb16-18" tabindex="-1"></a>  time_trend <span class="ot">&lt;-</span> <span class="fl">0.1</span> <span class="sc">*</span> <span class="fu">sin</span>(<span class="dv">2</span> <span class="sc">*</span> pi <span class="sc">*</span> (<span class="dv">1</span><span class="sc">:</span>TT) <span class="sc">/</span> intervals_per_day)</span>
+<span id="cb16-19"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb16-19" tabindex="-1"></a>  theta_true[k, , <span class="dv">1</span>] <span class="ot">&lt;-</span> theta_true[k, , <span class="dv">1</span>] <span class="sc">+</span> time_trend</span>
+<span id="cb16-20"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb16-20" tabindex="-1"></a>}</span>
+<span id="cb16-21"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb16-21" tabindex="-1"></a></span>
+<span id="cb16-22"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb16-22" tabindex="-1"></a><span class="do">## True cluster probabilities</span></span>
+<span id="cb16-23"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb16-23" tabindex="-1"></a>pi_true <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="fl">0.4</span>, <span class="fl">0.35</span>, <span class="fl">0.25</span>)</span>
+<span id="cb16-24"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb16-24" tabindex="-1"></a></span>
+<span id="cb16-25"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb16-25" tabindex="-1"></a><span class="do">## Assign edges to clusters</span></span>
+<span id="cb16-26"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb16-26" tabindex="-1"></a>Z_true <span class="ot">&lt;-</span> edge_cluster</span></code></pre></div>
+</div>
+<div id="simulate-count-data" class="section level3 hasAnchor" number="6.1.5">
+<h3>
+<span class="header-section-number">6.1.5</span> 1.5 Simulate Count Data<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#simulate-count-data" class="anchor-section" aria-label="Anchor link to header"></a>
+</h3>
+<div class="sourceCode" id="cb17"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb17-1"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb17-1" tabindex="-1"></a><span class="do">## Compute intensity for each edge at each time point</span></span>
+<span id="cb17-2"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb17-2" tabindex="-1"></a>lambda_matrix <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="dv">0</span>, <span class="at">nrow =</span> network<span class="sc">$</span>n_edges, <span class="at">ncol =</span> TT)</span>
+<span id="cb17-3"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb17-3" tabindex="-1"></a><span class="cf">for</span> (e <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span>network<span class="sc">$</span>n_edges) {</span>
+<span id="cb17-4"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb17-4" tabindex="-1"></a>  k <span class="ot">&lt;-</span> Z_true[e]</span>
+<span id="cb17-5"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb17-5" tabindex="-1"></a>  eta_e <span class="ot">&lt;-</span> <span class="fu">rowSums</span>(Fmat <span class="sc">*</span> theta_true[k, , ])</span>
+<span id="cb17-6"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb17-6" tabindex="-1"></a>  lambda_matrix[e, ] <span class="ot">&lt;-</span> <span class="fu">exp</span>(eta_e)</span>
+<span id="cb17-7"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb17-7" tabindex="-1"></a>}</span>
+<span id="cb17-8"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb17-8" tabindex="-1"></a></span>
+<span id="cb17-9"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb17-9" tabindex="-1"></a><span class="do">## Simulate Poisson counts</span></span>
+<span id="cb17-10"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb17-10" tabindex="-1"></a>Y <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="dv">0</span>, <span class="at">nrow =</span> network<span class="sc">$</span>n_edges, <span class="at">ncol =</span> TT)</span>
+<span id="cb17-11"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb17-11" tabindex="-1"></a><span class="cf">for</span> (e <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span>network<span class="sc">$</span>n_edges) {</span>
+<span id="cb17-12"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb17-12" tabindex="-1"></a>  Y[e, ] <span class="ot">&lt;-</span> <span class="fu">rpois</span>(TT, lambda_matrix[e, ])</span>
+<span id="cb17-13"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb17-13" tabindex="-1"></a>}</span>
+<span id="cb17-14"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb17-14" tabindex="-1"></a></span>
+<span id="cb17-15"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb17-15" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"Data dimensions:"</span>, <span class="fu">nrow</span>(Y), <span class="st">"edges ×"</span>, <span class="fu">ncol</span>(Y), <span class="st">"time points</span><span class="sc">\n</span><span class="st">"</span>)</span></code></pre></div>
+<pre><code>## Data dimensions: 80 edges × 1344 time points</code></pre>
+<div class="sourceCode" id="cb19"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb19-1"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb19-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"Total observations:"</span>, <span class="fu">length</span>(Y), <span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span></code></pre></div>
+<pre><code>## Total observations: 107520</code></pre>
+<div class="sourceCode" id="cb21"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb21-1"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb21-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"Mean count:"</span>, <span class="fu">round</span>(<span class="fu">mean</span>(Y), <span class="dv">2</span>), <span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span></code></pre></div>
+<pre><code>## Mean count: 7</code></pre>
+<div class="sourceCode" id="cb23"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb23-1"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb23-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"Max count:"</span>, <span class="fu">max</span>(Y), <span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span></code></pre></div>
+<pre><code>## Max count: 58</code></pre>
+<hr>
+</div>
+</div>
+<div id="data-visualization" class="section level2 hasAnchor" number="6.2">
+<h2>
+<span class="header-section-number">6.2</span> 2. Data Visualization<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#data-visualization" class="anchor-section" aria-label="Anchor link to header"></a>
+</h2>
+<div id="network-structure" class="section level3 hasAnchor" number="6.2.1">
+<h3>
+<span class="header-section-number">6.2.1</span> 2.1 Network Structure<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#network-structure" class="anchor-section" aria-label="Anchor link to header"></a>
+</h3>
+<div class="sourceCode" id="cb25"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb25-1"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-1" tabindex="-1"></a><span id="plot_network_structure">plot_network_structure</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(network, Z_true) {</span>
+<span id="cb25-2"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-2" tabindex="-1"></a>  nodes <span class="ot">&lt;-</span> network<span class="sc">$</span>nodes</span>
+<span id="cb25-3"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-3" tabindex="-1"></a>  edges <span class="ot">&lt;-</span> network<span class="sc">$</span>edges</span>
+<span id="cb25-4"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-4" tabindex="-1"></a>  edges<span class="sc">$</span>cluster <span class="ot">&lt;-</span> Z_true</span>
+<span id="cb25-5"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-5" tabindex="-1"></a>  </span>
+<span id="cb25-6"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-6" tabindex="-1"></a>  <span class="do">## Node positions</span></span>
+<span id="cb25-7"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-7" tabindex="-1"></a>  node_positions <span class="ot">&lt;-</span> nodes <span class="sc">%&gt;%</span></span>
+<span id="cb25-8"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-8" tabindex="-1"></a>    <span class="fu">mutate</span>(</span>
+<span id="cb25-9"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-9" tabindex="-1"></a>      <span class="at">x =</span> col,</span>
+<span id="cb25-10"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-10" tabindex="-1"></a>      <span class="at">y =</span> <span class="sc">-</span>row  <span class="do">## Flip y for plotting</span></span>
+<span id="cb25-11"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-11" tabindex="-1"></a>    )</span>
+<span id="cb25-12"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-12" tabindex="-1"></a>  </span>
+<span id="cb25-13"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-13" tabindex="-1"></a>  <span class="do">## Edge data with cluster colors</span></span>
+<span id="cb25-14"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-14" tabindex="-1"></a>  edge_data <span class="ot">&lt;-</span> edges <span class="sc">%&gt;%</span></span>
+<span id="cb25-15"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-15" tabindex="-1"></a>    <span class="fu">left_join</span>(node_positions, <span class="at">by =</span> <span class="fu">c</span>(<span class="st">"from"</span> <span class="ot">=</span> <span class="st">"node_id"</span>)) <span class="sc">%&gt;%</span></span>
+<span id="cb25-16"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-16" tabindex="-1"></a>    <span class="fu">rename</span>(<span class="at">x1 =</span> x, <span class="at">y1 =</span> y) <span class="sc">%&gt;%</span></span>
+<span id="cb25-17"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-17" tabindex="-1"></a>    <span class="fu">left_join</span>(node_positions, <span class="at">by =</span> <span class="fu">c</span>(<span class="st">"to"</span> <span class="ot">=</span> <span class="st">"node_id"</span>)) <span class="sc">%&gt;%</span></span>
+<span id="cb25-18"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-18" tabindex="-1"></a>    <span class="fu">rename</span>(<span class="at">x2 =</span> x, <span class="at">y2 =</span> y)</span>
+<span id="cb25-19"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-19" tabindex="-1"></a>  </span>
+<span id="cb25-20"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-20" tabindex="-1"></a>  cluster_colors <span class="ot">&lt;-</span> <span class="fu">brewer.pal</span>(<span class="fu">max</span>(Z_true), <span class="st">"Set2"</span>)</span>
+<span id="cb25-21"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-21" tabindex="-1"></a>  </span>
+<span id="cb25-22"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-22" tabindex="-1"></a>  <span class="fu">ggplot</span>() <span class="sc">+</span></span>
+<span id="cb25-23"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-23" tabindex="-1"></a>    <span class="fu">geom_segment</span>(</span>
+<span id="cb25-24"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-24" tabindex="-1"></a>      <span class="at">data =</span> edge_data,</span>
+<span id="cb25-25"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-25" tabindex="-1"></a>      <span class="fu">aes</span>(<span class="at">x =</span> x1, <span class="at">y =</span> y1, <span class="at">xend =</span> x2, <span class="at">yend =</span> y2, <span class="at">color =</span> <span class="fu">factor</span>(cluster)),</span>
+<span id="cb25-26"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-26" tabindex="-1"></a>      <span class="at">linewidth =</span> <span class="fl">1.2</span>,</span>
+<span id="cb25-27"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-27" tabindex="-1"></a>      <span class="at">arrow =</span> <span class="fu">arrow</span>(<span class="at">length =</span> <span class="fu">unit</span>(<span class="fl">0.15</span>, <span class="st">"cm"</span>), <span class="at">type =</span> <span class="st">"closed"</span>)</span>
+<span id="cb25-28"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-28" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb25-29"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-29" tabindex="-1"></a>    <span class="fu">geom_point</span>(</span>
+<span id="cb25-30"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-30" tabindex="-1"></a>      <span class="at">data =</span> node_positions,</span>
+<span id="cb25-31"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-31" tabindex="-1"></a>      <span class="fu">aes</span>(<span class="at">x =</span> x, <span class="at">y =</span> y),</span>
+<span id="cb25-32"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-32" tabindex="-1"></a>      <span class="at">size =</span> <span class="dv">4</span>,</span>
+<span id="cb25-33"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-33" tabindex="-1"></a>      <span class="at">color =</span> <span class="st">"darkgray"</span>,</span>
+<span id="cb25-34"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-34" tabindex="-1"></a>      <span class="at">shape =</span> <span class="dv">21</span>,</span>
+<span id="cb25-35"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-35" tabindex="-1"></a>      <span class="at">fill =</span> <span class="st">"white"</span></span>
+<span id="cb25-36"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-36" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb25-37"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-37" tabindex="-1"></a>    <span class="fu">geom_text</span>(</span>
+<span id="cb25-38"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-38" tabindex="-1"></a>      <span class="at">data =</span> node_positions,</span>
+<span id="cb25-39"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-39" tabindex="-1"></a>      <span class="fu">aes</span>(<span class="at">x =</span> x, <span class="at">y =</span> y, <span class="at">label =</span> node_id),</span>
+<span id="cb25-40"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-40" tabindex="-1"></a>      <span class="at">size =</span> <span class="dv">3</span>,</span>
+<span id="cb25-41"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-41" tabindex="-1"></a>      <span class="at">color =</span> <span class="st">"black"</span></span>
+<span id="cb25-42"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-42" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb25-43"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-43" tabindex="-1"></a>    <span class="fu">scale_color_manual</span>(</span>
+<span id="cb25-44"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-44" tabindex="-1"></a>      <span class="at">name =</span> <span class="st">"Cluster"</span>,</span>
+<span id="cb25-45"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-45" tabindex="-1"></a>      <span class="at">values =</span> cluster_colors,</span>
+<span id="cb25-46"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-46" tabindex="-1"></a>      <span class="at">labels =</span> <span class="fu">paste</span>(<span class="st">"Cluster"</span>, <span class="dv">1</span><span class="sc">:</span><span class="fu">max</span>(Z_true))</span>
+<span id="cb25-47"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-47" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb25-48"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-48" tabindex="-1"></a>    <span class="fu">coord_fixed</span>() <span class="sc">+</span></span>
+<span id="cb25-49"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-49" tabindex="-1"></a>    <span class="fu">theme_minimal</span>() <span class="sc">+</span></span>
+<span id="cb25-50"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-50" tabindex="-1"></a>    <span class="fu">theme</span>(</span>
+<span id="cb25-51"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-51" tabindex="-1"></a>      <span class="at">axis.title =</span> <span class="fu">element_blank</span>(),</span>
+<span id="cb25-52"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-52" tabindex="-1"></a>      <span class="at">axis.text =</span> <span class="fu">element_blank</span>(),</span>
+<span id="cb25-53"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-53" tabindex="-1"></a>      <span class="at">axis.ticks =</span> <span class="fu">element_blank</span>(),</span>
+<span id="cb25-54"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-54" tabindex="-1"></a>      <span class="at">panel.grid =</span> <span class="fu">element_blank</span>(),</span>
+<span id="cb25-55"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-55" tabindex="-1"></a>      <span class="at">legend.position =</span> <span class="st">"bottom"</span></span>
+<span id="cb25-56"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-56" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb25-57"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-57" tabindex="-1"></a>    <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"5×5 Grid Road Network with True Cluster Assignments"</span>)</span>
+<span id="cb25-58"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-58" tabindex="-1"></a>}</span>
+<span id="cb25-59"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-59" tabindex="-1"></a></span>
+<span id="cb25-60"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-60" tabindex="-1"></a>p_network <span class="ot">&lt;-</span> <a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#plot_network_structure">plot_network_structure</a>(network, Z_true)</span>
+<span id="cb25-61"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb25-61" tabindex="-1"></a>p_network</span></code></pre></div>
+<p><img src="_main_files/figure-html/plot-network-1.png" width="672"></p>
+</div>
+<div id="time-series-of-traffic-counts" class="section level3 hasAnchor" number="6.2.2">
+<h3>
+<span class="header-section-number">6.2.2</span> 2.2 Time Series of Traffic Counts<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#time-series-of-traffic-counts" class="anchor-section" aria-label="Anchor link to header"></a>
+</h3>
+<div class="sourceCode" id="cb26"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb26-1"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-1" tabindex="-1"></a><span id="plot_traffic_timeseries">plot_traffic_timeseries</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(Y, time_index, Z_true, K) {</span>
+<span id="cb26-2"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-2" tabindex="-1"></a>  <span class="do">## Convert to long format</span></span>
+<span id="cb26-3"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-3" tabindex="-1"></a>  Y_long <span class="ot">&lt;-</span> <span class="fu">as.data.frame</span>(Y) <span class="sc">%&gt;%</span></span>
+<span id="cb26-4"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-4" tabindex="-1"></a>    <span class="fu">mutate</span>(<span class="at">edge =</span> <span class="dv">1</span><span class="sc">:</span><span class="fu">nrow</span>(Y)) <span class="sc">%&gt;%</span></span>
+<span id="cb26-5"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-5" tabindex="-1"></a>    <span class="fu">pivot_longer</span>(</span>
+<span id="cb26-6"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-6" tabindex="-1"></a>      <span class="at">cols =</span> <span class="sc">-</span>edge,</span>
+<span id="cb26-7"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-7" tabindex="-1"></a>      <span class="at">names_to =</span> <span class="st">"time"</span>,</span>
+<span id="cb26-8"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-8" tabindex="-1"></a>      <span class="at">values_to =</span> <span class="st">"count"</span></span>
+<span id="cb26-9"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-9" tabindex="-1"></a>    ) <span class="sc">%&gt;%</span></span>
+<span id="cb26-10"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-10" tabindex="-1"></a>    <span class="fu">mutate</span>(</span>
+<span id="cb26-11"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-11" tabindex="-1"></a>      <span class="at">time =</span> <span class="fu">as.numeric</span>(<span class="fu">gsub</span>(<span class="st">"V"</span>, <span class="st">""</span>, time)),</span>
+<span id="cb26-12"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-12" tabindex="-1"></a>      <span class="at">cluster =</span> Z_true[edge]</span>
+<span id="cb26-13"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-13" tabindex="-1"></a>    ) <span class="sc">%&gt;%</span></span>
+<span id="cb26-14"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-14" tabindex="-1"></a>    <span class="fu">left_join</span>(time_index, <span class="at">by =</span> <span class="fu">c</span>(<span class="st">"time"</span> <span class="ot">=</span> <span class="st">"t"</span>))</span>
+<span id="cb26-15"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-15" tabindex="-1"></a>  </span>
+<span id="cb26-16"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-16" tabindex="-1"></a>  <span class="do">## Aggregate by cluster and time</span></span>
+<span id="cb26-17"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-17" tabindex="-1"></a>  cluster_summary <span class="ot">&lt;-</span> Y_long <span class="sc">%&gt;%</span></span>
+<span id="cb26-18"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-18" tabindex="-1"></a>    <span class="fu">group_by</span>(cluster, time) <span class="sc">%&gt;%</span></span>
+<span id="cb26-19"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-19" tabindex="-1"></a>    <span class="fu">summarize</span>(</span>
+<span id="cb26-20"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-20" tabindex="-1"></a>      <span class="at">mean_count =</span> <span class="fu">mean</span>(count),</span>
+<span id="cb26-21"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-21" tabindex="-1"></a>      <span class="at">sd_count =</span> <span class="fu">sd</span>(count),</span>
+<span id="cb26-22"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-22" tabindex="-1"></a>      <span class="at">.groups =</span> <span class="st">"drop"</span></span>
+<span id="cb26-23"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-23" tabindex="-1"></a>    )</span>
+<span id="cb26-24"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-24" tabindex="-1"></a>  </span>
+<span id="cb26-25"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-25" tabindex="-1"></a>  cluster_colors <span class="ot">&lt;-</span> <span class="fu">brewer.pal</span>(K, <span class="st">"Set2"</span>)</span>
+<span id="cb26-26"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-26" tabindex="-1"></a>  </span>
+<span id="cb26-27"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-27" tabindex="-1"></a>  <span class="fu">ggplot</span>(cluster_summary, <span class="fu">aes</span>(<span class="at">x =</span> time, <span class="at">y =</span> mean_count, <span class="at">color =</span> <span class="fu">factor</span>(cluster))) <span class="sc">+</span></span>
+<span id="cb26-28"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-28" tabindex="-1"></a>    <span class="fu">geom_line</span>(<span class="at">linewidth =</span> <span class="dv">1</span>) <span class="sc">+</span></span>
+<span id="cb26-29"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-29" tabindex="-1"></a>    <span class="fu">geom_ribbon</span>(</span>
+<span id="cb26-30"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-30" tabindex="-1"></a>      <span class="fu">aes</span>(<span class="at">ymin =</span> mean_count <span class="sc">-</span> sd_count, <span class="at">ymax =</span> mean_count <span class="sc">+</span> sd_count, <span class="at">fill =</span> <span class="fu">factor</span>(cluster)),</span>
+<span id="cb26-31"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-31" tabindex="-1"></a>      <span class="at">alpha =</span> <span class="fl">0.2</span>,</span>
+<span id="cb26-32"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-32" tabindex="-1"></a>      <span class="at">color =</span> <span class="cn">NA</span></span>
+<span id="cb26-33"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-33" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb26-34"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-34" tabindex="-1"></a>    <span class="fu">scale_color_manual</span>(</span>
+<span id="cb26-35"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-35" tabindex="-1"></a>      <span class="at">name =</span> <span class="st">"Cluster"</span>,</span>
+<span id="cb26-36"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-36" tabindex="-1"></a>      <span class="at">values =</span> cluster_colors,</span>
+<span id="cb26-37"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-37" tabindex="-1"></a>      <span class="at">labels =</span> <span class="fu">paste</span>(<span class="st">"Cluster"</span>, <span class="dv">1</span><span class="sc">:</span>K)</span>
+<span id="cb26-38"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-38" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb26-39"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-39" tabindex="-1"></a>    <span class="fu">scale_fill_manual</span>(</span>
+<span id="cb26-40"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-40" tabindex="-1"></a>      <span class="at">name =</span> <span class="st">"Cluster"</span>,</span>
+<span id="cb26-41"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-41" tabindex="-1"></a>      <span class="at">values =</span> cluster_colors,</span>
+<span id="cb26-42"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-42" tabindex="-1"></a>      <span class="at">labels =</span> <span class="fu">paste</span>(<span class="st">"Cluster"</span>, <span class="dv">1</span><span class="sc">:</span>K),</span>
+<span id="cb26-43"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-43" tabindex="-1"></a>      <span class="at">guide =</span> <span class="st">"none"</span></span>
+<span id="cb26-44"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-44" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb26-45"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-45" tabindex="-1"></a>    <span class="fu">geom_vline</span>(</span>
+<span id="cb26-46"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-46" tabindex="-1"></a>      <span class="at">xintercept =</span> <span class="fu">seq</span>(<span class="dv">1</span>, TT, <span class="at">by =</span> intervals_per_day),</span>
+<span id="cb26-47"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-47" tabindex="-1"></a>      <span class="at">linetype =</span> <span class="st">"dashed"</span>,</span>
+<span id="cb26-48"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-48" tabindex="-1"></a>      <span class="at">alpha =</span> <span class="fl">0.3</span></span>
+<span id="cb26-49"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-49" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb26-50"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-50" tabindex="-1"></a>    <span class="fu">labs</span>(</span>
+<span id="cb26-51"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-51" tabindex="-1"></a>      <span class="at">title =</span> <span class="st">"Traffic Count Time Series by Cluster"</span>,</span>
+<span id="cb26-52"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-52" tabindex="-1"></a>      <span class="at">subtitle =</span> <span class="st">"Mean ± SD across edges in each cluster"</span>,</span>
+<span id="cb26-53"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-53" tabindex="-1"></a>      <span class="at">x =</span> <span class="st">"Time Step (30-min intervals)"</span>,</span>
+<span id="cb26-54"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-54" tabindex="-1"></a>      <span class="at">y =</span> <span class="st">"Mean Count"</span></span>
+<span id="cb26-55"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-55" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb26-56"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-56" tabindex="-1"></a>    <span class="fu">theme_minimal</span>() <span class="sc">+</span></span>
+<span id="cb26-57"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-57" tabindex="-1"></a>    <span class="fu">theme</span>(</span>
+<span id="cb26-58"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-58" tabindex="-1"></a>      <span class="at">legend.position =</span> <span class="st">"bottom"</span>,</span>
+<span id="cb26-59"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-59" tabindex="-1"></a>      <span class="at">panel.grid.minor =</span> <span class="fu">element_blank</span>()</span>
+<span id="cb26-60"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-60" tabindex="-1"></a>    )</span>
+<span id="cb26-61"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-61" tabindex="-1"></a>}</span>
+<span id="cb26-62"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-62" tabindex="-1"></a></span>
+<span id="cb26-63"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-63" tabindex="-1"></a>p_timeseries <span class="ot">&lt;-</span> <a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#plot_traffic_timeseries">plot_traffic_timeseries</a>(Y, time_index, Z_true, K_true)</span>
+<span id="cb26-64"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb26-64" tabindex="-1"></a>p_timeseries</span></code></pre></div>
+<p><img src="_main_files/figure-html/plot-timeseries-1.png" width="672"></p>
+</div>
+<div id="daily-pattern-heatmap" class="section level3 hasAnchor" number="6.2.3">
+<h3>
+<span class="header-section-number">6.2.3</span> 2.3 Daily Pattern Heatmap<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#daily-pattern-heatmap" class="anchor-section" aria-label="Anchor link to header"></a>
+</h3>
+<div class="sourceCode" id="cb27"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb27-1"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-1" tabindex="-1"></a><span id="plot_daily_pattern">plot_daily_pattern</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(Y, time_index, Z_true, K) {</span>
+<span id="cb27-2"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-2" tabindex="-1"></a>  Y_long <span class="ot">&lt;-</span> <span class="fu">as.data.frame</span>(Y) <span class="sc">%&gt;%</span></span>
+<span id="cb27-3"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-3" tabindex="-1"></a>    <span class="fu">mutate</span>(<span class="at">edge =</span> <span class="dv">1</span><span class="sc">:</span><span class="fu">nrow</span>(Y)) <span class="sc">%&gt;%</span></span>
+<span id="cb27-4"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-4" tabindex="-1"></a>    <span class="fu">pivot_longer</span>(</span>
+<span id="cb27-5"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-5" tabindex="-1"></a>      <span class="at">cols =</span> <span class="sc">-</span>edge,</span>
+<span id="cb27-6"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-6" tabindex="-1"></a>      <span class="at">names_to =</span> <span class="st">"time"</span>,</span>
+<span id="cb27-7"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-7" tabindex="-1"></a>      <span class="at">values_to =</span> <span class="st">"count"</span></span>
+<span id="cb27-8"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-8" tabindex="-1"></a>    ) <span class="sc">%&gt;%</span></span>
+<span id="cb27-9"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-9" tabindex="-1"></a>    <span class="fu">mutate</span>(</span>
+<span id="cb27-10"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-10" tabindex="-1"></a>      <span class="at">time =</span> <span class="fu">as.numeric</span>(<span class="fu">gsub</span>(<span class="st">"V"</span>, <span class="st">""</span>, time)),</span>
+<span id="cb27-11"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-11" tabindex="-1"></a>      <span class="at">cluster =</span> Z_true[edge]</span>
+<span id="cb27-12"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-12" tabindex="-1"></a>    ) <span class="sc">%&gt;%</span></span>
+<span id="cb27-13"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-13" tabindex="-1"></a>    <span class="fu">left_join</span>(time_index, <span class="at">by =</span> <span class="fu">c</span>(<span class="st">"time"</span> <span class="ot">=</span> <span class="st">"t"</span>))</span>
+<span id="cb27-14"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-14" tabindex="-1"></a>  </span>
+<span id="cb27-15"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-15" tabindex="-1"></a>  <span class="do">## Aggregate by cluster, hour, and day type</span></span>
+<span id="cb27-16"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-16" tabindex="-1"></a>  pattern_summary <span class="ot">&lt;-</span> Y_long <span class="sc">%&gt;%</span></span>
+<span id="cb27-17"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-17" tabindex="-1"></a>    <span class="fu">group_by</span>(cluster, hour, is_weekend) <span class="sc">%&gt;%</span></span>
+<span id="cb27-18"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-18" tabindex="-1"></a>    <span class="fu">summarize</span>(</span>
+<span id="cb27-19"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-19" tabindex="-1"></a>      <span class="at">mean_count =</span> <span class="fu">mean</span>(count),</span>
+<span id="cb27-20"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-20" tabindex="-1"></a>      <span class="at">.groups =</span> <span class="st">"drop"</span></span>
+<span id="cb27-21"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-21" tabindex="-1"></a>    ) <span class="sc">%&gt;%</span></span>
+<span id="cb27-22"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-22" tabindex="-1"></a>    <span class="fu">mutate</span>(</span>
+<span id="cb27-23"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-23" tabindex="-1"></a>      <span class="at">day_type =</span> <span class="fu">ifelse</span>(is_weekend, <span class="st">"Weekend"</span>, <span class="st">"Weekday"</span>)</span>
+<span id="cb27-24"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-24" tabindex="-1"></a>    )</span>
+<span id="cb27-25"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-25" tabindex="-1"></a>  </span>
+<span id="cb27-26"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-26" tabindex="-1"></a>  <span class="fu">ggplot</span>(pattern_summary, <span class="fu">aes</span>(<span class="at">x =</span> hour, <span class="at">y =</span> <span class="fu">factor</span>(cluster), <span class="at">fill =</span> mean_count)) <span class="sc">+</span></span>
+<span id="cb27-27"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-27" tabindex="-1"></a>    <span class="fu">geom_tile</span>(<span class="at">color =</span> <span class="st">"white"</span>, <span class="at">linewidth =</span> <span class="fl">0.5</span>) <span class="sc">+</span></span>
+<span id="cb27-28"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-28" tabindex="-1"></a>    <span class="fu">geom_text</span>(</span>
+<span id="cb27-29"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-29" tabindex="-1"></a>      <span class="fu">aes</span>(<span class="at">label =</span> <span class="fu">round</span>(mean_count, <span class="dv">1</span>)),</span>
+<span id="cb27-30"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-30" tabindex="-1"></a>      <span class="at">size =</span> <span class="dv">3</span>,</span>
+<span id="cb27-31"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-31" tabindex="-1"></a>      <span class="at">color =</span> <span class="st">"black"</span></span>
+<span id="cb27-32"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-32" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb27-33"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-33" tabindex="-1"></a>    <span class="fu">facet_wrap</span>(<span class="sc">~</span> day_type, <span class="at">ncol =</span> <span class="dv">2</span>) <span class="sc">+</span></span>
+<span id="cb27-34"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-34" tabindex="-1"></a>    <span class="fu">scale_fill_gradientn</span>(</span>
+<span id="cb27-35"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-35" tabindex="-1"></a>      <span class="at">name =</span> <span class="st">"Mean Count"</span>,</span>
+<span id="cb27-36"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-36" tabindex="-1"></a>      <span class="at">colors =</span> <span class="fu">brewer.pal</span>(<span class="dv">9</span>, <span class="st">"YlOrRd"</span>),</span>
+<span id="cb27-37"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-37" tabindex="-1"></a>      <span class="at">na.value =</span> <span class="st">"white"</span></span>
+<span id="cb27-38"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-38" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb27-39"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-39" tabindex="-1"></a>    <span class="fu">scale_y_discrete</span>(<span class="at">labels =</span> <span class="cf">function</span>(x) <span class="fu">paste</span>(<span class="st">"Cluster"</span>, x)) <span class="sc">+</span></span>
+<span id="cb27-40"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-40" tabindex="-1"></a>    <span class="fu">labs</span>(</span>
+<span id="cb27-41"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-41" tabindex="-1"></a>      <span class="at">title =</span> <span class="st">"Daily Traffic Patterns by Cluster"</span>,</span>
+<span id="cb27-42"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-42" tabindex="-1"></a>      <span class="at">subtitle =</span> <span class="st">"Average count by hour and day type"</span>,</span>
+<span id="cb27-43"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-43" tabindex="-1"></a>      <span class="at">x =</span> <span class="st">"Hour of Day"</span>,</span>
+<span id="cb27-44"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-44" tabindex="-1"></a>      <span class="at">y =</span> <span class="st">"Cluster"</span></span>
+<span id="cb27-45"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-45" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb27-46"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-46" tabindex="-1"></a>    <span class="fu">theme_minimal</span>() <span class="sc">+</span></span>
+<span id="cb27-47"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-47" tabindex="-1"></a>    <span class="fu">theme</span>(</span>
+<span id="cb27-48"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-48" tabindex="-1"></a>      <span class="at">legend.position =</span> <span class="st">"right"</span>,</span>
+<span id="cb27-49"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-49" tabindex="-1"></a>      <span class="at">panel.grid =</span> <span class="fu">element_blank</span>(),</span>
+<span id="cb27-50"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-50" tabindex="-1"></a>      <span class="at">axis.text.y =</span> <span class="fu">element_text</span>(<span class="at">size =</span> <span class="dv">10</span>)</span>
+<span id="cb27-51"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-51" tabindex="-1"></a>    )</span>
+<span id="cb27-52"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-52" tabindex="-1"></a>}</span>
+<span id="cb27-53"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-53" tabindex="-1"></a></span>
+<span id="cb27-54"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-54" tabindex="-1"></a>p_heatmap <span class="ot">&lt;-</span> <a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#plot_daily_pattern">plot_daily_pattern</a>(Y, time_index, Z_true, K_true)</span>
+<span id="cb27-55"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb27-55" tabindex="-1"></a>p_heatmap</span></code></pre></div>
+<p><img src="_main_files/figure-html/plot-heatmap-1.png" width="672"></p>
+<hr>
+</div>
+</div>
+<div id="run-mcmc" class="section level2 hasAnchor" number="6.3">
+<h2>
+<span class="header-section-number">6.3</span> 3. Run MCMC<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#run-mcmc" class="anchor-section" aria-label="Anchor link to header"></a>
+</h2>
+<div class="sourceCode" id="cb28"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb28-1"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-1" tabindex="-1"></a><span class="do">## MCMC settings</span></span>
+<span id="cb28-2"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-2" tabindex="-1"></a>n_iter <span class="ot">&lt;-</span> <span class="dv">800</span></span>
+<span id="cb28-3"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-3" tabindex="-1"></a>burn <span class="ot">&lt;-</span> <span class="dv">400</span></span>
+<span id="cb28-4"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-4" tabindex="-1"></a>K_fit <span class="ot">&lt;-</span> K_true</span>
+<span id="cb28-5"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-5" tabindex="-1"></a></span>
+<span id="cb28-6"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-6" tabindex="-1"></a><span class="do">## Prior settings</span></span>
+<span id="cb28-7"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-7" tabindex="-1"></a>alpha_pi <span class="ot">&lt;-</span> <span class="fu">rep</span>(<span class="dv">1</span>, K_fit)</span>
+<span id="cb28-8"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-8" tabindex="-1"></a>m0_fit <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="fu">log</span>(<span class="fu">mean</span>(Y) <span class="sc">+</span> <span class="fl">0.1</span>), <span class="dv">0</span>, <span class="dv">0</span>, <span class="dv">0</span>)</span>
+<span id="cb28-9"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-9" tabindex="-1"></a>C0_fit <span class="ot">&lt;-</span> <span class="fu">diag</span>(<span class="dv">4</span>) <span class="sc">*</span> <span class="dv">5</span></span>
+<span id="cb28-10"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-10" tabindex="-1"></a>G_fit <span class="ot">&lt;-</span> <span class="fu">diag</span>(<span class="dv">4</span>)</span>
+<span id="cb28-11"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-11" tabindex="-1"></a>W_fit <span class="ot">&lt;-</span> <span class="fu">diag</span>(<span class="dv">4</span>) <span class="sc">*</span> <span class="fl">0.01</span></span>
+<span id="cb28-12"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-12" tabindex="-1"></a>r_tune <span class="ot">&lt;-</span> (<span class="fu">max</span>(Y) <span class="sc">+</span> <span class="fu">sqrt</span>(<span class="fu">max</span>(Y)) <span class="sc">*</span> <span class="dv">3</span>) <span class="sc">*</span> <span class="dv">50</span></span>
+<span id="cb28-13"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-13" tabindex="-1"></a></span>
+<span id="cb28-14"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-14" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"Running MCMC with"</span>, n_iter, <span class="st">"iterations...</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb28-15"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-15" tabindex="-1"></a></span>
+<span id="cb28-16"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-16" tabindex="-1"></a><span class="do">## Run Gibbs sampler</span></span>
+<span id="cb28-17"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-17" tabindex="-1"></a>mcmc_result <span class="ot">&lt;-</span> bdynets<span class="sc">::</span><a href="gibbs-sampler.html#gibbs_sampler">gibbs_sampler</a>(</span>
+<span id="cb28-18"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-18" tabindex="-1"></a>  <span class="at">Y =</span> Y,</span>
+<span id="cb28-19"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-19" tabindex="-1"></a>  <span class="at">Fmat =</span> Fmat,</span>
+<span id="cb28-20"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-20" tabindex="-1"></a>  <span class="at">K =</span> K_fit,</span>
+<span id="cb28-21"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-21" tabindex="-1"></a>  <span class="at">n_iter =</span> n_iter,</span>
+<span id="cb28-22"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-22" tabindex="-1"></a>  <span class="at">burn =</span> burn,</span>
+<span id="cb28-23"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-23" tabindex="-1"></a>  <span class="at">alpha_pi =</span> alpha_pi,</span>
+<span id="cb28-24"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-24" tabindex="-1"></a>  <span class="at">m0 =</span> m0_fit,</span>
+<span id="cb28-25"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-25" tabindex="-1"></a>  <span class="at">C0 =</span> C0_fit,</span>
+<span id="cb28-26"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-26" tabindex="-1"></a>  <span class="at">G =</span> G_fit,</span>
+<span id="cb28-27"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-27" tabindex="-1"></a>  <span class="at">W =</span> W_fit,</span>
+<span id="cb28-28"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-28" tabindex="-1"></a>  <span class="at">r_tune =</span> r_tune,</span>
+<span id="cb28-29"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-29" tabindex="-1"></a>  <span class="at">Z_true =</span> Z_true,</span>
+<span id="cb28-30"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-30" tabindex="-1"></a>  <span class="at">relabel_freq =</span> <span class="dv">1</span>,</span>
+<span id="cb28-31"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-31" tabindex="-1"></a>  <span class="at">print_freq =</span> <span class="dv">100</span>,</span>
+<span id="cb28-32"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-32" tabindex="-1"></a>  <span class="at">store_theta =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb28-33"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-33" tabindex="-1"></a>  <span class="at">seed =</span> <span class="dv">20260509</span></span>
+<span id="cb28-34"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-34" tabindex="-1"></a>)</span>
+<span id="cb28-35"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-35" tabindex="-1"></a></span>
+<span id="cb28-36"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb28-36" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"MCMC completed in"</span>, <span class="fu">round</span>(mcmc_result<span class="sc">$</span>settings<span class="sc">$</span>total_time, <span class="dv">2</span>), <span class="st">"seconds</span><span class="sc">\n</span><span class="st">"</span>)</span></code></pre></div>
+<hr>
+</div>
+<div id="mcmc-diagnostics" class="section level2 hasAnchor" number="6.4">
+<h2>
+<span class="header-section-number">6.4</span> 4. MCMC Diagnostics<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#mcmc-diagnostics" class="anchor-section" aria-label="Anchor link to header"></a>
+</h2>
+<div id="trace-plots" class="section level3 hasAnchor" number="6.4.1">
+<h3>
+<span class="header-section-number">6.4.1</span> 4.1 Trace Plots<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#trace-plots" class="anchor-section" aria-label="Anchor link to header"></a>
+</h3>
+<div class="sourceCode" id="cb29"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb29-1"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-1" tabindex="-1"></a><span id="plot_trace_diagnostics">plot_trace_diagnostics</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(mcmc_result) {</span>
+<span id="cb29-2"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-2" tabindex="-1"></a>  burn <span class="ot">&lt;-</span> mcmc_result<span class="sc">$</span>settings<span class="sc">$</span>burn</span>
+<span id="cb29-3"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-3" tabindex="-1"></a>  keep_idx <span class="ot">&lt;-</span> <span class="fu">seq</span>(burn <span class="sc">+</span> <span class="dv">1</span>, mcmc_result<span class="sc">$</span>settings<span class="sc">$</span>n_iter)</span>
+<span id="cb29-4"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-4" tabindex="-1"></a>  K <span class="ot">&lt;-</span> mcmc_result<span class="sc">$</span>settings<span class="sc">$</span>K</span>
+<span id="cb29-5"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-5" tabindex="-1"></a>  </span>
+<span id="cb29-6"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-6" tabindex="-1"></a>  <span class="do">## Cluster probabilities</span></span>
+<span id="cb29-7"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-7" tabindex="-1"></a>  pi_long <span class="ot">&lt;-</span> <span class="fu">as.data.frame</span>(mcmc_result<span class="sc">$</span>pi[keep_idx, ]) <span class="sc">%&gt;%</span></span>
+<span id="cb29-8"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-8" tabindex="-1"></a>    <span class="fu">mutate</span>(<span class="at">iteration =</span> keep_idx) <span class="sc">%&gt;%</span></span>
+<span id="cb29-9"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-9" tabindex="-1"></a>    <span class="fu">pivot_longer</span>(</span>
+<span id="cb29-10"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-10" tabindex="-1"></a>      <span class="at">cols =</span> <span class="sc">-</span>iteration,</span>
+<span id="cb29-11"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-11" tabindex="-1"></a>      <span class="at">names_to =</span> <span class="st">"cluster"</span>,</span>
+<span id="cb29-12"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-12" tabindex="-1"></a>      <span class="at">values_to =</span> <span class="st">"value"</span></span>
+<span id="cb29-13"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-13" tabindex="-1"></a>    ) <span class="sc">%&gt;%</span></span>
+<span id="cb29-14"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-14" tabindex="-1"></a>    <span class="fu">mutate</span>(<span class="at">cluster =</span> <span class="fu">gsub</span>(<span class="st">"V"</span>, <span class="st">""</span>, cluster))</span>
+<span id="cb29-15"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-15" tabindex="-1"></a>  </span>
+<span id="cb29-16"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-16" tabindex="-1"></a>  cluster_colors <span class="ot">&lt;-</span> <span class="fu">brewer.pal</span>(K, <span class="st">"Set2"</span>)</span>
+<span id="cb29-17"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-17" tabindex="-1"></a>  </span>
+<span id="cb29-18"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-18" tabindex="-1"></a>  p_pi <span class="ot">&lt;-</span> <span class="fu">ggplot</span>(pi_long, <span class="fu">aes</span>(<span class="at">x =</span> iteration, <span class="at">y =</span> value, <span class="at">color =</span> cluster)) <span class="sc">+</span></span>
+<span id="cb29-19"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-19" tabindex="-1"></a>    <span class="fu">geom_line</span>(<span class="at">alpha =</span> <span class="fl">0.7</span>, <span class="at">linewidth =</span> <span class="fl">0.8</span>) <span class="sc">+</span></span>
+<span id="cb29-20"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-20" tabindex="-1"></a>    <span class="fu">scale_color_manual</span>(</span>
+<span id="cb29-21"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-21" tabindex="-1"></a>      <span class="at">name =</span> <span class="st">"Cluster"</span>,</span>
+<span id="cb29-22"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-22" tabindex="-1"></a>      <span class="at">values =</span> cluster_colors,</span>
+<span id="cb29-23"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-23" tabindex="-1"></a>      <span class="at">labels =</span> <span class="fu">paste</span>(<span class="st">"Cluster"</span>, <span class="dv">1</span><span class="sc">:</span>K)</span>
+<span id="cb29-24"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-24" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb29-25"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-25" tabindex="-1"></a>    <span class="fu">labs</span>(</span>
+<span id="cb29-26"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-26" tabindex="-1"></a>      <span class="at">title =</span> <span class="st">"Trace Plot: Cluster Probabilities (π)"</span>,</span>
+<span id="cb29-27"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-27" tabindex="-1"></a>      <span class="at">x =</span> <span class="st">"Iteration"</span>,</span>
+<span id="cb29-28"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-28" tabindex="-1"></a>      <span class="at">y =</span> <span class="st">"Probability"</span></span>
+<span id="cb29-29"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-29" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb29-30"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-30" tabindex="-1"></a>    <span class="fu">theme_minimal</span>() <span class="sc">+</span></span>
+<span id="cb29-31"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-31" tabindex="-1"></a>    <span class="fu">theme</span>(</span>
+<span id="cb29-32"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-32" tabindex="-1"></a>      <span class="at">legend.position =</span> <span class="st">"bottom"</span>,</span>
+<span id="cb29-33"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-33" tabindex="-1"></a>      <span class="at">panel.grid.minor =</span> <span class="fu">element_blank</span>()</span>
+<span id="cb29-34"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-34" tabindex="-1"></a>    )</span>
+<span id="cb29-35"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-35" tabindex="-1"></a>  </span>
+<span id="cb29-36"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-36" tabindex="-1"></a>  <span class="do">## Cluster sizes</span></span>
+<span id="cb29-37"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-37" tabindex="-1"></a>  size_long <span class="ot">&lt;-</span> <span class="fu">as.data.frame</span>(mcmc_result<span class="sc">$</span>size[keep_idx, ]) <span class="sc">%&gt;%</span></span>
+<span id="cb29-38"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-38" tabindex="-1"></a>    <span class="fu">mutate</span>(<span class="at">iteration =</span> keep_idx) <span class="sc">%&gt;%</span></span>
+<span id="cb29-39"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-39" tabindex="-1"></a>    <span class="fu">pivot_longer</span>(</span>
+<span id="cb29-40"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-40" tabindex="-1"></a>      <span class="at">cols =</span> <span class="sc">-</span>iteration,</span>
+<span id="cb29-41"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-41" tabindex="-1"></a>      <span class="at">names_to =</span> <span class="st">"cluster"</span>,</span>
+<span id="cb29-42"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-42" tabindex="-1"></a>      <span class="at">values_to =</span> <span class="st">"value"</span></span>
+<span id="cb29-43"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-43" tabindex="-1"></a>    ) <span class="sc">%&gt;%</span></span>
+<span id="cb29-44"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-44" tabindex="-1"></a>    <span class="fu">mutate</span>(<span class="at">cluster =</span> <span class="fu">gsub</span>(<span class="st">"V"</span>, <span class="st">""</span>, cluster))</span>
+<span id="cb29-45"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-45" tabindex="-1"></a>  </span>
+<span id="cb29-46"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-46" tabindex="-1"></a>  p_size <span class="ot">&lt;-</span> <span class="fu">ggplot</span>(size_long, <span class="fu">aes</span>(<span class="at">x =</span> iteration, <span class="at">y =</span> value, <span class="at">color =</span> cluster)) <span class="sc">+</span></span>
+<span id="cb29-47"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-47" tabindex="-1"></a>    <span class="fu">geom_line</span>(<span class="at">alpha =</span> <span class="fl">0.7</span>, <span class="at">linewidth =</span> <span class="fl">0.8</span>) <span class="sc">+</span></span>
+<span id="cb29-48"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-48" tabindex="-1"></a>    <span class="fu">scale_color_manual</span>(</span>
+<span id="cb29-49"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-49" tabindex="-1"></a>      <span class="at">name =</span> <span class="st">"Cluster"</span>,</span>
+<span id="cb29-50"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-50" tabindex="-1"></a>      <span class="at">values =</span> cluster_colors,</span>
+<span id="cb29-51"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-51" tabindex="-1"></a>      <span class="at">labels =</span> <span class="fu">paste</span>(<span class="st">"Cluster"</span>, <span class="dv">1</span><span class="sc">:</span>K),</span>
+<span id="cb29-52"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-52" tabindex="-1"></a>      <span class="at">guide =</span> <span class="st">"none"</span></span>
+<span id="cb29-53"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-53" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb29-54"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-54" tabindex="-1"></a>    <span class="fu">labs</span>(</span>
+<span id="cb29-55"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-55" tabindex="-1"></a>      <span class="at">title =</span> <span class="st">"Trace Plot: Cluster Sizes"</span>,</span>
+<span id="cb29-56"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-56" tabindex="-1"></a>      <span class="at">x =</span> <span class="st">"Iteration"</span>,</span>
+<span id="cb29-57"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-57" tabindex="-1"></a>      <span class="at">y =</span> <span class="st">"Number of Edges"</span></span>
+<span id="cb29-58"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-58" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb29-59"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-59" tabindex="-1"></a>    <span class="fu">theme_minimal</span>() <span class="sc">+</span></span>
+<span id="cb29-60"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-60" tabindex="-1"></a>    <span class="fu">theme</span>(</span>
+<span id="cb29-61"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-61" tabindex="-1"></a>      <span class="at">legend.position =</span> <span class="st">"none"</span>,</span>
+<span id="cb29-62"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-62" tabindex="-1"></a>      <span class="at">panel.grid.minor =</span> <span class="fu">element_blank</span>()</span>
+<span id="cb29-63"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-63" tabindex="-1"></a>    )</span>
+<span id="cb29-64"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-64" tabindex="-1"></a>  </span>
+<span id="cb29-65"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-65" tabindex="-1"></a>  p_pi <span class="sc">/</span> p_size <span class="sc">+</span> <span class="fu">plot_layout</span>(<span class="at">heights =</span> <span class="fu">c</span>(<span class="dv">1</span>, <span class="dv">1</span>))</span>
+<span id="cb29-66"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-66" tabindex="-1"></a>}</span>
+<span id="cb29-67"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-67" tabindex="-1"></a></span>
+<span id="cb29-68"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-68" tabindex="-1"></a>p_trace <span class="ot">&lt;-</span> <a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#plot_trace_diagnostics">plot_trace_diagnostics</a>(mcmc_result)</span>
+<span id="cb29-69"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb29-69" tabindex="-1"></a>p_trace</span></code></pre></div>
+</div>
+<div id="convergence-diagnostics-ari-accuracy" class="section level3 hasAnchor" number="6.4.2">
+<h3>
+<span class="header-section-number">6.4.2</span> 4.2 Convergence Diagnostics (ARI &amp; Accuracy)<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#convergence-diagnostics-ari-accuracy" class="anchor-section" aria-label="Anchor link to header"></a>
+</h3>
+<div class="sourceCode" id="cb30"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb30-1"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-1" tabindex="-1"></a><span id="plot_convergence_diagnostics">plot_convergence_diagnostics</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(mcmc_result) {</span>
+<span id="cb30-2"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-2" tabindex="-1"></a>  burn <span class="ot">&lt;-</span> mcmc_result<span class="sc">$</span>settings<span class="sc">$</span>burn</span>
+<span id="cb30-3"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-3" tabindex="-1"></a>  keep_idx <span class="ot">&lt;-</span> <span class="fu">seq</span>(burn <span class="sc">+</span> <span class="dv">1</span>, mcmc_result<span class="sc">$</span>settings<span class="sc">$</span>n_iter)</span>
+<span id="cb30-4"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-4" tabindex="-1"></a>  </span>
+<span id="cb30-5"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-5" tabindex="-1"></a>  diagnostics <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
+<span id="cb30-6"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-6" tabindex="-1"></a>    <span class="at">iteration =</span> keep_idx,</span>
+<span id="cb30-7"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-7" tabindex="-1"></a>    <span class="at">ARI =</span> mcmc_result<span class="sc">$</span>ari[keep_idx],</span>
+<span id="cb30-8"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-8" tabindex="-1"></a>    <span class="at">Accuracy =</span> mcmc_result<span class="sc">$</span>acc[keep_idx]</span>
+<span id="cb30-9"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-9" tabindex="-1"></a>  ) <span class="sc">%&gt;%</span></span>
+<span id="cb30-10"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-10" tabindex="-1"></a>    <span class="fu">pivot_longer</span>(</span>
+<span id="cb30-11"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-11" tabindex="-1"></a>      <span class="at">cols =</span> <span class="fu">c</span>(ARI, Accuracy),</span>
+<span id="cb30-12"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-12" tabindex="-1"></a>      <span class="at">names_to =</span> <span class="st">"metric"</span>,</span>
+<span id="cb30-13"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-13" tabindex="-1"></a>      <span class="at">values_to =</span> <span class="st">"value"</span></span>
+<span id="cb30-14"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-14" tabindex="-1"></a>    )</span>
+<span id="cb30-15"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-15" tabindex="-1"></a>  </span>
+<span id="cb30-16"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-16" tabindex="-1"></a>  <span class="fu">ggplot</span>(diagnostics, <span class="fu">aes</span>(<span class="at">x =</span> iteration, <span class="at">y =</span> value, <span class="at">color =</span> metric)) <span class="sc">+</span></span>
+<span id="cb30-17"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-17" tabindex="-1"></a>    <span class="fu">geom_line</span>(<span class="at">linewidth =</span> <span class="fl">1.2</span>) <span class="sc">+</span></span>
+<span id="cb30-18"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-18" tabindex="-1"></a>    <span class="fu">geom_hline</span>(</span>
+<span id="cb30-19"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-19" tabindex="-1"></a>      <span class="at">data =</span> diagnostics <span class="sc">%&gt;%</span> <span class="fu">group_by</span>(metric) <span class="sc">%&gt;%</span> <span class="fu">summarize</span>(<span class="at">mean_val =</span> <span class="fu">mean</span>(value)),</span>
+<span id="cb30-20"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-20" tabindex="-1"></a>      <span class="fu">aes</span>(<span class="at">yintercept =</span> mean_val, <span class="at">color =</span> metric),</span>
+<span id="cb30-21"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-21" tabindex="-1"></a>      <span class="at">linetype =</span> <span class="st">"dashed"</span>,</span>
+<span id="cb30-22"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-22" tabindex="-1"></a>      <span class="at">linewidth =</span> <span class="dv">1</span></span>
+<span id="cb30-23"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-23" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb30-24"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-24" tabindex="-1"></a>    <span class="fu">scale_color_manual</span>(</span>
+<span id="cb30-25"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-25" tabindex="-1"></a>      <span class="at">name =</span> <span class="st">"Metric"</span>,</span>
+<span id="cb30-26"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-26" tabindex="-1"></a>      <span class="at">values =</span> <span class="fu">c</span>(<span class="st">"ARI"</span> <span class="ot">=</span> <span class="st">"#2C7BB6"</span>, <span class="st">"Accuracy"</span> <span class="ot">=</span> <span class="st">"#D7191C"</span>),</span>
+<span id="cb30-27"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-27" tabindex="-1"></a>      <span class="at">labels =</span> <span class="fu">c</span>(<span class="st">"ARI"</span> <span class="ot">=</span> <span class="st">"Adjusted Rand Index"</span>, <span class="st">"Accuracy"</span> <span class="ot">=</span> <span class="st">"Best Label Accuracy"</span>)</span>
+<span id="cb30-28"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-28" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb30-29"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-29" tabindex="-1"></a>    <span class="fu">labs</span>(</span>
+<span id="cb30-30"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-30" tabindex="-1"></a>      <span class="at">title =</span> <span class="st">"MCMC Convergence: Clustering Accuracy"</span>,</span>
+<span id="cb30-31"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-31" tabindex="-1"></a>      <span class="at">subtitle =</span> <span class="fu">paste</span>(<span class="st">"Post burn-in mean ARI:"</span>, <span class="fu">round</span>(<span class="fu">mean</span>(mcmc_result<span class="sc">$</span>ari[keep_idx]), <span class="dv">3</span>),</span>
+<span id="cb30-32"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-32" tabindex="-1"></a>                      <span class="st">"| Mean Accuracy:"</span>, <span class="fu">round</span>(<span class="fu">mean</span>(mcmc_result<span class="sc">$</span>acc[keep_idx]), <span class="dv">3</span>)),</span>
+<span id="cb30-33"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-33" tabindex="-1"></a>      <span class="at">x =</span> <span class="st">"Iteration"</span>,</span>
+<span id="cb30-34"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-34" tabindex="-1"></a>      <span class="at">y =</span> <span class="st">"Value"</span></span>
+<span id="cb30-35"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-35" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb30-36"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-36" tabindex="-1"></a>    <span class="fu">theme_minimal</span>() <span class="sc">+</span></span>
+<span id="cb30-37"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-37" tabindex="-1"></a>    <span class="fu">theme</span>(</span>
+<span id="cb30-38"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-38" tabindex="-1"></a>      <span class="at">legend.position =</span> <span class="st">"bottom"</span>,</span>
+<span id="cb30-39"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-39" tabindex="-1"></a>      <span class="at">panel.grid.minor =</span> <span class="fu">element_blank</span>()</span>
+<span id="cb30-40"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-40" tabindex="-1"></a>    )</span>
+<span id="cb30-41"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-41" tabindex="-1"></a>}</span>
+<span id="cb30-42"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-42" tabindex="-1"></a></span>
+<span id="cb30-43"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-43" tabindex="-1"></a>p_convergence <span class="ot">&lt;-</span> <a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#plot_convergence_diagnostics">plot_convergence_diagnostics</a>(mcmc_result)</span>
+<span id="cb30-44"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb30-44" tabindex="-1"></a>p_convergence</span></code></pre></div>
+</div>
+<div id="posterior-distributions" class="section level3 hasAnchor" number="6.4.3">
+<h3>
+<span class="header-section-number">6.4.3</span> 4.3 Posterior Distributions<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#posterior-distributions" class="anchor-section" aria-label="Anchor link to header"></a>
+</h3>
+<div class="sourceCode" id="cb31"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb31-1"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-1" tabindex="-1"></a><span id="plot_posterior_distributions">plot_posterior_distributions</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(mcmc_result) {</span>
+<span id="cb31-2"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-2" tabindex="-1"></a>  burn <span class="ot">&lt;-</span> mcmc_result<span class="sc">$</span>settings<span class="sc">$</span>burn</span>
+<span id="cb31-3"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-3" tabindex="-1"></a>  keep_idx <span class="ot">&lt;-</span> <span class="fu">seq</span>(burn <span class="sc">+</span> <span class="dv">1</span>, mcmc_result<span class="sc">$</span>settings<span class="sc">$</span>n_iter)</span>
+<span id="cb31-4"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-4" tabindex="-1"></a>  K <span class="ot">&lt;-</span> mcmc_result<span class="sc">$</span>settings<span class="sc">$</span>K</span>
+<span id="cb31-5"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-5" tabindex="-1"></a>  </span>
+<span id="cb31-6"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-6" tabindex="-1"></a>  <span class="do">## Posterior of cluster probabilities</span></span>
+<span id="cb31-7"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-7" tabindex="-1"></a>  pi_long <span class="ot">&lt;-</span> <span class="fu">as.data.frame</span>(mcmc_result<span class="sc">$</span>pi[keep_idx, ]) <span class="sc">%&gt;%</span></span>
+<span id="cb31-8"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-8" tabindex="-1"></a>    <span class="fu">pivot_longer</span>(</span>
+<span id="cb31-9"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-9" tabindex="-1"></a>      <span class="at">cols =</span> <span class="fu">everything</span>(),</span>
+<span id="cb31-10"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-10" tabindex="-1"></a>      <span class="at">names_to =</span> <span class="st">"cluster"</span>,</span>
+<span id="cb31-11"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-11" tabindex="-1"></a>      <span class="at">values_to =</span> <span class="st">"value"</span></span>
+<span id="cb31-12"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-12" tabindex="-1"></a>    ) <span class="sc">%&gt;%</span></span>
+<span id="cb31-13"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-13" tabindex="-1"></a>    <span class="fu">mutate</span>(<span class="at">cluster =</span> <span class="fu">gsub</span>(<span class="st">"V"</span>, <span class="st">""</span>, cluster))</span>
+<span id="cb31-14"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-14" tabindex="-1"></a>  </span>
+<span id="cb31-15"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-15" tabindex="-1"></a>  cluster_colors <span class="ot">&lt;-</span> <span class="fu">brewer.pal</span>(K, <span class="st">"Set2"</span>)</span>
+<span id="cb31-16"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-16" tabindex="-1"></a>  </span>
+<span id="cb31-17"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-17" tabindex="-1"></a>  <span class="fu">ggplot</span>(pi_long, <span class="fu">aes</span>(<span class="at">x =</span> value, <span class="at">fill =</span> cluster)) <span class="sc">+</span></span>
+<span id="cb31-18"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-18" tabindex="-1"></a>    <span class="fu">geom_density</span>(<span class="at">alpha =</span> <span class="fl">0.6</span>, <span class="at">adjust =</span> <span class="fl">1.2</span>) <span class="sc">+</span></span>
+<span id="cb31-19"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-19" tabindex="-1"></a>    <span class="fu">scale_fill_manual</span>(</span>
+<span id="cb31-20"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-20" tabindex="-1"></a>      <span class="at">name =</span> <span class="st">"Cluster"</span>,</span>
+<span id="cb31-21"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-21" tabindex="-1"></a>      <span class="at">values =</span> cluster_colors,</span>
+<span id="cb31-22"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-22" tabindex="-1"></a>      <span class="at">labels =</span> <span class="fu">paste</span>(<span class="st">"Cluster"</span>, <span class="dv">1</span><span class="sc">:</span>K)</span>
+<span id="cb31-23"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-23" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb31-24"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-24" tabindex="-1"></a>    <span class="fu">labs</span>(</span>
+<span id="cb31-25"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-25" tabindex="-1"></a>      <span class="at">title =</span> <span class="st">"Posterior Distributions: Cluster Probabilities"</span>,</span>
+<span id="cb31-26"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-26" tabindex="-1"></a>      <span class="at">x =</span> <span class="st">"Probability"</span>,</span>
+<span id="cb31-27"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-27" tabindex="-1"></a>      <span class="at">y =</span> <span class="st">"Density"</span></span>
+<span id="cb31-28"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-28" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb31-29"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-29" tabindex="-1"></a>    <span class="fu">theme_minimal</span>() <span class="sc">+</span></span>
+<span id="cb31-30"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-30" tabindex="-1"></a>    <span class="fu">theme</span>(</span>
+<span id="cb31-31"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-31" tabindex="-1"></a>      <span class="at">legend.position =</span> <span class="st">"bottom"</span>,</span>
+<span id="cb31-32"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-32" tabindex="-1"></a>      <span class="at">panel.grid.minor =</span> <span class="fu">element_blank</span>()</span>
+<span id="cb31-33"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-33" tabindex="-1"></a>    )</span>
+<span id="cb31-34"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-34" tabindex="-1"></a>}</span>
+<span id="cb31-35"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-35" tabindex="-1"></a></span>
+<span id="cb31-36"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-36" tabindex="-1"></a>p_posterior <span class="ot">&lt;-</span> <a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#plot_posterior_distributions">plot_posterior_distributions</a>(mcmc_result)</span>
+<span id="cb31-37"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb31-37" tabindex="-1"></a>p_posterior</span></code></pre></div>
+<hr>
+</div>
+</div>
+<div id="estimation-accuracy" class="section level2 hasAnchor" number="6.5">
+<h2>
+<span class="header-section-number">6.5</span> 5. Estimation Accuracy<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#estimation-accuracy" class="anchor-section" aria-label="Anchor link to header"></a>
+</h2>
+<div id="cluster-recovery" class="section level3 hasAnchor" number="6.5.1">
+<h3>
+<span class="header-section-number">6.5.1</span> 5.1 Cluster Recovery<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cluster-recovery" class="anchor-section" aria-label="Anchor link to header"></a>
+</h3>
+<div class="sourceCode" id="cb32"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb32-1"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-1" tabindex="-1"></a><span id="plot_cluster_recovery">plot_cluster_recovery</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(mcmc_result, Z_true, K) {</span>
+<span id="cb32-2"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-2" tabindex="-1"></a>  burn <span class="ot">&lt;-</span> mcmc_result<span class="sc">$</span>settings<span class="sc">$</span>burn</span>
+<span id="cb32-3"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-3" tabindex="-1"></a>  keep_idx <span class="ot">&lt;-</span> <span class="fu">seq</span>(burn <span class="sc">+</span> <span class="dv">1</span>, mcmc_result<span class="sc">$</span>settings<span class="sc">$</span>n_iter)</span>
+<span id="cb32-4"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-4" tabindex="-1"></a>  </span>
+<span id="cb32-5"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-5" tabindex="-1"></a>  <span class="do">## Get posterior mode of Z for each edge</span></span>
+<span id="cb32-6"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-6" tabindex="-1"></a>  Z_post <span class="ot">&lt;-</span> mcmc_result<span class="sc">$</span>Z[keep_idx, ]</span>
+<span id="cb32-7"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-7" tabindex="-1"></a>  Z_hat <span class="ot">&lt;-</span> <span class="fu">apply</span>(Z_post, <span class="dv">2</span>, <span class="cf">function</span>(x) {</span>
+<span id="cb32-8"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-8" tabindex="-1"></a>    <span class="fu">which.max</span>(<span class="fu">tabulate</span>(x, <span class="at">nbins =</span> K))</span>
+<span id="cb32-9"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-9" tabindex="-1"></a>  })</span>
+<span id="cb32-10"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-10" tabindex="-1"></a>  </span>
+<span id="cb32-11"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-11" tabindex="-1"></a>  <span class="do">## Confusion matrix</span></span>
+<span id="cb32-12"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-12" tabindex="-1"></a>  conf_matrix <span class="ot">&lt;-</span> <span class="fu">table</span>(<span class="at">True =</span> Z_true, <span class="at">Estimated =</span> Z_hat)</span>
+<span id="cb32-13"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-13" tabindex="-1"></a>  conf_long <span class="ot">&lt;-</span> <span class="fu">as.data.frame</span>(conf_matrix) <span class="sc">%&gt;%</span></span>
+<span id="cb32-14"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-14" tabindex="-1"></a>    <span class="fu">filter</span>(Freq <span class="sc">&gt;</span> <span class="dv">0</span>)</span>
+<span id="cb32-15"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-15" tabindex="-1"></a>  </span>
+<span id="cb32-16"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-16" tabindex="-1"></a>  cluster_colors <span class="ot">&lt;-</span> <span class="fu">brewer.pal</span>(K, <span class="st">"Set2"</span>)</span>
+<span id="cb32-17"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-17" tabindex="-1"></a>  </span>
+<span id="cb32-18"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-18" tabindex="-1"></a>  <span class="fu">ggplot</span>(conf_long, <span class="fu">aes</span>(<span class="at">x =</span> Estimated, <span class="at">y =</span> True, <span class="at">fill =</span> Freq)) <span class="sc">+</span></span>
+<span id="cb32-19"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-19" tabindex="-1"></a>    <span class="fu">geom_tile</span>(<span class="at">color =</span> <span class="st">"white"</span>, <span class="at">linewidth =</span> <span class="dv">1</span>) <span class="sc">+</span></span>
+<span id="cb32-20"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-20" tabindex="-1"></a>    <span class="fu">geom_text</span>(</span>
+<span id="cb32-21"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-21" tabindex="-1"></a>      <span class="fu">aes</span>(<span class="at">label =</span> Freq),</span>
+<span id="cb32-22"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-22" tabindex="-1"></a>      <span class="at">size =</span> <span class="dv">6</span>,</span>
+<span id="cb32-23"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-23" tabindex="-1"></a>      <span class="at">color =</span> <span class="st">"black"</span></span>
+<span id="cb32-24"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-24" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb32-25"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-25" tabindex="-1"></a>    <span class="fu">scale_fill_gradientn</span>(</span>
+<span id="cb32-26"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-26" tabindex="-1"></a>      <span class="at">name =</span> <span class="st">"Count"</span>,</span>
+<span id="cb32-27"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-27" tabindex="-1"></a>      <span class="at">colors =</span> <span class="fu">brewer.pal</span>(<span class="dv">9</span>, <span class="st">"Blues"</span>),</span>
+<span id="cb32-28"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-28" tabindex="-1"></a>      <span class="at">na.value =</span> <span class="st">"white"</span></span>
+<span id="cb32-29"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-29" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb32-30"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-30" tabindex="-1"></a>        <span class="fu">scale_x_discrete</span>(</span>
+<span id="cb32-31"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-31" tabindex="-1"></a>      <span class="at">name =</span> <span class="st">"Estimated Cluster"</span>,</span>
+<span id="cb32-32"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-32" tabindex="-1"></a>      <span class="at">labels =</span> <span class="fu">paste</span>(<span class="st">"Cluster"</span>, <span class="dv">1</span><span class="sc">:</span>K)</span>
+<span id="cb32-33"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-33" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb32-34"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-34" tabindex="-1"></a>    <span class="fu">scale_y_discrete</span>(</span>
+<span id="cb32-35"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-35" tabindex="-1"></a>      <span class="at">name =</span> <span class="st">"True Cluster"</span>,</span>
+<span id="cb32-36"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-36" tabindex="-1"></a>      <span class="at">labels =</span> <span class="fu">paste</span>(<span class="st">"Cluster"</span>, <span class="dv">1</span><span class="sc">:</span>K)</span>
+<span id="cb32-37"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-37" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb32-38"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-38" tabindex="-1"></a>    <span class="fu">labs</span>(</span>
+<span id="cb32-39"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-39" tabindex="-1"></a>      <span class="at">title =</span> <span class="st">"Cluster Recovery: Confusion Matrix"</span>,</span>
+<span id="cb32-40"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-40" tabindex="-1"></a>      <span class="at">subtitle =</span> <span class="fu">paste</span>(<span class="st">"ARI ="</span>, <span class="fu">round</span>(<a href="helpers-functions.html#adj_rand_index">adj_rand_index</a>(Z_true, Z_hat), <span class="dv">3</span>)),</span>
+<span id="cb32-41"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-41" tabindex="-1"></a>      <span class="at">x =</span> <span class="st">"Estimated Cluster"</span>,</span>
+<span id="cb32-42"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-42" tabindex="-1"></a>      <span class="at">y =</span> <span class="st">"True Cluster"</span></span>
+<span id="cb32-43"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-43" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb32-44"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-44" tabindex="-1"></a>    <span class="fu">coord_fixed</span>() <span class="sc">+</span></span>
+<span id="cb32-45"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-45" tabindex="-1"></a>    <span class="fu">theme_minimal</span>() <span class="sc">+</span></span>
+<span id="cb32-46"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-46" tabindex="-1"></a>    <span class="fu">theme</span>(</span>
+<span id="cb32-47"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-47" tabindex="-1"></a>      <span class="at">panel.grid =</span> <span class="fu">element_blank</span>(),</span>
+<span id="cb32-48"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-48" tabindex="-1"></a>      <span class="at">axis.text =</span> <span class="fu">element_text</span>(<span class="at">size =</span> <span class="dv">11</span>)</span>
+<span id="cb32-49"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-49" tabindex="-1"></a>    )</span>
+<span id="cb32-50"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-50" tabindex="-1"></a>}</span>
+<span id="cb32-51"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-51" tabindex="-1"></a></span>
+<span id="cb32-52"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-52" tabindex="-1"></a>p_recovery <span class="ot">&lt;-</span> <a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#plot_cluster_recovery">plot_cluster_recovery</a>(mcmc_result, Z_true, K_true)</span>
+<span id="cb32-53"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb32-53" tabindex="-1"></a>p_recovery</span></code></pre></div>
+</div>
+<div id="intensity-estimation" class="section level3 hasAnchor" number="6.5.2">
+<h3>
+<span class="header-section-number">6.5.2</span> 5.2 Intensity Estimation<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#intensity-estimation" class="anchor-section" aria-label="Anchor link to header"></a>
+</h3>
+<div class="sourceCode" id="cb33"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb33-1"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-1" tabindex="-1"></a><span id="plot_intensity_estimation">plot_intensity_estimation</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(mcmc_result, Y, Fmat, Z_true, K, <span class="at">theta_true =</span> <span class="cn">NULL</span>) {</span>
+<span id="cb33-2"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-2" tabindex="-1"></a>  burn <span class="ot">&lt;-</span> mcmc_result<span class="sc">$</span>settings<span class="sc">$</span>burn</span>
+<span id="cb33-3"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-3" tabindex="-1"></a>  keep_idx <span class="ot">&lt;-</span> <span class="fu">seq</span>(burn <span class="sc">+</span> <span class="dv">1</span>, mcmc_result<span class="sc">$</span>settings<span class="sc">$</span>n_iter)</span>
+<span id="cb33-4"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-4" tabindex="-1"></a>  </span>
+<span id="cb33-5"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-5" tabindex="-1"></a>  <span class="do">## Posterior mean lambda (dimensions: K × TT)</span></span>
+<span id="cb33-6"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-6" tabindex="-1"></a>  lambda_mean <span class="ot">&lt;-</span> <span class="fu">apply</span>(mcmc_result<span class="sc">$</span>lambda[keep_idx, , ], <span class="fu">c</span>(<span class="dv">2</span>, <span class="dv">3</span>), mean)</span>
+<span id="cb33-7"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-7" tabindex="-1"></a>  </span>
+<span id="cb33-8"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-8" tabindex="-1"></a>  <span class="do">## True lambda (compute from theta_true)</span></span>
+<span id="cb33-9"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-9" tabindex="-1"></a>  TT <span class="ot">&lt;-</span> <span class="fu">ncol</span>(Y)</span>
+<span id="cb33-10"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-10" tabindex="-1"></a>  n_edges <span class="ot">&lt;-</span> <span class="fu">nrow</span>(Y)</span>
+<span id="cb33-11"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-11" tabindex="-1"></a>  </span>
+<span id="cb33-12"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-12" tabindex="-1"></a>  lambda_true <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="dv">0</span>, <span class="at">nrow =</span> n_edges, <span class="at">ncol =</span> TT)</span>
+<span id="cb33-13"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-13" tabindex="-1"></a>  lambda_est <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="dv">0</span>, <span class="at">nrow =</span> n_edges, <span class="at">ncol =</span> TT)</span>
+<span id="cb33-14"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-14" tabindex="-1"></a>  </span>
+<span id="cb33-15"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-15" tabindex="-1"></a>  <span class="cf">if</span> (<span class="sc">!</span><span class="fu">is.null</span>(theta_true)) {</span>
+<span id="cb33-16"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-16" tabindex="-1"></a>    <span class="do">## Compute true lambda for each edge</span></span>
+<span id="cb33-17"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-17" tabindex="-1"></a>    <span class="cf">for</span> (e <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span>n_edges) {</span>
+<span id="cb33-18"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-18" tabindex="-1"></a>      k <span class="ot">&lt;-</span> Z_true[e]</span>
+<span id="cb33-19"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-19" tabindex="-1"></a>      eta_e <span class="ot">&lt;-</span> <span class="fu">rowSums</span>(Fmat <span class="sc">*</span> theta_true[k, , ])</span>
+<span id="cb33-20"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-20" tabindex="-1"></a>      lambda_true[e, ] <span class="ot">&lt;-</span> <span class="fu">exp</span>(eta_e)</span>
+<span id="cb33-21"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-21" tabindex="-1"></a>      </span>
+<span id="cb33-22"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-22" tabindex="-1"></a>      <span class="do">## Estimated lambda uses the cluster's posterior mean</span></span>
+<span id="cb33-23"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-23" tabindex="-1"></a>      lambda_est[e, ] <span class="ot">&lt;-</span> lambda_mean[k, ]</span>
+<span id="cb33-24"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-24" tabindex="-1"></a>    }</span>
+<span id="cb33-25"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-25" tabindex="-1"></a>  } <span class="cf">else</span> {</span>
+<span id="cb33-26"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-26" tabindex="-1"></a>    <span class="do">## If theta_true not provided, use posterior mean as proxy</span></span>
+<span id="cb33-27"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-27" tabindex="-1"></a>    <span class="cf">for</span> (e <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span>n_edges) {</span>
+<span id="cb33-28"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-28" tabindex="-1"></a>      k <span class="ot">&lt;-</span> Z_true[e]</span>
+<span id="cb33-29"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-29" tabindex="-1"></a>      lambda_est[e, ] <span class="ot">&lt;-</span> lambda_mean[k, ]</span>
+<span id="cb33-30"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-30" tabindex="-1"></a>    }</span>
+<span id="cb33-31"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-31" tabindex="-1"></a>    lambda_true <span class="ot">&lt;-</span> lambda_est</span>
+<span id="cb33-32"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-32" tabindex="-1"></a>    <span class="fu">warning</span>(<span class="st">"theta_true not provided. Using posterior mean for comparison."</span>)</span>
+<span id="cb33-33"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-33" tabindex="-1"></a>  }</span>
+<span id="cb33-34"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-34" tabindex="-1"></a>  </span>
+<span id="cb33-35"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-35" tabindex="-1"></a>  <span class="do">## Compare for a few representative edges</span></span>
+<span id="cb33-36"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-36" tabindex="-1"></a>  edge_sample <span class="ot">&lt;-</span> <span class="fu">sample</span>(<span class="dv">1</span><span class="sc">:</span>n_edges, <span class="fu">min</span>(<span class="dv">6</span>, n_edges))</span>
+<span id="cb33-37"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-37" tabindex="-1"></a>  </span>
+<span id="cb33-38"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-38" tabindex="-1"></a>  comparison_data <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
+<span id="cb33-39"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-39" tabindex="-1"></a>    <span class="at">edge =</span> <span class="fu">rep</span>(edge_sample, <span class="at">each =</span> TT <span class="sc">*</span> <span class="dv">2</span>),</span>
+<span id="cb33-40"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-40" tabindex="-1"></a>    <span class="at">time =</span> <span class="fu">rep</span>(<span class="dv">1</span><span class="sc">:</span>TT, <span class="fu">length</span>(edge_sample) <span class="sc">*</span> <span class="dv">2</span>),</span>
+<span id="cb33-41"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-41" tabindex="-1"></a>    <span class="at">type =</span> <span class="fu">rep</span>(<span class="fu">c</span>(<span class="st">"True"</span>, <span class="st">"Estimated"</span>), <span class="at">each =</span> TT <span class="sc">*</span> <span class="fu">length</span>(edge_sample)),</span>
+<span id="cb33-42"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-42" tabindex="-1"></a>    <span class="at">count =</span> <span class="fu">c</span>(</span>
+<span id="cb33-43"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-43" tabindex="-1"></a>      <span class="fu">as.vector</span>(lambda_true[edge_sample, ]),</span>
+<span id="cb33-44"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-44" tabindex="-1"></a>      <span class="fu">as.vector</span>(lambda_est[edge_sample, ])</span>
+<span id="cb33-45"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-45" tabindex="-1"></a>    )</span>
+<span id="cb33-46"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-46" tabindex="-1"></a>  )</span>
+<span id="cb33-47"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-47" tabindex="-1"></a>  </span>
+<span id="cb33-48"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-48" tabindex="-1"></a>  <span class="fu">ggplot</span>(comparison_data, <span class="fu">aes</span>(<span class="at">x =</span> time, <span class="at">y =</span> count, <span class="at">color =</span> type)) <span class="sc">+</span></span>
+<span id="cb33-49"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-49" tabindex="-1"></a>    <span class="fu">geom_line</span>(<span class="at">linewidth =</span> <span class="fl">0.8</span>) <span class="sc">+</span></span>
+<span id="cb33-50"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-50" tabindex="-1"></a>    <span class="fu">facet_wrap</span>(<span class="sc">~</span> edge, <span class="at">ncol =</span> <span class="dv">3</span>, <span class="at">labeller =</span> <span class="fu">labeller</span>(<span class="at">edge =</span> <span class="cf">function</span>(x) <span class="fu">paste</span>(<span class="st">"Edge"</span>, x))) <span class="sc">+</span></span>
+<span id="cb33-51"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-51" tabindex="-1"></a>    <span class="fu">scale_color_manual</span>(</span>
+<span id="cb33-52"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-52" tabindex="-1"></a>      <span class="at">name =</span> <span class="st">""</span>,</span>
+<span id="cb33-53"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-53" tabindex="-1"></a>      <span class="at">values =</span> <span class="fu">c</span>(<span class="st">"True"</span> <span class="ot">=</span> <span class="st">"#2C7BB6"</span>, <span class="st">"Estimated"</span> <span class="ot">=</span> <span class="st">"#D7191C"</span>),</span>
+<span id="cb33-54"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-54" tabindex="-1"></a>      <span class="at">labels =</span> <span class="fu">c</span>(<span class="st">"True Intensity"</span>, <span class="st">"Posterior Mean"</span>)</span>
+<span id="cb33-55"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-55" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb33-56"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-56" tabindex="-1"></a>    <span class="fu">labs</span>(</span>
+<span id="cb33-57"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-57" tabindex="-1"></a>      <span class="at">title =</span> <span class="st">"Intensity Estimation: True vs Posterior Mean"</span>,</span>
+<span id="cb33-58"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-58" tabindex="-1"></a>      <span class="at">x =</span> <span class="st">"Time Step"</span>,</span>
+<span id="cb33-59"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-59" tabindex="-1"></a>      <span class="at">y =</span> <span class="st">"Intensity (λ)"</span></span>
+<span id="cb33-60"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-60" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb33-61"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-61" tabindex="-1"></a>    <span class="fu">theme_minimal</span>() <span class="sc">+</span></span>
+<span id="cb33-62"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-62" tabindex="-1"></a>    <span class="fu">theme</span>(</span>
+<span id="cb33-63"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-63" tabindex="-1"></a>      <span class="at">legend.position =</span> <span class="st">"bottom"</span>,</span>
+<span id="cb33-64"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-64" tabindex="-1"></a>      <span class="at">panel.grid.minor =</span> <span class="fu">element_blank</span>(),</span>
+<span id="cb33-65"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-65" tabindex="-1"></a>      <span class="at">strip.text =</span> <span class="fu">element_text</span>(<span class="at">size =</span> <span class="dv">9</span>)</span>
+<span id="cb33-66"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-66" tabindex="-1"></a>    )</span>
+<span id="cb33-67"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-67" tabindex="-1"></a>}</span>
+<span id="cb33-68"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-68" tabindex="-1"></a><span class="do">## In your simulation script, after running MCMC:</span></span>
+<span id="cb33-69"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-69" tabindex="-1"></a>p_intensity <span class="ot">&lt;-</span> <a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#plot_intensity_estimation">plot_intensity_estimation</a>(</span>
+<span id="cb33-70"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-70" tabindex="-1"></a>  mcmc_result, </span>
+<span id="cb33-71"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-71" tabindex="-1"></a>  Y, </span>
+<span id="cb33-72"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-72" tabindex="-1"></a>  Fmat, </span>
+<span id="cb33-73"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-73" tabindex="-1"></a>  Z_true, </span>
+<span id="cb33-74"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-74" tabindex="-1"></a>  K_true,</span>
+<span id="cb33-75"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-75" tabindex="-1"></a>  <span class="at">theta_true =</span> theta_true  <span class="do">## Pass the true parameters from data generation</span></span>
+<span id="cb33-76"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-76" tabindex="-1"></a>)</span>
+<span id="cb33-77"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb33-77" tabindex="-1"></a>p_intensity</span></code></pre></div>
+<hr>
+</div>
+</div>
+<div id="combined-visualization" class="section level2 hasAnchor" number="6.6">
+<h2>
+<span class="header-section-number">6.6</span> 6. Combined Visualization<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#combined-visualization" class="anchor-section" aria-label="Anchor link to header"></a>
+</h2>
+<div class="sourceCode" id="cb34"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb34-1"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb34-1" tabindex="-1"></a><span class="do">## Combine all diagnostic plots</span></span>
+<span id="cb34-2"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb34-2" tabindex="-1"></a>(p_network <span class="sc">|</span> p_timeseries) <span class="sc">/</span></span>
+<span id="cb34-3"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb34-3" tabindex="-1"></a>  (p_trace) <span class="sc">/</span></span>
+<span id="cb34-4"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb34-4" tabindex="-1"></a>  (p_convergence <span class="sc">|</span> p_recovery) <span class="sc">/</span></span>
+<span id="cb34-5"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb34-5" tabindex="-1"></a>  (p_posterior <span class="sc">|</span> p_heatmap) <span class="sc">+</span></span>
+<span id="cb34-6"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb34-6" tabindex="-1"></a>  <span class="fu">plot_layout</span>(<span class="at">guides =</span> <span class="st">"collect"</span>) <span class="sc">&amp;</span></span>
+<span id="cb34-7"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb34-7" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">legend.position =</span> <span class="st">"bottom"</span>)</span></code></pre></div>
+<hr>
+</div>
+<div id="summary-statistics" class="section level2 hasAnchor" number="6.7">
+<h2>
+<span class="header-section-number">6.7</span> 7. Summary Statistics<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#summary-statistics" class="anchor-section" aria-label="Anchor link to header"></a>
+</h2>
+<div class="sourceCode" id="cb35"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb35-1"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb35-1" tabindex="-1"></a><span class="do">## Print summary</span></span>
+<span id="cb35-2"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb35-2" tabindex="-1"></a><span class="fu">summary</span>(mcmc_result)</span>
+<span id="cb35-3"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb35-3" tabindex="-1"></a></span>
+<span id="cb35-4"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb35-4" tabindex="-1"></a><span class="do">## Key metrics</span></span>
+<span id="cb35-5"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb35-5" tabindex="-1"></a>burn <span class="ot">&lt;-</span> mcmc_result<span class="sc">$</span>settings<span class="sc">$</span>burn</span>
+<span id="cb35-6"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb35-6" tabindex="-1"></a>keep_idx <span class="ot">&lt;-</span> <span class="fu">seq</span>(burn <span class="sc">+</span> <span class="dv">1</span>, mcmc_result<span class="sc">$</span>settings<span class="sc">$</span>n_iter)</span>
+<span id="cb35-7"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb35-7" tabindex="-1"></a></span>
+<span id="cb35-8"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb35-8" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"</span><span class="sc">\n</span><span class="st">=== Estimation Accuracy ===</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb35-9"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb35-9" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"Adjusted Rand Index (mean):"</span>, <span class="fu">round</span>(<span class="fu">mean</span>(mcmc_result<span class="sc">$</span>ari[keep_idx]), <span class="dv">4</span>), <span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb35-10"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb35-10" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"Best Label Accuracy (mean):"</span>, <span class="fu">round</span>(<span class="fu">mean</span>(mcmc_result<span class="sc">$</span>acc[keep_idx]), <span class="dv">4</span>), <span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb35-11"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb35-11" tabindex="-1"></a></span>
+<span id="cb35-12"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb35-12" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"</span><span class="sc">\n</span><span class="st">=== Posterior Cluster Probabilities ===</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb35-13"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb35-13" tabindex="-1"></a>pi_mean <span class="ot">&lt;-</span> <span class="fu">colMeans</span>(mcmc_result<span class="sc">$</span>pi[keep_idx, ])</span>
+<span id="cb35-14"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb35-14" tabindex="-1"></a><span class="fu">print</span>(<span class="fu">round</span>(pi_mean, <span class="dv">4</span>))</span>
+<span id="cb35-15"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb35-15" tabindex="-1"></a></span>
+<span id="cb35-16"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb35-16" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"</span><span class="sc">\n</span><span class="st">=== True Cluster Probabilities ===</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb35-17"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb35-17" tabindex="-1"></a><span class="fu">print</span>(<span class="fu">round</span>(pi_true, <span class="dv">4</span>))</span>
+<span id="cb35-18"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb35-18" tabindex="-1"></a></span>
+<span id="cb35-19"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb35-19" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"</span><span class="sc">\n</span><span class="st">=== Computational Performance ===</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb35-20"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb35-20" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"Total iterations:"</span>, mcmc_result<span class="sc">$</span>settings<span class="sc">$</span>n_iter, <span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb35-21"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb35-21" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"Burn-in:"</span>, mcmc_result<span class="sc">$</span>settings<span class="sc">$</span>burn, <span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb35-22"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb35-22" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"Runtime:"</span>, <span class="fu">round</span>(mcmc_result<span class="sc">$</span>settings<span class="sc">$</span>total_time, <span class="dv">2</span>), <span class="st">"seconds</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb35-23"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb35-23" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"Time per iteration:"</span>, <span class="fu">round</span>(mcmc_result<span class="sc">$</span>settings<span class="sc">$</span>total_time <span class="sc">/</span> mcmc_result<span class="sc">$</span>settings<span class="sc">$</span>n_iter, <span class="dv">3</span>), <span class="st">"seconds</span><span class="sc">\n</span><span class="st">"</span>)</span></code></pre></div>
+<hr>
+</div>
+<div id="session-information" class="section level2 hasAnchor" number="6.8">
+<h2>
+<span class="header-section-number">6.8</span> 8. Session Information<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#session-information" class="anchor-section" aria-label="Anchor link to header"></a>
+</h2>
+<div class="sourceCode" id="cb36"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb36-1"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cb36-1" tabindex="-1"></a><span class="fu">sessionInfo</span>()</span></code></pre></div>
+<pre><code>## R version 4.4.0 (2024-04-24)
+## Platform: aarch64-apple-darwin20
+## Running under: macOS 26.3.1
+## 
+## Matrix products: default
+## BLAS:   /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libBLAS.dylib 
+## LAPACK: /Library/Frameworks/R.framework/Versions/4.4-arm64/Resources/lib/libRlapack.dylib;  LAPACK version 3.12.0
+## 
+## locale:
+## [1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+## 
+## time zone: Asia/Shanghai
+## tzcode source: internal
+## 
+## attached base packages:
+## [1] parallel  stats     graphics  grDevices utils     datasets  methods  
+## [8] base     
+## 
+## other attached packages:
+##  [1] RColorBrewer_1.1-3    patchwork_1.3.2       bdynets_0.0.0.9000   
+##  [4] tmvnsim_1.0-2         Rfast_2.1.5.2         RcppParallel_5.1.11-2
+##  [7] zigg_0.0.2            Rcpp_1.1.1            pgdraw_1.1           
+## [10] mvnfast_0.2.8         matrixsampling_2.0.0  matrixNormal_0.1.2   
+## [13] MASS_7.3-61           lubridate_1.9.3       forcats_1.0.0        
+## [16] stringr_1.5.1         dplyr_1.1.4           purrr_1.0.2          
+## [19] readr_2.1.5           tidyr_1.3.1           tibble_3.2.1         
+## [22] ggplot2_4.0.2         tidyverse_2.0.0      
+## 
+## loaded via a namespace (and not attached):
+##  [1] gtable_0.3.6      xfun_0.48         bslib_0.8.0       tzdb_0.4.0       
+##  [5] vctrs_0.7.2       tools_4.4.0       generics_0.1.3    highr_0.11       
+##  [9] pkgconfig_2.0.3   S7_0.2.1          desc_1.4.3        lifecycle_1.0.5  
+## [13] compiler_4.4.0    farver_2.1.2      litr_0.9.2        htmltools_0.5.8.1
+## [17] usethis_3.0.0     sass_0.4.9        yaml_2.3.10       pillar_1.10.1    
+## [21] jquerylib_0.1.4   whisker_0.4.1     cachem_1.1.0      tidyselect_1.2.1 
+## [25] digest_0.6.37     mvtnorm_1.3-6     stringi_1.8.4     bookdown_0.40    
+## [29] labeling_0.4.3    rprojroot_2.0.4   fastmap_1.2.0     grid_4.4.0       
+## [33] cli_3.6.5         magrittr_2.0.4    withr_3.0.2       scales_1.4.0     
+## [37] keep_1.0          timechange_0.3.0  roxygen2_7.3.2    rmarkdown_2.28   
+## [41] hms_1.1.3         evaluate_1.0.1    knitr_1.48        rlang_1.1.7      
+## [45] glue_1.8.0        xml2_1.3.6        rstudioapi_0.16.0 jsonlite_1.8.9   
+## [49] R6_2.6.1          fs_1.6.4</code></pre>
+<hr>
+</div>
+</div>
+            </section>
+</div>
+        </div>
+      </div>
+<a href="gibbs-sampler.html" class="navigation navigation-prev " aria-label="Previous page"><i class="fa fa-angle-left"></i></a>
+<a href="real-data-example.html" class="navigation navigation-next " aria-label="Next page"><i class="fa fa-angle-right"></i></a>
+    </div>
+  </div>
+<script src="libs/gitbook-2.6.7/js/app.min.js"></script><script src="libs/gitbook-2.6.7/js/clipboard.min.js"></script><script src="libs/gitbook-2.6.7/js/plugin-search.js"></script><script src="libs/gitbook-2.6.7/js/plugin-sharing.js"></script><script src="libs/gitbook-2.6.7/js/plugin-fontsettings.js"></script><script src="libs/gitbook-2.6.7/js/plugin-bookdown.js"></script><script src="libs/gitbook-2.6.7/js/jquery.highlight.js"></script><script src="libs/gitbook-2.6.7/js/plugin-clipboard.js"></script><script>
+gitbook.require(["gitbook"], function(gitbook) {
+gitbook.start({
+"sharing": {
+"github": false,
+"facebook": true,
+"twitter": true,
+"linkedin": false,
+"weibo": false,
+"instapaper": false,
+"vk": false,
+"whatsapp": false,
+"all": ["facebook", "twitter", "linkedin", "weibo", "instapaper"]
+},
+"fontsettings": {
+"theme": "white",
+"family": "sans",
+"size": 2
+},
+"edit": {
+"link": null,
+"text": null
+},
+"history": {
+"link": null,
+"text": null
+},
+"view": {
+"link": null,
+"text": null
+},
+"download": null,
+"search": {
+"engine": "fuse",
+"options": null
+},
+"toc": {
+"collapse": "subsection"
+}
+});
+});
+</script>
+</body>
+</html>

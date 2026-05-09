@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="" xml:lang="">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<title>3 Helpers functions | Creating the bdynets R package</title>
+<meta name="description" content="3 Helpers functions | Creating the bdynets R package">
+<meta name="generator" content="bookdown 0.40 and GitBook 2.6.7">
+<meta property="og:title" content="3 Helpers functions | Creating the bdynets R package">
+<meta property="og:type" content="book">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="3 Helpers functions | Creating the bdynets R package">
+<meta name="author" content="Sheng Jiang">
+<meta name="date" content="2026-05-09">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="prev" href="package-setup.html">
+<link rel="next" href="syntheticdata.html">
+<script src="libs/header-attrs-2.28/header-attrs.js"></script><script src="libs/jquery-3.6.0/jquery-3.6.0.min.js"></script><script src="https://cdn.jsdelivr.net/npm/fuse.js@6.4.6/dist/fuse.min.js"></script><link href="libs/gitbook-2.6.7/css/style.css" rel="stylesheet">
+<link href="libs/gitbook-2.6.7/css/plugin-table.css" rel="stylesheet">
+<link href="libs/gitbook-2.6.7/css/plugin-bookdown.css" rel="stylesheet">
+<link href="libs/gitbook-2.6.7/css/plugin-highlight.css" rel="stylesheet">
+<link href="libs/gitbook-2.6.7/css/plugin-search.css" rel="stylesheet">
+<link href="libs/gitbook-2.6.7/css/plugin-fontsettings.css" rel="stylesheet">
+<link href="libs/gitbook-2.6.7/css/plugin-clipboard.css" rel="stylesheet">
+<link href="libs/anchor-sections-1.1.0/anchor-sections.css" rel="stylesheet">
+<link href="libs/anchor-sections-1.1.0/anchor-sections-hash.css" rel="stylesheet">
+<script src="libs/anchor-sections-1.1.0/anchor-sections.js"></script><style type="text/css">
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { display: inline-block; text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { color: #008000; } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { color: #008000; font-weight: bold; } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+</style>
+<style type="text/css">
+  
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+</style>
+<style type="text/css">fieldset.chunkfield {border:1px dotted black;padding-bottom: 0px;padding-top: 0px;margin:0 2px;padding:.35em .625em .75em}
+    legend.chunklegend {padding:0;width:auto;border:0; border-bottom: none; margin-bottom:0}
+    </style>
+</head>
+<body>
+
+
+
+  <div class="book without-animation with-summary font-size-2 font-family-1" data-basepath=".">
+
+    <div class="book-summary">
+      <nav role="navigation"><ul class="summary">
+<li class="chapter" data-level="1" data-path="index.html"><a href="index.html"><i class="fa fa-check"></i><b>1</b> Introduction</a></li>
+<li class="chapter" data-level="2" data-path="package-setup.html"><a href="package-setup.html"><i class="fa fa-check"></i><b>2</b> Package setup</a></li>
+<li class="chapter" data-level="3" data-path="helpers-functions.html"><a href="helpers-functions.html"><i class="fa fa-check"></i><b>3</b> Helpers functions</a></li>
+<li class="chapter" data-level="4" data-path="syntheticdata.html"><a href="syntheticdata.html"><i class="fa fa-check"></i><b>4</b> Generating synthetic data</a></li>
+<li class="chapter" data-level="5" data-path="gibbs-sampler.html">
+<a href="gibbs-sampler.html"><i class="fa fa-check"></i><b>5</b> Gibbs sampler</a>
+<ul>
+<li class="chapter" data-level="5.1" data-path="gibbs-sampler.html"><a href="gibbs-sampler.html#the-main-gibbs-sampler"><i class="fa fa-check"></i><b>5.1</b> The main Gibbs sampler</a></li>
+</ul>
+</li>
+<li class="chapter" data-level="6" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html">
+<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><i class="fa fa-check"></i><b>6</b> Simulation Study: Bayesian Dynamic Network for Traffic Data</a>
+<ul>
+<li class="chapter" data-level="6.1" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html">
+<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#synthetic-data-generation"><i class="fa fa-check"></i><b>6.1</b> 1. Synthetic Data Generation</a>
+<ul>
+<li class="chapter" data-level="6.1.1" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#create-55-grid-road-network"><i class="fa fa-check"></i><b>6.1.1</b> 1.1 Create 5×5 Grid Road Network</a></li>
+<li class="chapter" data-level="6.1.2" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#create-time-structure-4-weeks-48-intervalsday"><i class="fa fa-check"></i><b>6.1.2</b> 1.2 Create Time Structure (4 weeks, 48 intervals/day)</a></li>
+<li class="chapter" data-level="6.1.3" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#generate-true-cluster-structure"><i class="fa fa-check"></i><b>6.1.3</b> 1.3 Generate True Cluster Structure</a></li>
+<li class="chapter" data-level="6.1.4" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#generate-true-parameters"><i class="fa fa-check"></i><b>6.1.4</b> 1.4 Generate True Parameters</a></li>
+<li class="chapter" data-level="6.1.5" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#simulate-count-data"><i class="fa fa-check"></i><b>6.1.5</b> 1.5 Simulate Count Data</a></li>
+</ul>
+</li>
+<li class="chapter" data-level="6.2" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html">
+<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#data-visualization"><i class="fa fa-check"></i><b>6.2</b> 2. Data Visualization</a>
+<ul>
+<li class="chapter" data-level="6.2.1" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#network-structure"><i class="fa fa-check"></i><b>6.2.1</b> 2.1 Network Structure</a></li>
+<li class="chapter" data-level="6.2.2" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#time-series-of-traffic-counts"><i class="fa fa-check"></i><b>6.2.2</b> 2.2 Time Series of Traffic Counts</a></li>
+<li class="chapter" data-level="6.2.3" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#daily-pattern-heatmap"><i class="fa fa-check"></i><b>6.2.3</b> 2.3 Daily Pattern Heatmap</a></li>
+</ul>
+</li>
+<li class="chapter" data-level="6.3" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#run-mcmc"><i class="fa fa-check"></i><b>6.3</b> 3. Run MCMC</a></li>
+<li class="chapter" data-level="6.4" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html">
+<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#mcmc-diagnostics"><i class="fa fa-check"></i><b>6.4</b> 4. MCMC Diagnostics</a>
+<ul>
+<li class="chapter" data-level="6.4.1" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#trace-plots"><i class="fa fa-check"></i><b>6.4.1</b> 4.1 Trace Plots</a></li>
+<li class="chapter" data-level="6.4.2" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#convergence-diagnostics-ari-accuracy"><i class="fa fa-check"></i><b>6.4.2</b> 4.2 Convergence Diagnostics (ARI &amp; Accuracy)</a></li>
+<li class="chapter" data-level="6.4.3" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#posterior-distributions"><i class="fa fa-check"></i><b>6.4.3</b> 4.3 Posterior Distributions</a></li>
+</ul>
+</li>
+<li class="chapter" data-level="6.5" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html">
+<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#estimation-accuracy"><i class="fa fa-check"></i><b>6.5</b> 5. Estimation Accuracy</a>
+<ul>
+<li class="chapter" data-level="6.5.1" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cluster-recovery"><i class="fa fa-check"></i><b>6.5.1</b> 5.1 Cluster Recovery</a></li>
+<li class="chapter" data-level="6.5.2" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#intensity-estimation"><i class="fa fa-check"></i><b>6.5.2</b> 5.2 Intensity Estimation</a></li>
+</ul>
+</li>
+<li class="chapter" data-level="6.6" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#combined-visualization"><i class="fa fa-check"></i><b>6.6</b> 6. Combined Visualization</a></li>
+<li class="chapter" data-level="6.7" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#summary-statistics"><i class="fa fa-check"></i><b>6.7</b> 7. Summary Statistics</a></li>
+<li class="chapter" data-level="6.8" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#session-information"><i class="fa fa-check"></i><b>6.8</b> 8. Session Information</a></li>
+</ul>
+</li>
+<li class="chapter" data-level="7" data-path="real-data-example.html"><a href="real-data-example.html"><i class="fa fa-check"></i><b>7</b> Real data example</a></li>
+<li class="chapter" data-level="8" data-path="documenting-the-package-and-building.html"><a href="documenting-the-package-and-building.html"><i class="fa fa-check"></i><b>8</b> Documenting the package and building</a></li>
+</ul></nav>
+</div>
+
+    <div class="book-body">
+      <div class="body-inner">
+        <div class="book-header" role="navigation">
+          <h1>
+            <i class="fa fa-circle-o-notch fa-spin"></i><a href="./">Creating the <code>bdynets</code> R package</a>
+          </h1>
+        </div>
+
+        <div class="page-wrapper" tabindex="-1" role="main">
+          <div class="page-inner">
+
+            <section class="normal" id="section-"><div id="helpers-functions" class="section level1 hasAnchor" number="3">
+<h1>
+<span class="header-section-number">3</span> Helpers functions<a href="helpers-functions.html#helpers-functions" class="anchor-section" aria-label="Anchor link to header"></a>
+</h1>
+<p>These are some helper functions that are needed for the MCMC.</p>
+<p>These functions are not documented for now. (TODO: do this).</p>
+<!-- send_to to put all helper functions into one file.. -->
+<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="helpers-functions.html#cb9-1" tabindex="-1"></a><span class="co">#' A helper function to print the progress of a simulation. Place directly at</span></span>
+<span id="cb9-2"><a href="helpers-functions.html#cb9-2" tabindex="-1"></a><span class="co">#' the beginning of the loop, before any computation happens.</span></span>
+<span id="cb9-3"><a href="helpers-functions.html#cb9-3" tabindex="-1"></a><span class="co">#' @param isim isim.</span></span>
+<span id="cb9-4"><a href="helpers-functions.html#cb9-4" tabindex="-1"></a><span class="co">#' @param nsim number of sim.</span></span>
+<span id="cb9-5"><a href="helpers-functions.html#cb9-5" tabindex="-1"></a><span class="co">#' @param type type of job you're running. Defaults to "simulation".</span></span>
+<span id="cb9-6"><a href="helpers-functions.html#cb9-6" tabindex="-1"></a><span class="co">#' @param lapsetime lapsed time, in seconds (by default).</span></span>
+<span id="cb9-7"><a href="helpers-functions.html#cb9-7" tabindex="-1"></a><span class="co">#' @param lapsetimeunit "second".</span></span>
+<span id="cb9-8"><a href="helpers-functions.html#cb9-8" tabindex="-1"></a><span class="co">#' @param start.time Start time, usually obtained using \code{Sys.time()}</span></span>
+<span id="cb9-9"><a href="helpers-functions.html#cb9-9" tabindex="-1"></a><span class="co">#' @param fill Whether or not to fill the line.</span></span>
+<span id="cb9-10"><a href="helpers-functions.html#cb9-10" tabindex="-1"></a><span class="co">#' @param beep Whether to beep when done.</span></span>
+<span id="cb9-11"><a href="helpers-functions.html#cb9-11" tabindex="-1"></a><span id="printprogress">printprogress</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(isim, nsim, <span class="at">type=</span><span class="st">"simulation"</span>, <span class="at">lapsetime=</span><span class="cn">NULL</span>,</span>
+<span id="cb9-12"><a href="helpers-functions.html#cb9-12" tabindex="-1"></a>                          <span class="at">lapsetimeunit=</span><span class="st">"seconds"</span>, <span class="at">start.time=</span><span class="cn">NULL</span>,</span>
+<span id="cb9-13"><a href="helpers-functions.html#cb9-13" tabindex="-1"></a>                          <span class="at">fill=</span><span class="cn">FALSE</span>, <span class="at">beep=</span><span class="cn">FALSE</span>){</span>
+<span id="cb9-14"><a href="helpers-functions.html#cb9-14" tabindex="-1"></a></span>
+<span id="cb9-15"><a href="helpers-functions.html#cb9-15" tabindex="-1"></a>    <span class="do">## If lapse time is present, then use it</span></span>
+<span id="cb9-16"><a href="helpers-functions.html#cb9-16" tabindex="-1"></a>    <span class="cf">if</span>(fill) <span class="fu">cat</span>(<span class="at">fill=</span><span class="cn">TRUE</span>)</span>
+<span id="cb9-17"><a href="helpers-functions.html#cb9-17" tabindex="-1"></a>    <span class="cf">if</span>(<span class="fu">is.null</span>(lapsetime) <span class="sc">&amp;</span> <span class="fu">is.null</span>(start.time)){</span>
+<span id="cb9-18"><a href="helpers-functions.html#cb9-18" tabindex="-1"></a>            <span class="fu">cat</span>(<span class="st">"</span><span class="sc">\r</span><span class="st">"</span>, type, <span class="st">" "</span>, isim, <span class="st">"out of"</span>, nsim)</span>
+<span id="cb9-19"><a href="helpers-functions.html#cb9-19" tabindex="-1"></a>    } <span class="cf">else</span> {</span>
+<span id="cb9-20"><a href="helpers-functions.html#cb9-20" tabindex="-1"></a>        <span class="cf">if</span>(<span class="sc">!</span><span class="fu">is.null</span>(start.time)){</span>
+<span id="cb9-21"><a href="helpers-functions.html#cb9-21" tabindex="-1"></a>          <span class="cf">if</span>(isim <span class="sc">==</span> <span class="dv">1</span>){</span>
+<span id="cb9-22"><a href="helpers-functions.html#cb9-22" tabindex="-1"></a>            lapsetime <span class="ot">=</span> <span class="dv">0</span></span>
+<span id="cb9-23"><a href="helpers-functions.html#cb9-23" tabindex="-1"></a>            remainingtime <span class="ot">=</span> <span class="st">"unknown"</span></span>
+<span id="cb9-24"><a href="helpers-functions.html#cb9-24" tabindex="-1"></a>            endtime <span class="ot">=</span> <span class="st">"unknown time"</span></span>
+<span id="cb9-25"><a href="helpers-functions.html#cb9-25" tabindex="-1"></a>          } <span class="cf">else</span> {</span>
+<span id="cb9-26"><a href="helpers-functions.html#cb9-26" tabindex="-1"></a>            lapsetime <span class="ot">=</span> <span class="fu">round</span>(<span class="fu">difftime</span>(<span class="fu">Sys.time</span>(), start.time,</span>
+<span id="cb9-27"><a href="helpers-functions.html#cb9-27" tabindex="-1"></a>                                       <span class="at">units =</span> <span class="st">"secs"</span>), <span class="dv">0</span>)</span>
+<span id="cb9-28"><a href="helpers-functions.html#cb9-28" tabindex="-1"></a>            remainingtime <span class="ot">=</span> <span class="fu">round</span>(lapsetime <span class="sc">*</span> (nsim <span class="sc">-</span> (isim <span class="sc">-</span> <span class="dv">1</span>)) <span class="sc">/</span> (isim <span class="sc">-</span> <span class="dv">1</span>), <span class="dv">0</span>)</span>
+<span id="cb9-29"><a href="helpers-functions.html#cb9-29" tabindex="-1"></a>            endtime <span class="ot">=</span> <span class="fu">strftime</span>((<span class="fu">Sys.time</span>() <span class="sc">+</span> remainingtime))</span>
+<span id="cb9-30"><a href="helpers-functions.html#cb9-30" tabindex="-1"></a>          }</span>
+<span id="cb9-31"><a href="helpers-functions.html#cb9-31" tabindex="-1"></a>        }</span>
+<span id="cb9-32"><a href="helpers-functions.html#cb9-32" tabindex="-1"></a>        <span class="fu">cat</span>(<span class="st">"</span><span class="sc">\r</span><span class="st">"</span>, type, <span class="st">" "</span>, isim, <span class="st">"out of"</span>, nsim, <span class="st">"with lapsed time"</span>,</span>
+<span id="cb9-33"><a href="helpers-functions.html#cb9-33" tabindex="-1"></a>            lapsetime, lapsetimeunit, <span class="st">"and remaining time"</span>, remainingtime,</span>
+<span id="cb9-34"><a href="helpers-functions.html#cb9-34" tabindex="-1"></a>            lapsetimeunit, <span class="st">"and will finish at"</span>, endtime, <span class="st">"."</span>)</span>
+<span id="cb9-35"><a href="helpers-functions.html#cb9-35" tabindex="-1"></a>        <span class="cf">if</span>(beep <span class="sc">&amp;</span> isim<span class="sc">==</span>nsim){beepr<span class="sc">::</span><span class="fu">beep</span>()}</span>
+<span id="cb9-36"><a href="helpers-functions.html#cb9-36" tabindex="-1"></a>    }</span>
+<span id="cb9-37"><a href="helpers-functions.html#cb9-37" tabindex="-1"></a>    <span class="cf">if</span>(fill) <span class="fu">cat</span>(<span class="at">fill=</span><span class="cn">TRUE</span>)</span>
+<span id="cb9-38"><a href="helpers-functions.html#cb9-38" tabindex="-1"></a>}</span>
+<span id="cb9-39"><a href="helpers-functions.html#cb9-39" tabindex="-1"></a></span>
+<span id="cb9-40"><a href="helpers-functions.html#cb9-40" tabindex="-1"></a><span class="co">#' Stable computation of the log-sum-exp function.</span></span>
+<span id="cb9-41"><a href="helpers-functions.html#cb9-41" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb9-42"><a href="helpers-functions.html#cb9-42" tabindex="-1"></a><span class="co">#' @param x Numeric vector.</span></span>
+<span id="cb9-43"><a href="helpers-functions.html#cb9-43" tabindex="-1"></a><span id="logsumexp">logsumexp</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(x){</span>
+<span id="cb9-44"><a href="helpers-functions.html#cb9-44" tabindex="-1"></a>    m <span class="ot">&lt;-</span> <span class="fu">max</span>(x)</span>
+<span id="cb9-45"><a href="helpers-functions.html#cb9-45" tabindex="-1"></a>    ret <span class="ot">&lt;-</span> m <span class="sc">+</span> <span class="fu">log</span>(<span class="fu">sum</span>(<span class="fu">exp</span>(x <span class="sc">-</span> m)))</span>
+<span id="cb9-46"><a href="helpers-functions.html#cb9-46" tabindex="-1"></a>    <span class="fu">return</span>(ret)</span>
+<span id="cb9-47"><a href="helpers-functions.html#cb9-47" tabindex="-1"></a>}</span>
+<span id="cb9-48"><a href="helpers-functions.html#cb9-48" tabindex="-1"></a></span>
+<span id="cb9-49"><a href="helpers-functions.html#cb9-49" tabindex="-1"></a><span class="co">#' Helper function to sample from a Dirichlet distribution.</span></span>
+<span id="cb9-50"><a href="helpers-functions.html#cb9-50" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb9-51"><a href="helpers-functions.html#cb9-51" tabindex="-1"></a><span class="co">#' @param alpha Numeric vector of Dirichlet concentration parameters.</span></span>
+<span id="cb9-52"><a href="helpers-functions.html#cb9-52" tabindex="-1"></a><span id="rdirichlet1">rdirichlet1</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(alpha){</span>
+<span id="cb9-53"><a href="helpers-functions.html#cb9-53" tabindex="-1"></a>    z <span class="ot">&lt;-</span> <span class="fu">rgamma</span>(<span class="fu">length</span>(alpha), <span class="at">shape =</span> alpha, <span class="at">rate =</span> <span class="dv">1</span>)</span>
+<span id="cb9-54"><a href="helpers-functions.html#cb9-54" tabindex="-1"></a>    ret <span class="ot">&lt;-</span> z <span class="sc">/</span> <span class="fu">sum</span>(z)</span>
+<span id="cb9-55"><a href="helpers-functions.html#cb9-55" tabindex="-1"></a>    <span class="fu">return</span>(ret)</span>
+<span id="cb9-56"><a href="helpers-functions.html#cb9-56" tabindex="-1"></a>}</span>
+<span id="cb9-57"><a href="helpers-functions.html#cb9-57" tabindex="-1"></a></span>
+<span id="cb9-58"><a href="helpers-functions.html#cb9-58" tabindex="-1"></a><span class="co">#' Helper function to compute a Cholesky factor for a numerically symmetric</span></span>
+<span id="cb9-59"><a href="helpers-functions.html#cb9-59" tabindex="-1"></a><span class="co">#' positive definite matrix.</span></span>
+<span id="cb9-60"><a href="helpers-functions.html#cb9-60" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb9-61"><a href="helpers-functions.html#cb9-61" tabindex="-1"></a><span class="co">#' @param Sigma Covariance matrix.</span></span>
+<span id="cb9-62"><a href="helpers-functions.html#cb9-62" tabindex="-1"></a><span id="chol_spd">chol_spd</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(Sigma){</span>
+<span id="cb9-63"><a href="helpers-functions.html#cb9-63" tabindex="-1"></a>    Sigma <span class="ot">&lt;-</span> (Sigma <span class="sc">+</span> <span class="fu">t</span>(Sigma)) <span class="sc">/</span> <span class="dv">2</span></span>
+<span id="cb9-64"><a href="helpers-functions.html#cb9-64" tabindex="-1"></a>    p <span class="ot">&lt;-</span> <span class="fu">nrow</span>(Sigma)</span>
+<span id="cb9-65"><a href="helpers-functions.html#cb9-65" tabindex="-1"></a></span>
+<span id="cb9-66"><a href="helpers-functions.html#cb9-66" tabindex="-1"></a>    <span class="cf">for</span>(eps <span class="cf">in</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="fl">1e-10</span>, <span class="fl">1e-8</span>, <span class="fl">1e-6</span>, <span class="fl">1e-4</span>)){</span>
+<span id="cb9-67"><a href="helpers-functions.html#cb9-67" tabindex="-1"></a>        out <span class="ot">&lt;-</span> <span class="fu">try</span>(<span class="fu">chol</span>(Sigma <span class="sc">+</span> eps <span class="sc">*</span> <span class="fu">diag</span>(p)), <span class="at">silent =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb9-68"><a href="helpers-functions.html#cb9-68" tabindex="-1"></a>        <span class="cf">if</span>(<span class="sc">!</span><span class="fu">inherits</span>(out, <span class="st">"try-error"</span>)){</span>
+<span id="cb9-69"><a href="helpers-functions.html#cb9-69" tabindex="-1"></a>            <span class="fu">return</span>(out)</span>
+<span id="cb9-70"><a href="helpers-functions.html#cb9-70" tabindex="-1"></a>        }</span>
+<span id="cb9-71"><a href="helpers-functions.html#cb9-71" tabindex="-1"></a>    }</span>
+<span id="cb9-72"><a href="helpers-functions.html#cb9-72" tabindex="-1"></a></span>
+<span id="cb9-73"><a href="helpers-functions.html#cb9-73" tabindex="-1"></a>    <span class="fu">stop</span>(<span class="st">"Matrix is not numerically positive definite."</span>)</span>
+<span id="cb9-74"><a href="helpers-functions.html#cb9-74" tabindex="-1"></a>}</span>
+<span id="cb9-75"><a href="helpers-functions.html#cb9-75" tabindex="-1"></a></span>
+<span id="cb9-76"><a href="helpers-functions.html#cb9-76" tabindex="-1"></a><span class="co">#' Helper function to sample from a multivariate normal distribution.</span></span>
+<span id="cb9-77"><a href="helpers-functions.html#cb9-77" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb9-78"><a href="helpers-functions.html#cb9-78" tabindex="-1"></a><span class="co">#' @param mu Mean vector.</span></span>
+<span id="cb9-79"><a href="helpers-functions.html#cb9-79" tabindex="-1"></a><span class="co">#' @param Sigma Covariance matrix.</span></span>
+<span id="cb9-80"><a href="helpers-functions.html#cb9-80" tabindex="-1"></a><span id="rmvn">rmvn</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(mu, Sigma){</span>
+<span id="cb9-81"><a href="helpers-functions.html#cb9-81" tabindex="-1"></a>    R <span class="ot">&lt;-</span> <a href="helpers-functions.html#chol_spd">chol_spd</a>(Sigma)</span>
+<span id="cb9-82"><a href="helpers-functions.html#cb9-82" tabindex="-1"></a>    ret <span class="ot">&lt;-</span> <span class="fu">as.vector</span>(mu <span class="sc">+</span> <span class="fu">t</span>(R) <span class="sc">%*%</span> <span class="fu">rnorm</span>(<span class="fu">length</span>(mu)))</span>
+<span id="cb9-83"><a href="helpers-functions.html#cb9-83" tabindex="-1"></a>    <span class="fu">return</span>(ret)</span>
+<span id="cb9-84"><a href="helpers-functions.html#cb9-84" tabindex="-1"></a>}</span>
+<span id="cb9-85"><a href="helpers-functions.html#cb9-85" tabindex="-1"></a></span>
+<span id="cb9-86"><a href="helpers-functions.html#cb9-86" tabindex="-1"></a><span class="co">#' Helper function to compute cluster counts and cluster-specific sums.</span></span>
+<span id="cb9-87"><a href="helpers-functions.html#cb9-87" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb9-88"><a href="helpers-functions.html#cb9-88" tabindex="-1"></a><span class="co">#' @param Z Vector of cluster allocations.</span></span>
+<span id="cb9-89"><a href="helpers-functions.html#cb9-89" tabindex="-1"></a><span class="co">#' @param Y Matrix of observations.</span></span>
+<span id="cb9-90"><a href="helpers-functions.html#cb9-90" tabindex="-1"></a><span class="co">#' @param K Number of clusters.</span></span>
+<span id="cb9-91"><a href="helpers-functions.html#cb9-91" tabindex="-1"></a><span id="cluster_stats">cluster_stats</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(Z, Y, K){</span>
+<span id="cb9-92"><a href="helpers-functions.html#cb9-92" tabindex="-1"></a>    TT <span class="ot">&lt;-</span> <span class="fu">ncol</span>(Y)</span>
+<span id="cb9-93"><a href="helpers-functions.html#cb9-93" tabindex="-1"></a></span>
+<span id="cb9-94"><a href="helpers-functions.html#cb9-94" tabindex="-1"></a>    N <span class="ot">&lt;-</span> <span class="fu">tabulate</span>(Z, <span class="at">nbins =</span> K)</span>
+<span id="cb9-95"><a href="helpers-functions.html#cb9-95" tabindex="-1"></a>    S <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="dv">0</span>, <span class="at">nrow =</span> K, <span class="at">ncol =</span> TT)</span>
+<span id="cb9-96"><a href="helpers-functions.html#cb9-96" tabindex="-1"></a></span>
+<span id="cb9-97"><a href="helpers-functions.html#cb9-97" tabindex="-1"></a>    <span class="cf">for</span>(k <span class="cf">in</span> <span class="fu">seq_len</span>(K)){</span>
+<span id="cb9-98"><a href="helpers-functions.html#cb9-98" tabindex="-1"></a>        idx <span class="ot">&lt;-</span> <span class="fu">which</span>(Z <span class="sc">==</span> k)</span>
+<span id="cb9-99"><a href="helpers-functions.html#cb9-99" tabindex="-1"></a>        <span class="cf">if</span>(<span class="fu">length</span>(idx) <span class="sc">&gt;</span> <span class="dv">0</span>){</span>
+<span id="cb9-100"><a href="helpers-functions.html#cb9-100" tabindex="-1"></a>            S[k, ] <span class="ot">&lt;-</span> <span class="fu">colSums</span>(Y[idx, , <span class="at">drop =</span> <span class="cn">FALSE</span>])</span>
+<span id="cb9-101"><a href="helpers-functions.html#cb9-101" tabindex="-1"></a>        }</span>
+<span id="cb9-102"><a href="helpers-functions.html#cb9-102" tabindex="-1"></a>    }</span>
+<span id="cb9-103"><a href="helpers-functions.html#cb9-103" tabindex="-1"></a></span>
+<span id="cb9-104"><a href="helpers-functions.html#cb9-104" tabindex="-1"></a>    ret <span class="ot">&lt;-</span> <span class="fu">list</span>(<span class="at">N =</span> N, <span class="at">S =</span> S)</span>
+<span id="cb9-105"><a href="helpers-functions.html#cb9-105" tabindex="-1"></a>    <span class="fu">return</span>(ret)</span>
+<span id="cb9-106"><a href="helpers-functions.html#cb9-106" tabindex="-1"></a>}</span>
+<span id="cb9-107"><a href="helpers-functions.html#cb9-107" tabindex="-1"></a></span>
+<span id="cb9-108"><a href="helpers-functions.html#cb9-108" tabindex="-1"></a><span class="co">#' Helper function to compute eta from theta and the design matrix.</span></span>
+<span id="cb9-109"><a href="helpers-functions.html#cb9-109" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb9-110"><a href="helpers-functions.html#cb9-110" tabindex="-1"></a><span class="co">#' @param theta Array of parameters.</span></span>
+<span id="cb9-111"><a href="helpers-functions.html#cb9-111" tabindex="-1"></a><span class="co">#' @param Fmat Design matrix.</span></span>
+<span id="cb9-112"><a href="helpers-functions.html#cb9-112" tabindex="-1"></a><span id="get_eta">get_eta</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(theta, Fmat){</span>
+<span id="cb9-113"><a href="helpers-functions.html#cb9-113" tabindex="-1"></a>    K <span class="ot">&lt;-</span> <span class="fu">dim</span>(theta)[<span class="dv">1</span>]</span>
+<span id="cb9-114"><a href="helpers-functions.html#cb9-114" tabindex="-1"></a>    TT <span class="ot">&lt;-</span> <span class="fu">dim</span>(theta)[<span class="dv">2</span>]</span>
+<span id="cb9-115"><a href="helpers-functions.html#cb9-115" tabindex="-1"></a>    p <span class="ot">&lt;-</span> <span class="fu">dim</span>(theta)[<span class="dv">3</span>]</span>
+<span id="cb9-116"><a href="helpers-functions.html#cb9-116" tabindex="-1"></a></span>
+<span id="cb9-117"><a href="helpers-functions.html#cb9-117" tabindex="-1"></a>    eta <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="dv">0</span>, <span class="at">nrow =</span> K, <span class="at">ncol =</span> TT)</span>
+<span id="cb9-118"><a href="helpers-functions.html#cb9-118" tabindex="-1"></a></span>
+<span id="cb9-119"><a href="helpers-functions.html#cb9-119" tabindex="-1"></a>    <span class="cf">for</span>(k <span class="cf">in</span> <span class="fu">seq_len</span>(K)){</span>
+<span id="cb9-120"><a href="helpers-functions.html#cb9-120" tabindex="-1"></a>        theta_k <span class="ot">&lt;-</span> <span class="fu">matrix</span>(theta[k, , ], <span class="at">nrow =</span> TT, <span class="at">ncol =</span> p)</span>
+<span id="cb9-121"><a href="helpers-functions.html#cb9-121" tabindex="-1"></a>        eta[k, ] <span class="ot">&lt;-</span> <span class="fu">rowSums</span>(Fmat <span class="sc">*</span> theta_k)</span>
+<span id="cb9-122"><a href="helpers-functions.html#cb9-122" tabindex="-1"></a>    }</span>
+<span id="cb9-123"><a href="helpers-functions.html#cb9-123" tabindex="-1"></a></span>
+<span id="cb9-124"><a href="helpers-functions.html#cb9-124" tabindex="-1"></a>    <span class="fu">return</span>(eta)</span>
+<span id="cb9-125"><a href="helpers-functions.html#cb9-125" tabindex="-1"></a>}</span>
+<span id="cb9-126"><a href="helpers-functions.html#cb9-126" tabindex="-1"></a></span>
+<span id="cb9-127"><a href="helpers-functions.html#cb9-127" tabindex="-1"></a><span class="co">#' Helper function to compute lambda from theta and the design matrix.</span></span>
+<span id="cb9-128"><a href="helpers-functions.html#cb9-128" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb9-129"><a href="helpers-functions.html#cb9-129" tabindex="-1"></a><span class="co">#' @param theta Array of parameters.</span></span>
+<span id="cb9-130"><a href="helpers-functions.html#cb9-130" tabindex="-1"></a><span class="co">#' @param Fmat Design matrix.</span></span>
+<span id="cb9-131"><a href="helpers-functions.html#cb9-131" tabindex="-1"></a><span id="get_lambda">get_lambda</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(theta, Fmat){</span>
+<span id="cb9-132"><a href="helpers-functions.html#cb9-132" tabindex="-1"></a>    ret <span class="ot">&lt;-</span> <span class="fu">exp</span>(<a href="helpers-functions.html#get_eta">get_eta</a>(theta, Fmat))</span>
+<span id="cb9-133"><a href="helpers-functions.html#cb9-133" tabindex="-1"></a>    <span class="fu">return</span>(ret)</span>
+<span id="cb9-134"><a href="helpers-functions.html#cb9-134" tabindex="-1"></a>}</span>
+<span id="cb9-135"><a href="helpers-functions.html#cb9-135" tabindex="-1"></a></span>
+<span id="cb9-136"><a href="helpers-functions.html#cb9-136" tabindex="-1"></a></span>
+<span id="cb9-137"><a href="helpers-functions.html#cb9-137" tabindex="-1"></a><span class="co">#' Compute Adjusted Rand Index for clustering accuracy.</span></span>
+<span id="cb9-138"><a href="helpers-functions.html#cb9-138" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb9-139"><a href="helpers-functions.html#cb9-139" tabindex="-1"></a><span class="co">#' @param x First clustering vector.</span></span>
+<span id="cb9-140"><a href="helpers-functions.html#cb9-140" tabindex="-1"></a><span class="co">#' @param y Second clustering vector.</span></span>
+<span id="cb9-141"><a href="helpers-functions.html#cb9-141" tabindex="-1"></a><span class="co">#' </span></span>
+<span id="cb9-142"><a href="helpers-functions.html#cb9-142" tabindex="-1"></a><span class="co">#' @export </span></span>
+<span id="cb9-143"><a href="helpers-functions.html#cb9-143" tabindex="-1"></a><span id="adj_rand_index">adj_rand_index</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(x, y){</span>
+<span id="cb9-144"><a href="helpers-functions.html#cb9-144" tabindex="-1"></a>    tab <span class="ot">&lt;-</span> <span class="fu">table</span>(x, y)</span>
+<span id="cb9-145"><a href="helpers-functions.html#cb9-145" tabindex="-1"></a></span>
+<span id="cb9-146"><a href="helpers-functions.html#cb9-146" tabindex="-1"></a>    <span id="choose2">choose2</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(z) z <span class="sc">*</span> (z <span class="sc">-</span> <span class="dv">1</span>) <span class="sc">/</span> <span class="dv">2</span></span>
+<span id="cb9-147"><a href="helpers-functions.html#cb9-147" tabindex="-1"></a></span>
+<span id="cb9-148"><a href="helpers-functions.html#cb9-148" tabindex="-1"></a>    nij <span class="ot">&lt;-</span> <span class="fu">as.vector</span>(tab)</span>
+<span id="cb9-149"><a href="helpers-functions.html#cb9-149" tabindex="-1"></a>    ai  <span class="ot">&lt;-</span> <span class="fu">rowSums</span>(tab)</span>
+<span id="cb9-150"><a href="helpers-functions.html#cb9-150" tabindex="-1"></a>    bj  <span class="ot">&lt;-</span> <span class="fu">colSums</span>(tab)</span>
+<span id="cb9-151"><a href="helpers-functions.html#cb9-151" tabindex="-1"></a></span>
+<span id="cb9-152"><a href="helpers-functions.html#cb9-152" tabindex="-1"></a>    sum_nij <span class="ot">&lt;-</span> <span class="fu">sum</span>(<a href="helpers-functions.html#choose2">choose2</a>(nij))</span>
+<span id="cb9-153"><a href="helpers-functions.html#cb9-153" tabindex="-1"></a>    sum_ai  <span class="ot">&lt;-</span> <span class="fu">sum</span>(<a href="helpers-functions.html#choose2">choose2</a>(ai))</span>
+<span id="cb9-154"><a href="helpers-functions.html#cb9-154" tabindex="-1"></a>    sum_bj  <span class="ot">&lt;-</span> <span class="fu">sum</span>(<a href="helpers-functions.html#choose2">choose2</a>(bj))</span>
+<span id="cb9-155"><a href="helpers-functions.html#cb9-155" tabindex="-1"></a></span>
+<span id="cb9-156"><a href="helpers-functions.html#cb9-156" tabindex="-1"></a>    n <span class="ot">&lt;-</span> <span class="fu">sum</span>(tab)</span>
+<span id="cb9-157"><a href="helpers-functions.html#cb9-157" tabindex="-1"></a>    total <span class="ot">&lt;-</span> <a href="helpers-functions.html#choose2">choose2</a>(n)</span>
+<span id="cb9-158"><a href="helpers-functions.html#cb9-158" tabindex="-1"></a></span>
+<span id="cb9-159"><a href="helpers-functions.html#cb9-159" tabindex="-1"></a>    expected <span class="ot">&lt;-</span> sum_ai <span class="sc">*</span> sum_bj <span class="sc">/</span> total</span>
+<span id="cb9-160"><a href="helpers-functions.html#cb9-160" tabindex="-1"></a>    max_idx  <span class="ot">&lt;-</span> <span class="fl">0.5</span> <span class="sc">*</span> (sum_ai <span class="sc">+</span> sum_bj)</span>
+<span id="cb9-161"><a href="helpers-functions.html#cb9-161" tabindex="-1"></a></span>
+<span id="cb9-162"><a href="helpers-functions.html#cb9-162" tabindex="-1"></a>    <span class="cf">if</span>(max_idx <span class="sc">==</span> expected) <span class="fu">return</span>(<span class="dv">0</span>)</span>
+<span id="cb9-163"><a href="helpers-functions.html#cb9-163" tabindex="-1"></a></span>
+<span id="cb9-164"><a href="helpers-functions.html#cb9-164" tabindex="-1"></a>    ret <span class="ot">&lt;-</span> (sum_nij <span class="sc">-</span> expected) <span class="sc">/</span> (max_idx <span class="sc">-</span> expected)</span>
+<span id="cb9-165"><a href="helpers-functions.html#cb9-165" tabindex="-1"></a>    <span class="fu">return</span>(ret)</span>
+<span id="cb9-166"><a href="helpers-functions.html#cb9-166" tabindex="-1"></a>}</span>
+<span id="cb9-167"><a href="helpers-functions.html#cb9-167" tabindex="-1"></a></span>
+<span id="cb9-168"><a href="helpers-functions.html#cb9-168" tabindex="-1"></a><span class="co">#' Compute best label accuracy over all permutations.</span></span>
+<span id="cb9-169"><a href="helpers-functions.html#cb9-169" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb9-170"><a href="helpers-functions.html#cb9-170" tabindex="-1"></a><span class="co">#' @param true True cluster labels.</span></span>
+<span id="cb9-171"><a href="helpers-functions.html#cb9-171" tabindex="-1"></a><span class="co">#' @param est Estimated cluster labels.</span></span>
+<span id="cb9-172"><a href="helpers-functions.html#cb9-172" tabindex="-1"></a><span class="co">#' @param K Number of clusters.</span></span>
+<span id="cb9-173"><a href="helpers-functions.html#cb9-173" tabindex="-1"></a><span class="co">#' </span></span>
+<span id="cb9-174"><a href="helpers-functions.html#cb9-174" tabindex="-1"></a><span class="co">#' @export </span></span>
+<span id="cb9-175"><a href="helpers-functions.html#cb9-175" tabindex="-1"></a><span id="best_label_accuracy">best_label_accuracy</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(true, est, K){</span>
+<span id="cb9-176"><a href="helpers-functions.html#cb9-176" tabindex="-1"></a>    perms <span class="ot">&lt;-</span> <span class="fu">as.matrix</span>(<span class="fu">expand.grid</span>(<span class="fu">rep</span>(<span class="fu">list</span>(<span class="fu">seq_len</span>(K)), K)))</span>
+<span id="cb9-177"><a href="helpers-functions.html#cb9-177" tabindex="-1"></a>    perms <span class="ot">&lt;-</span> perms[<span class="fu">apply</span>(perms, <span class="dv">1</span>, <span class="cf">function</span>(z) <span class="fu">length</span>(<span class="fu">unique</span>(z)) <span class="sc">==</span> K), , drop <span class="ot">=</span> <span class="cn">FALSE</span>]</span>
+<span id="cb9-178"><a href="helpers-functions.html#cb9-178" tabindex="-1"></a></span>
+<span id="cb9-179"><a href="helpers-functions.html#cb9-179" tabindex="-1"></a>    acc <span class="ot">&lt;-</span> <span class="fu">apply</span>(perms, <span class="dv">1</span>, <span class="cf">function</span>(map){</span>
+<span id="cb9-180"><a href="helpers-functions.html#cb9-180" tabindex="-1"></a>        <span class="fu">mean</span>(true <span class="sc">==</span> map[est])</span>
+<span id="cb9-181"><a href="helpers-functions.html#cb9-181" tabindex="-1"></a>    })</span>
+<span id="cb9-182"><a href="helpers-functions.html#cb9-182" tabindex="-1"></a></span>
+<span id="cb9-183"><a href="helpers-functions.html#cb9-183" tabindex="-1"></a>    ret <span class="ot">&lt;-</span> <span class="fu">max</span>(acc)</span>
+<span id="cb9-184"><a href="helpers-functions.html#cb9-184" tabindex="-1"></a>    <span class="fu">return</span>(ret)</span>
+<span id="cb9-185"><a href="helpers-functions.html#cb9-185" tabindex="-1"></a>}</span>
+<span id="cb9-186"><a href="helpers-functions.html#cb9-186" tabindex="-1"></a></span>
+<span id="cb9-187"><a href="helpers-functions.html#cb9-187" tabindex="-1"></a><span class="co">#' Compute the mode of an integer vector.</span></span>
+<span id="cb9-188"><a href="helpers-functions.html#cb9-188" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb9-189"><a href="helpers-functions.html#cb9-189" tabindex="-1"></a><span class="co">#' @param x Integer vector.</span></span>
+<span id="cb9-190"><a href="helpers-functions.html#cb9-190" tabindex="-1"></a><span class="co">#' @param K Maximum possible value (number of bins).</span></span>
+<span id="cb9-191"><a href="helpers-functions.html#cb9-191" tabindex="-1"></a><span id="mode_int">mode_int</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(x, K){</span>
+<span id="cb9-192"><a href="helpers-functions.html#cb9-192" tabindex="-1"></a>    ret <span class="ot">&lt;-</span> <span class="fu">which.max</span>(<span class="fu">tabulate</span>(x, <span class="at">nbins =</span> K))</span>
+<span id="cb9-193"><a href="helpers-functions.html#cb9-193" tabindex="-1"></a>    <span class="fu">return</span>(ret)</span>
+<span id="cb9-194"><a href="helpers-functions.html#cb9-194" tabindex="-1"></a>}</span></code></pre></div>
+
+</div>
+            </section>
+</div>
+        </div>
+      </div>
+<a href="package-setup.html" class="navigation navigation-prev " aria-label="Previous page"><i class="fa fa-angle-left"></i></a>
+<a href="syntheticdata.html" class="navigation navigation-next " aria-label="Next page"><i class="fa fa-angle-right"></i></a>
+    </div>
+  </div>
+<script src="libs/gitbook-2.6.7/js/app.min.js"></script><script src="libs/gitbook-2.6.7/js/clipboard.min.js"></script><script src="libs/gitbook-2.6.7/js/plugin-search.js"></script><script src="libs/gitbook-2.6.7/js/plugin-sharing.js"></script><script src="libs/gitbook-2.6.7/js/plugin-fontsettings.js"></script><script src="libs/gitbook-2.6.7/js/plugin-bookdown.js"></script><script src="libs/gitbook-2.6.7/js/jquery.highlight.js"></script><script src="libs/gitbook-2.6.7/js/plugin-clipboard.js"></script><script>
+gitbook.require(["gitbook"], function(gitbook) {
+gitbook.start({
+"sharing": {
+"github": false,
+"facebook": true,
+"twitter": true,
+"linkedin": false,
+"weibo": false,
+"instapaper": false,
+"vk": false,
+"whatsapp": false,
+"all": ["facebook", "twitter", "linkedin", "weibo", "instapaper"]
+},
+"fontsettings": {
+"theme": "white",
+"family": "sans",
+"size": 2
+},
+"edit": {
+"link": null,
+"text": null
+},
+"history": {
+"link": null,
+"text": null
+},
+"view": {
+"link": null,
+"text": null
+},
+"download": null,
+"search": {
+"engine": "fuse",
+"options": null
+},
+"toc": {
+"collapse": "subsection"
+}
+});
+});
+</script>
+</body>
+</html>

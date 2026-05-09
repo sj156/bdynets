@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="" xml:lang="">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<title>5 Gibbs sampler | Creating the bdynets R package</title>
+<meta name="description" content="5 Gibbs sampler | Creating the bdynets R package">
+<meta name="generator" content="bookdown 0.40 and GitBook 2.6.7">
+<meta property="og:title" content="5 Gibbs sampler | Creating the bdynets R package">
+<meta property="og:type" content="book">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="5 Gibbs sampler | Creating the bdynets R package">
+<meta name="author" content="Sheng Jiang">
+<meta name="date" content="2026-05-09">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="prev" href="syntheticdata.html">
+<link rel="next" href="simulation-study-bayesian-dynamic-network-for-traffic-data.html">
+<script src="libs/header-attrs-2.28/header-attrs.js"></script><script src="libs/jquery-3.6.0/jquery-3.6.0.min.js"></script><script src="https://cdn.jsdelivr.net/npm/fuse.js@6.4.6/dist/fuse.min.js"></script><link href="libs/gitbook-2.6.7/css/style.css" rel="stylesheet">
+<link href="libs/gitbook-2.6.7/css/plugin-table.css" rel="stylesheet">
+<link href="libs/gitbook-2.6.7/css/plugin-bookdown.css" rel="stylesheet">
+<link href="libs/gitbook-2.6.7/css/plugin-highlight.css" rel="stylesheet">
+<link href="libs/gitbook-2.6.7/css/plugin-search.css" rel="stylesheet">
+<link href="libs/gitbook-2.6.7/css/plugin-fontsettings.css" rel="stylesheet">
+<link href="libs/gitbook-2.6.7/css/plugin-clipboard.css" rel="stylesheet">
+<link href="libs/anchor-sections-1.1.0/anchor-sections.css" rel="stylesheet">
+<link href="libs/anchor-sections-1.1.0/anchor-sections-hash.css" rel="stylesheet">
+<script src="libs/anchor-sections-1.1.0/anchor-sections.js"></script><style type="text/css">
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { display: inline-block; text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { color: #008000; } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { color: #008000; font-weight: bold; } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+</style>
+<style type="text/css">
+  
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+</style>
+<style type="text/css">fieldset.chunkfield {border:1px dotted black;padding-bottom: 0px;padding-top: 0px;margin:0 2px;padding:.35em .625em .75em}
+    legend.chunklegend {padding:0;width:auto;border:0; border-bottom: none; margin-bottom:0}
+    </style>
+</head>
+<body>
+
+
+
+  <div class="book without-animation with-summary font-size-2 font-family-1" data-basepath=".">
+
+    <div class="book-summary">
+      <nav role="navigation"><ul class="summary">
+<li class="chapter" data-level="1" data-path="index.html"><a href="index.html"><i class="fa fa-check"></i><b>1</b> Introduction</a></li>
+<li class="chapter" data-level="2" data-path="package-setup.html"><a href="package-setup.html"><i class="fa fa-check"></i><b>2</b> Package setup</a></li>
+<li class="chapter" data-level="3" data-path="helpers-functions.html"><a href="helpers-functions.html"><i class="fa fa-check"></i><b>3</b> Helpers functions</a></li>
+<li class="chapter" data-level="4" data-path="syntheticdata.html"><a href="syntheticdata.html"><i class="fa fa-check"></i><b>4</b> Generating synthetic data</a></li>
+<li class="chapter" data-level="5" data-path="gibbs-sampler.html">
+<a href="gibbs-sampler.html"><i class="fa fa-check"></i><b>5</b> Gibbs sampler</a>
+<ul>
+<li class="chapter" data-level="5.1" data-path="gibbs-sampler.html"><a href="gibbs-sampler.html#the-main-gibbs-sampler"><i class="fa fa-check"></i><b>5.1</b> The main Gibbs sampler</a></li>
+</ul>
+</li>
+<li class="chapter" data-level="6" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html">
+<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><i class="fa fa-check"></i><b>6</b> Simulation Study: Bayesian Dynamic Network for Traffic Data</a>
+<ul>
+<li class="chapter" data-level="6.1" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html">
+<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#synthetic-data-generation"><i class="fa fa-check"></i><b>6.1</b> 1. Synthetic Data Generation</a>
+<ul>
+<li class="chapter" data-level="6.1.1" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#create-55-grid-road-network"><i class="fa fa-check"></i><b>6.1.1</b> 1.1 Create 5×5 Grid Road Network</a></li>
+<li class="chapter" data-level="6.1.2" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#create-time-structure-4-weeks-48-intervalsday"><i class="fa fa-check"></i><b>6.1.2</b> 1.2 Create Time Structure (4 weeks, 48 intervals/day)</a></li>
+<li class="chapter" data-level="6.1.3" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#generate-true-cluster-structure"><i class="fa fa-check"></i><b>6.1.3</b> 1.3 Generate True Cluster Structure</a></li>
+<li class="chapter" data-level="6.1.4" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#generate-true-parameters"><i class="fa fa-check"></i><b>6.1.4</b> 1.4 Generate True Parameters</a></li>
+<li class="chapter" data-level="6.1.5" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#simulate-count-data"><i class="fa fa-check"></i><b>6.1.5</b> 1.5 Simulate Count Data</a></li>
+</ul>
+</li>
+<li class="chapter" data-level="6.2" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html">
+<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#data-visualization"><i class="fa fa-check"></i><b>6.2</b> 2. Data Visualization</a>
+<ul>
+<li class="chapter" data-level="6.2.1" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#network-structure"><i class="fa fa-check"></i><b>6.2.1</b> 2.1 Network Structure</a></li>
+<li class="chapter" data-level="6.2.2" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#time-series-of-traffic-counts"><i class="fa fa-check"></i><b>6.2.2</b> 2.2 Time Series of Traffic Counts</a></li>
+<li class="chapter" data-level="6.2.3" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#daily-pattern-heatmap"><i class="fa fa-check"></i><b>6.2.3</b> 2.3 Daily Pattern Heatmap</a></li>
+</ul>
+</li>
+<li class="chapter" data-level="6.3" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#run-mcmc"><i class="fa fa-check"></i><b>6.3</b> 3. Run MCMC</a></li>
+<li class="chapter" data-level="6.4" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html">
+<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#mcmc-diagnostics"><i class="fa fa-check"></i><b>6.4</b> 4. MCMC Diagnostics</a>
+<ul>
+<li class="chapter" data-level="6.4.1" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#trace-plots"><i class="fa fa-check"></i><b>6.4.1</b> 4.1 Trace Plots</a></li>
+<li class="chapter" data-level="6.4.2" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#convergence-diagnostics-ari-accuracy"><i class="fa fa-check"></i><b>6.4.2</b> 4.2 Convergence Diagnostics (ARI &amp; Accuracy)</a></li>
+<li class="chapter" data-level="6.4.3" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#posterior-distributions"><i class="fa fa-check"></i><b>6.4.3</b> 4.3 Posterior Distributions</a></li>
+</ul>
+</li>
+<li class="chapter" data-level="6.5" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html">
+<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#estimation-accuracy"><i class="fa fa-check"></i><b>6.5</b> 5. Estimation Accuracy</a>
+<ul>
+<li class="chapter" data-level="6.5.1" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#cluster-recovery"><i class="fa fa-check"></i><b>6.5.1</b> 5.1 Cluster Recovery</a></li>
+<li class="chapter" data-level="6.5.2" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#intensity-estimation"><i class="fa fa-check"></i><b>6.5.2</b> 5.2 Intensity Estimation</a></li>
+</ul>
+</li>
+<li class="chapter" data-level="6.6" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#combined-visualization"><i class="fa fa-check"></i><b>6.6</b> 6. Combined Visualization</a></li>
+<li class="chapter" data-level="6.7" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#summary-statistics"><i class="fa fa-check"></i><b>6.7</b> 7. Summary Statistics</a></li>
+<li class="chapter" data-level="6.8" data-path="simulation-study-bayesian-dynamic-network-for-traffic-data.html"><a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html#session-information"><i class="fa fa-check"></i><b>6.8</b> 8. Session Information</a></li>
+</ul>
+</li>
+<li class="chapter" data-level="7" data-path="real-data-example.html"><a href="real-data-example.html"><i class="fa fa-check"></i><b>7</b> Real data example</a></li>
+<li class="chapter" data-level="8" data-path="documenting-the-package-and-building.html"><a href="documenting-the-package-and-building.html"><i class="fa fa-check"></i><b>8</b> Documenting the package and building</a></li>
+</ul></nav>
+</div>
+
+    <div class="book-body">
+      <div class="body-inner">
+        <div class="book-header" role="navigation">
+          <h1>
+            <i class="fa fa-circle-o-notch fa-spin"></i><a href="./">Creating the <code>bdynets</code> R package</a>
+          </h1>
+        </div>
+
+        <div class="page-wrapper" tabindex="-1" role="main">
+          <div class="page-inner">
+
+            <section class="normal" id="section-"><div id="gibbs-sampler" class="section level1 hasAnchor" number="5">
+<h1>
+<span class="header-section-number">5</span> Gibbs sampler<a href="gibbs-sampler.html#gibbs-sampler" class="anchor-section" aria-label="Anchor link to header"></a>
+</h1>
+<div id="the-main-gibbs-sampler" class="section level2 hasAnchor" number="5.1">
+<h2>
+<span class="header-section-number">5.1</span> The main Gibbs sampler<a href="gibbs-sampler.html#the-main-gibbs-sampler" class="anchor-section" aria-label="Anchor link to header"></a>
+</h2>
+<p>The main Gibbs sampler is called <code>run.Gibbs()</code>.</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb10-1"><a href="gibbs-sampler.html#cb10-1" tabindex="-1"></a><span class="co">#' Sample a prior state trajectory from a Dynamic Linear Model (DLM).</span></span>
+<span id="cb10-2"><a href="gibbs-sampler.html#cb10-2" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb10-3"><a href="gibbs-sampler.html#cb10-3" tabindex="-1"></a><span class="co">#' Simulates a state sequence \eqn{\theta_{1:T}} from a Gaussian DLM defined by:</span></span>
+<span id="cb10-4"><a href="gibbs-sampler.html#cb10-4" tabindex="-1"></a><span class="co">#' \deqn{\theta_0 \sim N(m_0, C_0)}</span></span>
+<span id="cb10-5"><a href="gibbs-sampler.html#cb10-5" tabindex="-1"></a><span class="co">#' \deqn{\theta_t = G \theta_{t-1} + w_t, \quad w_t \sim N(0, W)}</span></span>
+<span id="cb10-6"><a href="gibbs-sampler.html#cb10-6" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb10-7"><a href="gibbs-sampler.html#cb10-7" tabindex="-1"></a><span class="co">#' @param TT Number of time steps.</span></span>
+<span id="cb10-8"><a href="gibbs-sampler.html#cb10-8" tabindex="-1"></a><span class="co">#' @param m0 Prior mean vector for the initial state.</span></span>
+<span id="cb10-9"><a href="gibbs-sampler.html#cb10-9" tabindex="-1"></a><span class="co">#' @param C0 Prior covariance matrix for the initial state.</span></span>
+<span id="cb10-10"><a href="gibbs-sampler.html#cb10-10" tabindex="-1"></a><span class="co">#' @param G State transition matrix.</span></span>
+<span id="cb10-11"><a href="gibbs-sampler.html#cb10-11" tabindex="-1"></a><span class="co">#' @param W State evolution covariance matrix.</span></span>
+<span id="cb10-12"><a href="gibbs-sampler.html#cb10-12" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb10-13"><a href="gibbs-sampler.html#cb10-13" tabindex="-1"></a><span class="co">#' @return A matrix of size TT x p containing the sampled state trajectory.</span></span>
+<span id="cb10-14"><a href="gibbs-sampler.html#cb10-14" tabindex="-1"></a><span id="sample_prior_theta">sample_prior_theta</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(TT, m0, C0, G, W){</span>
+<span id="cb10-15"><a href="gibbs-sampler.html#cb10-15" tabindex="-1"></a>    p <span class="ot">&lt;-</span> <span class="fu">length</span>(m0)</span>
+<span id="cb10-16"><a href="gibbs-sampler.html#cb10-16" tabindex="-1"></a></span>
+<span id="cb10-17"><a href="gibbs-sampler.html#cb10-17" tabindex="-1"></a>    theta <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="cn">NA</span>, <span class="at">nrow =</span> TT, <span class="at">ncol =</span> p)</span>
+<span id="cb10-18"><a href="gibbs-sampler.html#cb10-18" tabindex="-1"></a></span>
+<span id="cb10-19"><a href="gibbs-sampler.html#cb10-19" tabindex="-1"></a>    <span class="do">## Sample initial state theta_0</span></span>
+<span id="cb10-20"><a href="gibbs-sampler.html#cb10-20" tabindex="-1"></a>    theta0 <span class="ot">&lt;-</span> <a href="helpers-functions.html#rmvn">rmvn</a>(m0, C0)</span>
+<span id="cb10-21"><a href="gibbs-sampler.html#cb10-21" tabindex="-1"></a>    prev <span class="ot">&lt;-</span> theta0</span>
+<span id="cb10-22"><a href="gibbs-sampler.html#cb10-22" tabindex="-1"></a></span>
+<span id="cb10-23"><a href="gibbs-sampler.html#cb10-23" tabindex="-1"></a>    <span class="do">## Forward simulation</span></span>
+<span id="cb10-24"><a href="gibbs-sampler.html#cb10-24" tabindex="-1"></a>    <span class="cf">for</span>(tt <span class="cf">in</span> <span class="fu">seq_len</span>(TT)){</span>
+<span id="cb10-25"><a href="gibbs-sampler.html#cb10-25" tabindex="-1"></a>        <span class="do">## Mean of theta_t given theta_{t-1}</span></span>
+<span id="cb10-26"><a href="gibbs-sampler.html#cb10-26" tabindex="-1"></a>        mu_t <span class="ot">&lt;-</span> <span class="fu">as.vector</span>(G <span class="sc">%*%</span> prev)</span>
+<span id="cb10-27"><a href="gibbs-sampler.html#cb10-27" tabindex="-1"></a>        </span>
+<span id="cb10-28"><a href="gibbs-sampler.html#cb10-28" tabindex="-1"></a>        <span class="do">## Sample theta_t</span></span>
+<span id="cb10-29"><a href="gibbs-sampler.html#cb10-29" tabindex="-1"></a>        th <span class="ot">&lt;-</span> <a href="helpers-functions.html#rmvn">rmvn</a>(mu_t, W)</span>
+<span id="cb10-30"><a href="gibbs-sampler.html#cb10-30" tabindex="-1"></a>        </span>
+<span id="cb10-31"><a href="gibbs-sampler.html#cb10-31" tabindex="-1"></a>        theta[tt, ] <span class="ot">&lt;-</span> th</span>
+<span id="cb10-32"><a href="gibbs-sampler.html#cb10-32" tabindex="-1"></a>        prev <span class="ot">&lt;-</span> th</span>
+<span id="cb10-33"><a href="gibbs-sampler.html#cb10-33" tabindex="-1"></a>    }</span>
+<span id="cb10-34"><a href="gibbs-sampler.html#cb10-34" tabindex="-1"></a></span>
+<span id="cb10-35"><a href="gibbs-sampler.html#cb10-35" tabindex="-1"></a>    <span class="fu">return</span>(theta)</span>
+<span id="cb10-36"><a href="gibbs-sampler.html#cb10-36" tabindex="-1"></a>}</span>
+<span id="cb10-37"><a href="gibbs-sampler.html#cb10-37" tabindex="-1"></a></span>
+<span id="cb10-38"><a href="gibbs-sampler.html#cb10-38" tabindex="-1"></a></span>
+<span id="cb10-39"><a href="gibbs-sampler.html#cb10-39" tabindex="-1"></a><span class="co">#' Approximate Polya-Gamma sampler.</span></span>
+<span id="cb10-40"><a href="gibbs-sampler.html#cb10-40" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb10-41"><a href="gibbs-sampler.html#cb10-41" tabindex="-1"></a><span class="co">#' If BayesLogit is installed, this uses BayesLogit::rpg().</span></span>
+<span id="cb10-42"><a href="gibbs-sampler.html#cb10-42" tabindex="-1"></a><span class="co">#' Otherwise, it uses a truncated infinite-sum approximation.</span></span>
+<span id="cb10-43"><a href="gibbs-sampler.html#cb10-43" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb10-44"><a href="gibbs-sampler.html#cb10-44" tabindex="-1"></a><span class="co">#' @param n Number of samples.</span></span>
+<span id="cb10-45"><a href="gibbs-sampler.html#cb10-45" tabindex="-1"></a><span class="co">#' @param h Shape parameter.</span></span>
+<span id="cb10-46"><a href="gibbs-sampler.html#cb10-46" tabindex="-1"></a><span class="co">#' @param z Location parameter.</span></span>
+<span id="cb10-47"><a href="gibbs-sampler.html#cb10-47" tabindex="-1"></a><span class="co">#' @param trunc Truncation level for approximation. Defaults to 80.</span></span>
+<span id="cb10-48"><a href="gibbs-sampler.html#cb10-48" tabindex="-1"></a><span id="rpg">rpg</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(n, h, z, <span class="at">trunc =</span> <span class="dv">80</span>){</span>
+<span id="cb10-49"><a href="gibbs-sampler.html#cb10-49" tabindex="-1"></a>    h <span class="ot">&lt;-</span> <span class="fu">rep</span>(h, <span class="at">length.out =</span> n)</span>
+<span id="cb10-50"><a href="gibbs-sampler.html#cb10-50" tabindex="-1"></a>    z <span class="ot">&lt;-</span> <span class="fu">rep</span>(z, <span class="at">length.out =</span> n)</span>
+<span id="cb10-51"><a href="gibbs-sampler.html#cb10-51" tabindex="-1"></a></span>
+<span id="cb10-52"><a href="gibbs-sampler.html#cb10-52" tabindex="-1"></a>    <span class="cf">if</span>(<span class="fu">requireNamespace</span>(<span class="st">"BayesLogit"</span>, <span class="at">quietly =</span> <span class="cn">TRUE</span>)){</span>
+<span id="cb10-53"><a href="gibbs-sampler.html#cb10-53" tabindex="-1"></a>        <span class="fu">return</span>(<span class="fu">as.numeric</span>(BayesLogit<span class="sc">::</span><a href="gibbs-sampler.html#rpg">rpg</a>(n, h, z)))</span>
+<span id="cb10-54"><a href="gibbs-sampler.html#cb10-54" tabindex="-1"></a>    }</span>
+<span id="cb10-55"><a href="gibbs-sampler.html#cb10-55" tabindex="-1"></a></span>
+<span id="cb10-56"><a href="gibbs-sampler.html#cb10-56" tabindex="-1"></a>    out <span class="ot">&lt;-</span> <span class="fu">numeric</span>(n)</span>
+<span id="cb10-57"><a href="gibbs-sampler.html#cb10-57" tabindex="-1"></a>    m <span class="ot">&lt;-</span> <span class="fu">seq_len</span>(trunc)</span>
+<span id="cb10-58"><a href="gibbs-sampler.html#cb10-58" tabindex="-1"></a></span>
+<span id="cb10-59"><a href="gibbs-sampler.html#cb10-59" tabindex="-1"></a>    <span class="cf">for</span>(i <span class="cf">in</span> <span class="fu">seq_len</span>(n)){</span>
+<span id="cb10-60"><a href="gibbs-sampler.html#cb10-60" tabindex="-1"></a>        denom <span class="ot">&lt;-</span> (m <span class="sc">-</span> <span class="fl">0.5</span>)<span class="sc">^</span><span class="dv">2</span> <span class="sc">+</span> z[i]<span class="sc">^</span><span class="dv">2</span> <span class="sc">/</span> (<span class="dv">4</span> <span class="sc">*</span> pi<span class="sc">^</span><span class="dv">2</span>)</span>
+<span id="cb10-61"><a href="gibbs-sampler.html#cb10-61" tabindex="-1"></a>        g <span class="ot">&lt;-</span> <span class="fu">rgamma</span>(trunc, <span class="at">shape =</span> h[i], <span class="at">rate =</span> <span class="dv">1</span>)</span>
+<span id="cb10-62"><a href="gibbs-sampler.html#cb10-62" tabindex="-1"></a>        out[i] <span class="ot">&lt;-</span> <span class="fu">sum</span>(g <span class="sc">/</span> denom) <span class="sc">/</span> (<span class="dv">2</span> <span class="sc">*</span> pi<span class="sc">^</span><span class="dv">2</span>)</span>
+<span id="cb10-63"><a href="gibbs-sampler.html#cb10-63" tabindex="-1"></a>    }</span>
+<span id="cb10-64"><a href="gibbs-sampler.html#cb10-64" tabindex="-1"></a></span>
+<span id="cb10-65"><a href="gibbs-sampler.html#cb10-65" tabindex="-1"></a>    <span class="fu">return</span>(out)</span>
+<span id="cb10-66"><a href="gibbs-sampler.html#cb10-66" tabindex="-1"></a>}</span>
+<span id="cb10-67"><a href="gibbs-sampler.html#cb10-67" tabindex="-1"></a></span>
+<span id="cb10-68"><a href="gibbs-sampler.html#cb10-68" tabindex="-1"></a><span class="co">#' Sample omega_{k,t} once per MCMC sweep.</span></span>
+<span id="cb10-69"><a href="gibbs-sampler.html#cb10-69" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb10-70"><a href="gibbs-sampler.html#cb10-70" tabindex="-1"></a><span class="co">#' @param Y Response matrix (n x TT).</span></span>
+<span id="cb10-71"><a href="gibbs-sampler.html#cb10-71" tabindex="-1"></a><span class="co">#' @param Z Cluster allocation vector.</span></span>
+<span id="cb10-72"><a href="gibbs-sampler.html#cb10-72" tabindex="-1"></a><span class="co">#' @param theta State parameters (K x TT x p).</span></span>
+<span id="cb10-73"><a href="gibbs-sampler.html#cb10-73" tabindex="-1"></a><span class="co">#' @param Fmat Design matrix (TT x p).</span></span>
+<span id="cb10-74"><a href="gibbs-sampler.html#cb10-74" tabindex="-1"></a><span class="co">#' @param r_tune Tuning parameter for Polya-Gamma augmentation.</span></span>
+<span id="cb10-75"><a href="gibbs-sampler.html#cb10-75" tabindex="-1"></a><span class="co">#' @param K Number of clusters.</span></span>
+<span id="cb10-76"><a href="gibbs-sampler.html#cb10-76" tabindex="-1"></a><span id="sample_omega_all">sample_omega_all</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(Y, Z, theta, Fmat, r_tune, K){</span>
+<span id="cb10-77"><a href="gibbs-sampler.html#cb10-77" tabindex="-1"></a>    TT <span class="ot">&lt;-</span> <span class="fu">ncol</span>(Y)</span>
+<span id="cb10-78"><a href="gibbs-sampler.html#cb10-78" tabindex="-1"></a></span>
+<span id="cb10-79"><a href="gibbs-sampler.html#cb10-79" tabindex="-1"></a>    stats <span class="ot">&lt;-</span> <a href="helpers-functions.html#cluster_stats">cluster_stats</a>(Z, Y, K)</span>
+<span id="cb10-80"><a href="gibbs-sampler.html#cb10-80" tabindex="-1"></a>    N <span class="ot">&lt;-</span> stats<span class="sc">$</span>N</span>
+<span id="cb10-81"><a href="gibbs-sampler.html#cb10-81" tabindex="-1"></a>    S <span class="ot">&lt;-</span> stats<span class="sc">$</span>S</span>
+<span id="cb10-82"><a href="gibbs-sampler.html#cb10-82" tabindex="-1"></a></span>
+<span id="cb10-83"><a href="gibbs-sampler.html#cb10-83" tabindex="-1"></a>    omega <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="cn">NA_real_</span>, <span class="at">nrow =</span> K, <span class="at">ncol =</span> TT)</span>
+<span id="cb10-84"><a href="gibbs-sampler.html#cb10-84" tabindex="-1"></a></span>
+<span id="cb10-85"><a href="gibbs-sampler.html#cb10-85" tabindex="-1"></a>    eta <span class="ot">&lt;-</span> <a href="helpers-functions.html#get_eta">get_eta</a>(theta, Fmat)</span>
+<span id="cb10-86"><a href="gibbs-sampler.html#cb10-86" tabindex="-1"></a></span>
+<span id="cb10-87"><a href="gibbs-sampler.html#cb10-87" tabindex="-1"></a>    <span class="cf">for</span>(k <span class="cf">in</span> <span class="fu">seq_len</span>(K)){</span>
+<span id="cb10-88"><a href="gibbs-sampler.html#cb10-88" tabindex="-1"></a>        <span class="cf">if</span>(N[k] <span class="sc">==</span> <span class="dv">0</span>) <span class="cf">next</span></span>
+<span id="cb10-89"><a href="gibbs-sampler.html#cb10-89" tabindex="-1"></a></span>
+<span id="cb10-90"><a href="gibbs-sampler.html#cb10-90" tabindex="-1"></a>        <span class="cf">for</span>(tt <span class="cf">in</span> <span class="fu">seq_len</span>(TT)){</span>
+<span id="cb10-91"><a href="gibbs-sampler.html#cb10-91" tabindex="-1"></a>            psi_kt <span class="ot">&lt;-</span> eta[k, tt] <span class="sc">+</span> <span class="fu">log</span>(N[k]) <span class="sc">-</span> <span class="fu">log</span>(r_tune)</span>
+<span id="cb10-92"><a href="gibbs-sampler.html#cb10-92" tabindex="-1"></a>            B_kt   <span class="ot">&lt;-</span> r_tune <span class="sc">+</span> S[k, tt]</span>
+<span id="cb10-93"><a href="gibbs-sampler.html#cb10-93" tabindex="-1"></a></span>
+<span id="cb10-94"><a href="gibbs-sampler.html#cb10-94" tabindex="-1"></a>            omega[k, tt] <span class="ot">&lt;-</span> <span class="fu">max</span>(<a href="gibbs-sampler.html#rpg">rpg</a>(<span class="dv">1</span>, B_kt, psi_kt), <span class="fl">1e-8</span>)</span>
+<span id="cb10-95"><a href="gibbs-sampler.html#cb10-95" tabindex="-1"></a>        }</span>
+<span id="cb10-96"><a href="gibbs-sampler.html#cb10-96" tabindex="-1"></a>    }</span>
+<span id="cb10-97"><a href="gibbs-sampler.html#cb10-97" tabindex="-1"></a></span>
+<span id="cb10-98"><a href="gibbs-sampler.html#cb10-98" tabindex="-1"></a>    ret <span class="ot">&lt;-</span> <span class="fu">list</span>(<span class="at">omega =</span> omega, <span class="at">stats =</span> stats)</span>
+<span id="cb10-99"><a href="gibbs-sampler.html#cb10-99" tabindex="-1"></a>    <span class="fu">return</span>(ret)</span>
+<span id="cb10-100"><a href="gibbs-sampler.html#cb10-100" tabindex="-1"></a>}</span>
+<span id="cb10-101"><a href="gibbs-sampler.html#cb10-101" tabindex="-1"></a></span>
+<span id="cb10-102"><a href="gibbs-sampler.html#cb10-102" tabindex="-1"></a><span class="co">#' Forward-filtering backward-sampling for one cluster under the</span></span>
+<span id="cb10-103"><a href="gibbs-sampler.html#cb10-103" tabindex="-1"></a><span class="co">#' Polya-Gamma Gaussian representation.</span></span>
+<span id="cb10-104"><a href="gibbs-sampler.html#cb10-104" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb10-105"><a href="gibbs-sampler.html#cb10-105" tabindex="-1"></a><span class="co">#' @param N Cluster size.</span></span>
+<span id="cb10-106"><a href="gibbs-sampler.html#cb10-106" tabindex="-1"></a><span class="co">#' @param S Cluster-specific sufficient statistics.</span></span>
+<span id="cb10-107"><a href="gibbs-sampler.html#cb10-107" tabindex="-1"></a><span class="co">#' @param omega_k Polya-Gamma auxiliary variables for cluster k.</span></span>
+<span id="cb10-108"><a href="gibbs-sampler.html#cb10-108" tabindex="-1"></a><span class="co">#' @param Fmat Design matrix (TT x p).</span></span>
+<span id="cb10-109"><a href="gibbs-sampler.html#cb10-109" tabindex="-1"></a><span class="co">#' @param m0 Prior mean vector.</span></span>
+<span id="cb10-110"><a href="gibbs-sampler.html#cb10-110" tabindex="-1"></a><span class="co">#' @param C0 Prior covariance matrix.</span></span>
+<span id="cb10-111"><a href="gibbs-sampler.html#cb10-111" tabindex="-1"></a><span class="co">#' @param G State transition matrix.</span></span>
+<span id="cb10-112"><a href="gibbs-sampler.html#cb10-112" tabindex="-1"></a><span class="co">#' @param W State evolution covariance.</span></span>
+<span id="cb10-113"><a href="gibbs-sampler.html#cb10-113" tabindex="-1"></a><span class="co">#' @param r_tune Tuning parameter for Polya-Gamma augmentation.</span></span>
+<span id="cb10-114"><a href="gibbs-sampler.html#cb10-114" tabindex="-1"></a><span id="ffbs_one_cluster">ffbs_one_cluster</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(N, S, omega_k, Fmat,</span>
+<span id="cb10-115"><a href="gibbs-sampler.html#cb10-115" tabindex="-1"></a>                             m0, C0, G, W, r_tune){</span>
+<span id="cb10-116"><a href="gibbs-sampler.html#cb10-116" tabindex="-1"></a></span>
+<span id="cb10-117"><a href="gibbs-sampler.html#cb10-117" tabindex="-1"></a>    TT <span class="ot">&lt;-</span> <span class="fu">length</span>(S)</span>
+<span id="cb10-118"><a href="gibbs-sampler.html#cb10-118" tabindex="-1"></a>    p  <span class="ot">&lt;-</span> <span class="fu">length</span>(m0)</span>
+<span id="cb10-119"><a href="gibbs-sampler.html#cb10-119" tabindex="-1"></a></span>
+<span id="cb10-120"><a href="gibbs-sampler.html#cb10-120" tabindex="-1"></a>    <span class="do">## If the cluster is empty, draw from the prior DLM.</span></span>
+<span id="cb10-121"><a href="gibbs-sampler.html#cb10-121" tabindex="-1"></a>    <span class="cf">if</span>(N <span class="sc">==</span> <span class="dv">0</span>){</span>
+<span id="cb10-122"><a href="gibbs-sampler.html#cb10-122" tabindex="-1"></a>        <span class="fu">return</span>(<a href="gibbs-sampler.html#sample_prior_theta">sample_prior_theta</a>(TT, m0, C0, G, W))</span>
+<span id="cb10-123"><a href="gibbs-sampler.html#cb10-123" tabindex="-1"></a>    }</span>
+<span id="cb10-124"><a href="gibbs-sampler.html#cb10-124" tabindex="-1"></a></span>
+<span id="cb10-125"><a href="gibbs-sampler.html#cb10-125" tabindex="-1"></a>    rvec  <span class="ot">&lt;-</span> <span class="fu">rep</span>(r_tune, TT)</span>
+<span id="cb10-126"><a href="gibbs-sampler.html#cb10-126" tabindex="-1"></a>    bar_r <span class="ot">&lt;-</span> <span class="fu">log</span>(rvec) <span class="sc">-</span> <span class="fu">log</span>(N)</span>
+<span id="cb10-127"><a href="gibbs-sampler.html#cb10-127" tabindex="-1"></a>    kappa <span class="ot">&lt;-</span> <span class="fl">0.5</span> <span class="sc">*</span> (S <span class="sc">-</span> rvec)</span>
+<span id="cb10-128"><a href="gibbs-sampler.html#cb10-128" tabindex="-1"></a></span>
+<span id="cb10-129"><a href="gibbs-sampler.html#cb10-129" tabindex="-1"></a>    omega_k <span class="ot">&lt;-</span> <span class="fu">pmax</span>(omega_k, <span class="fl">1e-8</span>)</span>
+<span id="cb10-130"><a href="gibbs-sampler.html#cb10-130" tabindex="-1"></a></span>
+<span id="cb10-131"><a href="gibbs-sampler.html#cb10-131" tabindex="-1"></a>    <span class="do">## Pseudo observation:</span></span>
+<span id="cb10-132"><a href="gibbs-sampler.html#cb10-132" tabindex="-1"></a>    <span class="do">## y*_{k,t} = F' theta_{k,t} + epsilon, epsilon ~ N(0, 1 / omega)</span></span>
+<span id="cb10-133"><a href="gibbs-sampler.html#cb10-133" tabindex="-1"></a>    ystar <span class="ot">&lt;-</span> bar_r <span class="sc">+</span> kappa <span class="sc">/</span> omega_k</span>
+<span id="cb10-134"><a href="gibbs-sampler.html#cb10-134" tabindex="-1"></a>    V     <span class="ot">&lt;-</span> <span class="dv">1</span> <span class="sc">/</span> omega_k</span>
+<span id="cb10-135"><a href="gibbs-sampler.html#cb10-135" tabindex="-1"></a></span>
+<span id="cb10-136"><a href="gibbs-sampler.html#cb10-136" tabindex="-1"></a>    a_pred <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="cn">NA</span>, <span class="at">nrow =</span> TT, <span class="at">ncol =</span> p)</span>
+<span id="cb10-137"><a href="gibbs-sampler.html#cb10-137" tabindex="-1"></a>    m_filt <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="cn">NA</span>, <span class="at">nrow =</span> TT, <span class="at">ncol =</span> p)</span>
+<span id="cb10-138"><a href="gibbs-sampler.html#cb10-138" tabindex="-1"></a></span>
+<span id="cb10-139"><a href="gibbs-sampler.html#cb10-139" tabindex="-1"></a>    R_pred <span class="ot">&lt;-</span> <span class="fu">array</span>(<span class="cn">NA</span>, <span class="at">dim =</span> <span class="fu">c</span>(p, p, TT))</span>
+<span id="cb10-140"><a href="gibbs-sampler.html#cb10-140" tabindex="-1"></a>    C_filt <span class="ot">&lt;-</span> <span class="fu">array</span>(<span class="cn">NA</span>, <span class="at">dim =</span> <span class="fu">c</span>(p, p, TT))</span>
+<span id="cb10-141"><a href="gibbs-sampler.html#cb10-141" tabindex="-1"></a></span>
+<span id="cb10-142"><a href="gibbs-sampler.html#cb10-142" tabindex="-1"></a>    m_prev <span class="ot">&lt;-</span> m0</span>
+<span id="cb10-143"><a href="gibbs-sampler.html#cb10-143" tabindex="-1"></a>    C_prev <span class="ot">&lt;-</span> C0</span>
+<span id="cb10-144"><a href="gibbs-sampler.html#cb10-144" tabindex="-1"></a></span>
+<span id="cb10-145"><a href="gibbs-sampler.html#cb10-145" tabindex="-1"></a>    <span class="do">## Forward filtering</span></span>
+<span id="cb10-146"><a href="gibbs-sampler.html#cb10-146" tabindex="-1"></a>    <span class="cf">for</span>(tt <span class="cf">in</span> <span class="fu">seq_len</span>(TT)){</span>
+<span id="cb10-147"><a href="gibbs-sampler.html#cb10-147" tabindex="-1"></a>        Ft <span class="ot">&lt;-</span> <span class="fu">matrix</span>(Fmat[tt, ], <span class="at">ncol =</span> <span class="dv">1</span>)</span>
+<span id="cb10-148"><a href="gibbs-sampler.html#cb10-148" tabindex="-1"></a></span>
+<span id="cb10-149"><a href="gibbs-sampler.html#cb10-149" tabindex="-1"></a>        a <span class="ot">&lt;-</span> <span class="fu">as.vector</span>(G <span class="sc">%*%</span> m_prev)</span>
+<span id="cb10-150"><a href="gibbs-sampler.html#cb10-150" tabindex="-1"></a>        R <span class="ot">&lt;-</span> G <span class="sc">%*%</span> C_prev <span class="sc">%*%</span> <span class="fu">t</span>(G) <span class="sc">+</span> W</span>
+<span id="cb10-151"><a href="gibbs-sampler.html#cb10-151" tabindex="-1"></a>        R <span class="ot">&lt;-</span> (R <span class="sc">+</span> <span class="fu">t</span>(R)) <span class="sc">/</span> <span class="dv">2</span></span>
+<span id="cb10-152"><a href="gibbs-sampler.html#cb10-152" tabindex="-1"></a></span>
+<span id="cb10-153"><a href="gibbs-sampler.html#cb10-153" tabindex="-1"></a>        f <span class="ot">&lt;-</span> <span class="fu">as.numeric</span>(<span class="fu">t</span>(Ft) <span class="sc">%*%</span> a)</span>
+<span id="cb10-154"><a href="gibbs-sampler.html#cb10-154" tabindex="-1"></a>        Q <span class="ot">&lt;-</span> <span class="fu">as.numeric</span>(<span class="fu">t</span>(Ft) <span class="sc">%*%</span> R <span class="sc">%*%</span> Ft <span class="sc">+</span> V[tt])</span>
+<span id="cb10-155"><a href="gibbs-sampler.html#cb10-155" tabindex="-1"></a></span>
+<span id="cb10-156"><a href="gibbs-sampler.html#cb10-156" tabindex="-1"></a>        K_gain <span class="ot">&lt;-</span> <span class="fu">as.vector</span>(R <span class="sc">%*%</span> Ft) <span class="sc">/</span> Q</span>
+<span id="cb10-157"><a href="gibbs-sampler.html#cb10-157" tabindex="-1"></a></span>
+<span id="cb10-158"><a href="gibbs-sampler.html#cb10-158" tabindex="-1"></a>        m <span class="ot">&lt;-</span> a <span class="sc">+</span> K_gain <span class="sc">*</span> (ystar[tt] <span class="sc">-</span> f)</span>
+<span id="cb10-159"><a href="gibbs-sampler.html#cb10-159" tabindex="-1"></a>        C <span class="ot">&lt;-</span> R <span class="sc">-</span> (R <span class="sc">%*%</span> Ft <span class="sc">%*%</span> <span class="fu">t</span>(Ft) <span class="sc">%*%</span> R) <span class="sc">/</span> Q</span>
+<span id="cb10-160"><a href="gibbs-sampler.html#cb10-160" tabindex="-1"></a>        C <span class="ot">&lt;-</span> (C <span class="sc">+</span> <span class="fu">t</span>(C)) <span class="sc">/</span> <span class="dv">2</span></span>
+<span id="cb10-161"><a href="gibbs-sampler.html#cb10-161" tabindex="-1"></a></span>
+<span id="cb10-162"><a href="gibbs-sampler.html#cb10-162" tabindex="-1"></a>        a_pred[tt, ] <span class="ot">&lt;-</span> a</span>
+<span id="cb10-163"><a href="gibbs-sampler.html#cb10-163" tabindex="-1"></a>        R_pred[, , tt] <span class="ot">&lt;-</span> R</span>
+<span id="cb10-164"><a href="gibbs-sampler.html#cb10-164" tabindex="-1"></a></span>
+<span id="cb10-165"><a href="gibbs-sampler.html#cb10-165" tabindex="-1"></a>        m_filt[tt, ] <span class="ot">&lt;-</span> m</span>
+<span id="cb10-166"><a href="gibbs-sampler.html#cb10-166" tabindex="-1"></a>        C_filt[, , tt] <span class="ot">&lt;-</span> C</span>
+<span id="cb10-167"><a href="gibbs-sampler.html#cb10-167" tabindex="-1"></a></span>
+<span id="cb10-168"><a href="gibbs-sampler.html#cb10-168" tabindex="-1"></a>        m_prev <span class="ot">&lt;-</span> m</span>
+<span id="cb10-169"><a href="gibbs-sampler.html#cb10-169" tabindex="-1"></a>        C_prev <span class="ot">&lt;-</span> C</span>
+<span id="cb10-170"><a href="gibbs-sampler.html#cb10-170" tabindex="-1"></a>    }</span>
+<span id="cb10-171"><a href="gibbs-sampler.html#cb10-171" tabindex="-1"></a></span>
+<span id="cb10-172"><a href="gibbs-sampler.html#cb10-172" tabindex="-1"></a>    <span class="do">## Backward sampling</span></span>
+<span id="cb10-173"><a href="gibbs-sampler.html#cb10-173" tabindex="-1"></a>    theta <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="cn">NA</span>, <span class="at">nrow =</span> TT, <span class="at">ncol =</span> p)</span>
+<span id="cb10-174"><a href="gibbs-sampler.html#cb10-174" tabindex="-1"></a></span>
+<span id="cb10-175"><a href="gibbs-sampler.html#cb10-175" tabindex="-1"></a>    theta[TT, ] <span class="ot">&lt;-</span> <a href="helpers-functions.html#rmvn">rmvn</a>(m_filt[TT, ], C_filt[, , TT])</span>
+<span id="cb10-176"><a href="gibbs-sampler.html#cb10-176" tabindex="-1"></a></span>
+<span id="cb10-177"><a href="gibbs-sampler.html#cb10-177" tabindex="-1"></a>    <span class="cf">if</span>(TT <span class="sc">&gt;</span> <span class="dv">1</span>){</span>
+<span id="cb10-178"><a href="gibbs-sampler.html#cb10-178" tabindex="-1"></a>        <span class="cf">for</span>(tt <span class="cf">in</span> <span class="fu">seq</span>(TT <span class="sc">-</span> <span class="dv">1</span>, <span class="dv">1</span>)){</span>
+<span id="cb10-179"><a href="gibbs-sampler.html#cb10-179" tabindex="-1"></a>            B_smooth <span class="ot">&lt;-</span></span>
+<span id="cb10-180"><a href="gibbs-sampler.html#cb10-180" tabindex="-1"></a>                C_filt[, , tt] <span class="sc">%*%</span> <span class="fu">t</span>(G) <span class="sc">%*%</span> <span class="fu">solve</span>(R_pred[, , tt <span class="sc">+</span> <span class="dv">1</span>])</span>
+<span id="cb10-181"><a href="gibbs-sampler.html#cb10-181" tabindex="-1"></a></span>
+<span id="cb10-182"><a href="gibbs-sampler.html#cb10-182" tabindex="-1"></a>            h <span class="ot">&lt;-</span> m_filt[tt, ] <span class="sc">+</span></span>
+<span id="cb10-183"><a href="gibbs-sampler.html#cb10-183" tabindex="-1"></a>                B_smooth <span class="sc">%*%</span> (theta[tt <span class="sc">+</span> <span class="dv">1</span>, ] <span class="sc">-</span> a_pred[tt <span class="sc">+</span> <span class="dv">1</span>, ])</span>
+<span id="cb10-184"><a href="gibbs-sampler.html#cb10-184" tabindex="-1"></a></span>
+<span id="cb10-185"><a href="gibbs-sampler.html#cb10-185" tabindex="-1"></a>            H <span class="ot">&lt;-</span> C_filt[, , tt] <span class="sc">-</span></span>
+<span id="cb10-186"><a href="gibbs-sampler.html#cb10-186" tabindex="-1"></a>                B_smooth <span class="sc">%*%</span> R_pred[, , tt <span class="sc">+</span> <span class="dv">1</span>] <span class="sc">%*%</span> <span class="fu">t</span>(B_smooth)</span>
+<span id="cb10-187"><a href="gibbs-sampler.html#cb10-187" tabindex="-1"></a></span>
+<span id="cb10-188"><a href="gibbs-sampler.html#cb10-188" tabindex="-1"></a>            H <span class="ot">&lt;-</span> (H <span class="sc">+</span> <span class="fu">t</span>(H)) <span class="sc">/</span> <span class="dv">2</span></span>
+<span id="cb10-189"><a href="gibbs-sampler.html#cb10-189" tabindex="-1"></a></span>
+<span id="cb10-190"><a href="gibbs-sampler.html#cb10-190" tabindex="-1"></a>            theta[tt, ] <span class="ot">&lt;-</span> <a href="helpers-functions.html#rmvn">rmvn</a>(<span class="fu">as.vector</span>(h), H)</span>
+<span id="cb10-191"><a href="gibbs-sampler.html#cb10-191" tabindex="-1"></a>        }</span>
+<span id="cb10-192"><a href="gibbs-sampler.html#cb10-192" tabindex="-1"></a>    }</span>
+<span id="cb10-193"><a href="gibbs-sampler.html#cb10-193" tabindex="-1"></a></span>
+<span id="cb10-194"><a href="gibbs-sampler.html#cb10-194" tabindex="-1"></a>    <span class="fu">return</span>(theta)</span>
+<span id="cb10-195"><a href="gibbs-sampler.html#cb10-195" tabindex="-1"></a>}</span>
+<span id="cb10-196"><a href="gibbs-sampler.html#cb10-196" tabindex="-1"></a></span>
+<span id="cb10-197"><a href="gibbs-sampler.html#cb10-197" tabindex="-1"></a><span class="co">#' Sample all state trajectories using FFBS.</span></span>
+<span id="cb10-198"><a href="gibbs-sampler.html#cb10-198" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb10-199"><a href="gibbs-sampler.html#cb10-199" tabindex="-1"></a><span class="co">#' @param Y Response matrix (n x TT).</span></span>
+<span id="cb10-200"><a href="gibbs-sampler.html#cb10-200" tabindex="-1"></a><span class="co">#' @param Z Cluster allocation vector.</span></span>
+<span id="cb10-201"><a href="gibbs-sampler.html#cb10-201" tabindex="-1"></a><span class="co">#' @param theta Current state parameters (K x TT x p).</span></span>
+<span id="cb10-202"><a href="gibbs-sampler.html#cb10-202" tabindex="-1"></a><span class="co">#' @param Fmat Design matrix (TT x p).</span></span>
+<span id="cb10-203"><a href="gibbs-sampler.html#cb10-203" tabindex="-1"></a><span class="co">#' @param m0 Prior mean vector.</span></span>
+<span id="cb10-204"><a href="gibbs-sampler.html#cb10-204" tabindex="-1"></a><span class="co">#' @param C0 Prior covariance matrix.</span></span>
+<span id="cb10-205"><a href="gibbs-sampler.html#cb10-205" tabindex="-1"></a><span class="co">#' @param G State transition matrix.</span></span>
+<span id="cb10-206"><a href="gibbs-sampler.html#cb10-206" tabindex="-1"></a><span class="co">#' @param W State evolution covariance.</span></span>
+<span id="cb10-207"><a href="gibbs-sampler.html#cb10-207" tabindex="-1"></a><span class="co">#' @param r_tune Tuning parameter for Polya-Gamma augmentation.</span></span>
+<span id="cb10-208"><a href="gibbs-sampler.html#cb10-208" tabindex="-1"></a><span class="co">#' @param K Number of clusters.</span></span>
+<span id="cb10-209"><a href="gibbs-sampler.html#cb10-209" tabindex="-1"></a><span id="sample_theta_all">sample_theta_all</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(Y, Z, theta, Fmat,</span>
+<span id="cb10-210"><a href="gibbs-sampler.html#cb10-210" tabindex="-1"></a>                             m0, C0, G, W,</span>
+<span id="cb10-211"><a href="gibbs-sampler.html#cb10-211" tabindex="-1"></a>                             r_tune, K){</span>
+<span id="cb10-212"><a href="gibbs-sampler.html#cb10-212" tabindex="-1"></a></span>
+<span id="cb10-213"><a href="gibbs-sampler.html#cb10-213" tabindex="-1"></a>    out <span class="ot">&lt;-</span> <a href="gibbs-sampler.html#sample_omega_all">sample_omega_all</a>(Y, Z, theta, Fmat, r_tune, K)</span>
+<span id="cb10-214"><a href="gibbs-sampler.html#cb10-214" tabindex="-1"></a></span>
+<span id="cb10-215"><a href="gibbs-sampler.html#cb10-215" tabindex="-1"></a>    omega <span class="ot">&lt;-</span> out<span class="sc">$</span>omega</span>
+<span id="cb10-216"><a href="gibbs-sampler.html#cb10-216" tabindex="-1"></a>    N <span class="ot">&lt;-</span> out<span class="sc">$</span>stats<span class="sc">$</span>N</span>
+<span id="cb10-217"><a href="gibbs-sampler.html#cb10-217" tabindex="-1"></a>    S <span class="ot">&lt;-</span> out<span class="sc">$</span>stats<span class="sc">$</span>S</span>
+<span id="cb10-218"><a href="gibbs-sampler.html#cb10-218" tabindex="-1"></a></span>
+<span id="cb10-219"><a href="gibbs-sampler.html#cb10-219" tabindex="-1"></a>    TT <span class="ot">&lt;-</span> <span class="fu">ncol</span>(Y)</span>
+<span id="cb10-220"><a href="gibbs-sampler.html#cb10-220" tabindex="-1"></a>    p  <span class="ot">&lt;-</span> <span class="fu">length</span>(m0)</span>
+<span id="cb10-221"><a href="gibbs-sampler.html#cb10-221" tabindex="-1"></a></span>
+<span id="cb10-222"><a href="gibbs-sampler.html#cb10-222" tabindex="-1"></a>    theta_new <span class="ot">&lt;-</span> <span class="fu">array</span>(<span class="cn">NA</span>, <span class="at">dim =</span> <span class="fu">c</span>(K, TT, p))</span>
+<span id="cb10-223"><a href="gibbs-sampler.html#cb10-223" tabindex="-1"></a></span>
+<span id="cb10-224"><a href="gibbs-sampler.html#cb10-224" tabindex="-1"></a>    <span class="cf">for</span>(k <span class="cf">in</span> <span class="fu">seq_len</span>(K)){</span>
+<span id="cb10-225"><a href="gibbs-sampler.html#cb10-225" tabindex="-1"></a>        theta_new[k, , ] <span class="ot">&lt;-</span> <a href="gibbs-sampler.html#ffbs_one_cluster">ffbs_one_cluster</a>(</span>
+<span id="cb10-226"><a href="gibbs-sampler.html#cb10-226" tabindex="-1"></a>            <span class="at">N =</span> N[k],</span>
+<span id="cb10-227"><a href="gibbs-sampler.html#cb10-227" tabindex="-1"></a>            <span class="at">S =</span> S[k, ],</span>
+<span id="cb10-228"><a href="gibbs-sampler.html#cb10-228" tabindex="-1"></a>            <span class="at">omega_k =</span> omega[k, ],</span>
+<span id="cb10-229"><a href="gibbs-sampler.html#cb10-229" tabindex="-1"></a>            <span class="at">Fmat =</span> Fmat,</span>
+<span id="cb10-230"><a href="gibbs-sampler.html#cb10-230" tabindex="-1"></a>            <span class="at">m0 =</span> m0,</span>
+<span id="cb10-231"><a href="gibbs-sampler.html#cb10-231" tabindex="-1"></a>            <span class="at">C0 =</span> C0,</span>
+<span id="cb10-232"><a href="gibbs-sampler.html#cb10-232" tabindex="-1"></a>            <span class="at">G =</span> G,</span>
+<span id="cb10-233"><a href="gibbs-sampler.html#cb10-233" tabindex="-1"></a>            <span class="at">W =</span> W,</span>
+<span id="cb10-234"><a href="gibbs-sampler.html#cb10-234" tabindex="-1"></a>            <span class="at">r_tune =</span> r_tune</span>
+<span id="cb10-235"><a href="gibbs-sampler.html#cb10-235" tabindex="-1"></a>        )</span>
+<span id="cb10-236"><a href="gibbs-sampler.html#cb10-236" tabindex="-1"></a>    }</span>
+<span id="cb10-237"><a href="gibbs-sampler.html#cb10-237" tabindex="-1"></a></span>
+<span id="cb10-238"><a href="gibbs-sampler.html#cb10-238" tabindex="-1"></a>    <span class="fu">return</span>(theta_new)</span>
+<span id="cb10-239"><a href="gibbs-sampler.html#cb10-239" tabindex="-1"></a>}</span>
+<span id="cb10-240"><a href="gibbs-sampler.html#cb10-240" tabindex="-1"></a></span>
+<span id="cb10-241"><a href="gibbs-sampler.html#cb10-241" tabindex="-1"></a><span class="co">#' Sample cluster allocations Z_i conditional on theta.</span></span>
+<span id="cb10-242"><a href="gibbs-sampler.html#cb10-242" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb10-243"><a href="gibbs-sampler.html#cb10-243" tabindex="-1"></a><span class="co">#' @param Y Response matrix (n x TT).</span></span>
+<span id="cb10-244"><a href="gibbs-sampler.html#cb10-244" tabindex="-1"></a><span class="co">#' @param theta State parameters (K x TT x p).</span></span>
+<span id="cb10-245"><a href="gibbs-sampler.html#cb10-245" tabindex="-1"></a><span class="co">#' @param Fmat Design matrix (TT x p).</span></span>
+<span id="cb10-246"><a href="gibbs-sampler.html#cb10-246" tabindex="-1"></a><span class="co">#' @param pi_vec Cluster probability vector.</span></span>
+<span id="cb10-247"><a href="gibbs-sampler.html#cb10-247" tabindex="-1"></a><span id="update_Z_given_theta">update_Z_given_theta</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(Y, theta, Fmat, pi_vec){</span>
+<span id="cb10-248"><a href="gibbs-sampler.html#cb10-248" tabindex="-1"></a>    n  <span class="ot">&lt;-</span> <span class="fu">nrow</span>(Y)</span>
+<span id="cb10-249"><a href="gibbs-sampler.html#cb10-249" tabindex="-1"></a>    TT <span class="ot">&lt;-</span> <span class="fu">ncol</span>(Y)</span>
+<span id="cb10-250"><a href="gibbs-sampler.html#cb10-250" tabindex="-1"></a>    K  <span class="ot">&lt;-</span> <span class="fu">dim</span>(theta)[<span class="dv">1</span>]</span>
+<span id="cb10-251"><a href="gibbs-sampler.html#cb10-251" tabindex="-1"></a></span>
+<span id="cb10-252"><a href="gibbs-sampler.html#cb10-252" tabindex="-1"></a>    eta <span class="ot">&lt;-</span> <a href="helpers-functions.html#get_eta">get_eta</a>(theta, Fmat)</span>
+<span id="cb10-253"><a href="gibbs-sampler.html#cb10-253" tabindex="-1"></a>    lambda <span class="ot">&lt;-</span> <span class="fu">exp</span>(eta)</span>
+<span id="cb10-254"><a href="gibbs-sampler.html#cb10-254" tabindex="-1"></a></span>
+<span id="cb10-255"><a href="gibbs-sampler.html#cb10-255" tabindex="-1"></a>    Z_new <span class="ot">&lt;-</span> <span class="fu">integer</span>(n)</span>
+<span id="cb10-256"><a href="gibbs-sampler.html#cb10-256" tabindex="-1"></a></span>
+<span id="cb10-257"><a href="gibbs-sampler.html#cb10-257" tabindex="-1"></a>    <span class="cf">for</span>(i <span class="cf">in</span> <span class="fu">seq_len</span>(n)){</span>
+<span id="cb10-258"><a href="gibbs-sampler.html#cb10-258" tabindex="-1"></a>        logp <span class="ot">&lt;-</span> <span class="fu">numeric</span>(K)</span>
+<span id="cb10-259"><a href="gibbs-sampler.html#cb10-259" tabindex="-1"></a></span>
+<span id="cb10-260"><a href="gibbs-sampler.html#cb10-260" tabindex="-1"></a>        <span class="cf">for</span>(k <span class="cf">in</span> <span class="fu">seq_len</span>(K)){</span>
+<span id="cb10-261"><a href="gibbs-sampler.html#cb10-261" tabindex="-1"></a>            logp[k] <span class="ot">&lt;-</span></span>
+<span id="cb10-262"><a href="gibbs-sampler.html#cb10-262" tabindex="-1"></a>                <span class="fu">log</span>(pi_vec[k] <span class="sc">+</span> <span class="fl">1e-16</span>) <span class="sc">+</span></span>
+<span id="cb10-263"><a href="gibbs-sampler.html#cb10-263" tabindex="-1"></a>                <span class="fu">sum</span>(Y[i, ] <span class="sc">*</span> eta[k, ] <span class="sc">-</span> lambda[k, ])</span>
+<span id="cb10-264"><a href="gibbs-sampler.html#cb10-264" tabindex="-1"></a>        }</span>
+<span id="cb10-265"><a href="gibbs-sampler.html#cb10-265" tabindex="-1"></a></span>
+<span id="cb10-266"><a href="gibbs-sampler.html#cb10-266" tabindex="-1"></a>        prob <span class="ot">&lt;-</span> <span class="fu">exp</span>(logp <span class="sc">-</span> <a href="helpers-functions.html#logsumexp">logsumexp</a>(logp))</span>
+<span id="cb10-267"><a href="gibbs-sampler.html#cb10-267" tabindex="-1"></a>        Z_new[i] <span class="ot">&lt;-</span> <span class="fu">sample</span>(<span class="fu">seq_len</span>(K), <span class="at">size =</span> <span class="dv">1</span>, <span class="at">prob =</span> prob)</span>
+<span id="cb10-268"><a href="gibbs-sampler.html#cb10-268" tabindex="-1"></a>    }</span>
+<span id="cb10-269"><a href="gibbs-sampler.html#cb10-269" tabindex="-1"></a></span>
+<span id="cb10-270"><a href="gibbs-sampler.html#cb10-270" tabindex="-1"></a>    <span class="fu">return</span>(Z_new)</span>
+<span id="cb10-271"><a href="gibbs-sampler.html#cb10-271" tabindex="-1"></a>}</span>
+<span id="cb10-272"><a href="gibbs-sampler.html#cb10-272" tabindex="-1"></a></span>
+<span id="cb10-273"><a href="gibbs-sampler.html#cb10-273" tabindex="-1"></a><span class="co">#' Label-switching correction via ordering by average fitted intensity.</span></span>
+<span id="cb10-274"><a href="gibbs-sampler.html#cb10-274" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb10-275"><a href="gibbs-sampler.html#cb10-275" tabindex="-1"></a><span class="co">#' Simple identifiability constraint: order clusters by average</span></span>
+<span id="cb10-276"><a href="gibbs-sampler.html#cb10-276" tabindex="-1"></a><span class="co">#' fitted intensity. This is suitable when true clusters are generated</span></span>
+<span id="cb10-277"><a href="gibbs-sampler.html#cb10-277" tabindex="-1"></a><span class="co">#' with increasing average intensity.</span></span>
+<span id="cb10-278"><a href="gibbs-sampler.html#cb10-278" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb10-279"><a href="gibbs-sampler.html#cb10-279" tabindex="-1"></a><span class="co">#' @param theta State parameters (K x TT x p).</span></span>
+<span id="cb10-280"><a href="gibbs-sampler.html#cb10-280" tabindex="-1"></a><span class="co">#' @param pi_vec Cluster probability vector.</span></span>
+<span id="cb10-281"><a href="gibbs-sampler.html#cb10-281" tabindex="-1"></a><span class="co">#' @param Z Cluster allocation vector.</span></span>
+<span id="cb10-282"><a href="gibbs-sampler.html#cb10-282" tabindex="-1"></a><span class="co">#' @param Fmat Design matrix (TT x p).</span></span>
+<span id="cb10-283"><a href="gibbs-sampler.html#cb10-283" tabindex="-1"></a><span id="relabel_by_mean_intensity">relabel_by_mean_intensity</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(theta, pi_vec, Z, Fmat){</span>
+<span id="cb10-284"><a href="gibbs-sampler.html#cb10-284" tabindex="-1"></a>    K <span class="ot">&lt;-</span> <span class="fu">dim</span>(theta)[<span class="dv">1</span>]</span>
+<span id="cb10-285"><a href="gibbs-sampler.html#cb10-285" tabindex="-1"></a></span>
+<span id="cb10-286"><a href="gibbs-sampler.html#cb10-286" tabindex="-1"></a>    lambda <span class="ot">&lt;-</span> <a href="helpers-functions.html#get_lambda">get_lambda</a>(theta, Fmat)</span>
+<span id="cb10-287"><a href="gibbs-sampler.html#cb10-287" tabindex="-1"></a>    mean_lambda <span class="ot">&lt;-</span> <span class="fu">rowMeans</span>(lambda)</span>
+<span id="cb10-288"><a href="gibbs-sampler.html#cb10-288" tabindex="-1"></a></span>
+<span id="cb10-289"><a href="gibbs-sampler.html#cb10-289" tabindex="-1"></a>    old_order <span class="ot">&lt;-</span> <span class="fu">order</span>(mean_lambda)</span>
+<span id="cb10-290"><a href="gibbs-sampler.html#cb10-290" tabindex="-1"></a></span>
+<span id="cb10-291"><a href="gibbs-sampler.html#cb10-291" tabindex="-1"></a>    theta_new <span class="ot">&lt;-</span> theta[old_order, , , drop <span class="ot">=</span> <span class="cn">FALSE</span>]</span>
+<span id="cb10-292"><a href="gibbs-sampler.html#cb10-292" tabindex="-1"></a>    pi_new <span class="ot">&lt;-</span> pi_vec[old_order]</span>
+<span id="cb10-293"><a href="gibbs-sampler.html#cb10-293" tabindex="-1"></a></span>
+<span id="cb10-294"><a href="gibbs-sampler.html#cb10-294" tabindex="-1"></a>    old_to_new <span class="ot">&lt;-</span> <span class="fu">integer</span>(K)</span>
+<span id="cb10-295"><a href="gibbs-sampler.html#cb10-295" tabindex="-1"></a>    old_to_new[old_order] <span class="ot">&lt;-</span> <span class="fu">seq_len</span>(K)</span>
+<span id="cb10-296"><a href="gibbs-sampler.html#cb10-296" tabindex="-1"></a></span>
+<span id="cb10-297"><a href="gibbs-sampler.html#cb10-297" tabindex="-1"></a>    Z_new <span class="ot">&lt;-</span> old_to_new[Z]</span>
+<span id="cb10-298"><a href="gibbs-sampler.html#cb10-298" tabindex="-1"></a></span>
+<span id="cb10-299"><a href="gibbs-sampler.html#cb10-299" tabindex="-1"></a>    ret <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb10-300"><a href="gibbs-sampler.html#cb10-300" tabindex="-1"></a>        <span class="at">theta =</span> theta_new,</span>
+<span id="cb10-301"><a href="gibbs-sampler.html#cb10-301" tabindex="-1"></a>        <span class="at">pi =</span> pi_new,</span>
+<span id="cb10-302"><a href="gibbs-sampler.html#cb10-302" tabindex="-1"></a>        <span class="at">Z =</span> Z_new,</span>
+<span id="cb10-303"><a href="gibbs-sampler.html#cb10-303" tabindex="-1"></a>        <span class="at">order =</span> old_order</span>
+<span id="cb10-304"><a href="gibbs-sampler.html#cb10-304" tabindex="-1"></a>    )</span>
+<span id="cb10-305"><a href="gibbs-sampler.html#cb10-305" tabindex="-1"></a>    <span class="fu">return</span>(ret)</span>
+<span id="cb10-306"><a href="gibbs-sampler.html#cb10-306" tabindex="-1"></a>}</span></code></pre></div>
+<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="gibbs-sampler.html#cb11-1" tabindex="-1"></a><span class="co">#' Run the full Gibbs sampler for Bayesian dynamic network clustering.</span></span>
+<span id="cb11-2"><a href="gibbs-sampler.html#cb11-2" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb11-3"><a href="gibbs-sampler.html#cb11-3" tabindex="-1"></a><span class="co">#' This function runs the complete MCMC algorithm for fitting Bayesian</span></span>
+<span id="cb11-4"><a href="gibbs-sampler.html#cb11-4" tabindex="-1"></a><span class="co">#' dynamic network models with Polya-Gamma augmentation and forward-filtering</span></span>
+<span id="cb11-5"><a href="gibbs-sampler.html#cb11-5" tabindex="-1"></a><span class="co">#' backward-sampling (FFBS).</span></span>
+<span id="cb11-6"><a href="gibbs-sampler.html#cb11-6" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb11-7"><a href="gibbs-sampler.html#cb11-7" tabindex="-1"></a><span class="co">#' @param Y Response matrix (n x TT) of count data.</span></span>
+<span id="cb11-8"><a href="gibbs-sampler.html#cb11-8" tabindex="-1"></a><span class="co">#' @param Fmat Design matrix (TT x p) for the state-space model.</span></span>
+<span id="cb11-9"><a href="gibbs-sampler.html#cb11-9" tabindex="-1"></a><span class="co">#' @param K Number of clusters.</span></span>
+<span id="cb11-10"><a href="gibbs-sampler.html#cb11-10" tabindex="-1"></a><span class="co">#' @param n_iter Total number of MCMC iterations.</span></span>
+<span id="cb11-11"><a href="gibbs-sampler.html#cb11-11" tabindex="-1"></a><span class="co">#' @param burn Number of burn-in iterations to discard.</span></span>
+<span id="cb11-12"><a href="gibbs-sampler.html#cb11-12" tabindex="-1"></a><span class="co">#' @param alpha_pi Dirichlet prior concentration for cluster probabilities.</span></span>
+<span id="cb11-13"><a href="gibbs-sampler.html#cb11-13" tabindex="-1"></a><span class="co">#'   Can be a scalar (recycled) or vector of length K. Defaults to rep(1, K).</span></span>
+<span id="cb11-14"><a href="gibbs-sampler.html#cb11-14" tabindex="-1"></a><span class="co">#' @param m0 Prior mean vector for initial state (length p).</span></span>
+<span id="cb11-15"><a href="gibbs-sampler.html#cb11-15" tabindex="-1"></a><span class="co">#' @param C0 Prior covariance matrix for initial state (p x p).</span></span>
+<span id="cb11-16"><a href="gibbs-sampler.html#cb11-16" tabindex="-1"></a><span class="co">#' @param G State transition matrix (p x p).</span></span>
+<span id="cb11-17"><a href="gibbs-sampler.html#cb11-17" tabindex="-1"></a><span class="co">#' @param W State evolution covariance matrix (p x p).</span></span>
+<span id="cb11-18"><a href="gibbs-sampler.html#cb11-18" tabindex="-1"></a><span class="co">#' @param r_tune Tuning parameter for Polya-Gamma augmentation.</span></span>
+<span id="cb11-19"><a href="gibbs-sampler.html#cb11-19" tabindex="-1"></a><span class="co">#'   If NULL, automatically computed from Y.</span></span>
+<span id="cb11-20"><a href="gibbs-sampler.html#cb11-20" tabindex="-1"></a><span class="co">#' @param Z_true Optional true cluster labels for diagnostics.</span></span>
+<span id="cb11-21"><a href="gibbs-sampler.html#cb11-21" tabindex="-1"></a><span class="co">#' @param relabel_freq Frequency of label-switching correction.</span></span>
+<span id="cb11-22"><a href="gibbs-sampler.html#cb11-22" tabindex="-1"></a><span class="co">#'   Defaults to 1 (every iteration).</span></span>
+<span id="cb11-23"><a href="gibbs-sampler.html#cb11-23" tabindex="-1"></a><span class="co">#' @param print_freq Frequency of progress printing. Defaults to 100.</span></span>
+<span id="cb11-24"><a href="gibbs-sampler.html#cb11-24" tabindex="-1"></a><span class="co">#' @param store_theta Whether to store full theta samples. Defaults to FALSE.</span></span>
+<span id="cb11-25"><a href="gibbs-sampler.html#cb11-25" tabindex="-1"></a><span class="co">#' @param seed Optional random seed for reproducibility.</span></span>
+<span id="cb11-26"><a href="gibbs-sampler.html#cb11-26" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb11-27"><a href="gibbs-sampler.html#cb11-27" tabindex="-1"></a><span class="co">#' @return A list containing:</span></span>
+<span id="cb11-28"><a href="gibbs-sampler.html#cb11-28" tabindex="-1"></a><span class="co">#'   \item{theta}{Posterior samples of state parameters (if store_theta = TRUE).}</span></span>
+<span id="cb11-29"><a href="gibbs-sampler.html#cb11-29" tabindex="-1"></a><span class="co">#'   \item{pi}{Posterior samples of cluster probabilities.}</span></span>
+<span id="cb11-30"><a href="gibbs-sampler.html#cb11-30" tabindex="-1"></a><span class="co">#'   \item{Z}{Posterior samples of cluster allocations.}</span></span>
+<span id="cb11-31"><a href="gibbs-sampler.html#cb11-31" tabindex="-1"></a><span class="co">#'   \item{lambda}{Posterior samples of fitted intensities.}</span></span>
+<span id="cb11-32"><a href="gibbs-sampler.html#cb11-32" tabindex="-1"></a><span class="co">#'   \item{mean_lambda}{Posterior samples of mean intensities per cluster.}</span></span>
+<span id="cb11-33"><a href="gibbs-sampler.html#cb11-33" tabindex="-1"></a><span class="co">#'   \item{size}{Posterior samples of cluster sizes.}</span></span>
+<span id="cb11-34"><a href="gibbs-sampler.html#cb11-34" tabindex="-1"></a><span class="co">#'   \item{ari}{Adjusted Rand Index at each iteration (if Z_true provided).}</span></span>
+<span id="cb11-35"><a href="gibbs-sampler.html#cb11-35" tabindex="-1"></a><span class="co">#'   \item{acc}{Best label accuracy at each iteration (if Z_true provided).}</span></span>
+<span id="cb11-36"><a href="gibbs-sampler.html#cb11-36" tabindex="-1"></a><span class="co">#'   \item{accept_rate}{Acceptance rate diagnostics.}</span></span>
+<span id="cb11-37"><a href="gibbs-sampler.html#cb11-37" tabindex="-1"></a><span class="co">#'   \item{settings}{List of MCMC settings used.}</span></span>
+<span id="cb11-38"><a href="gibbs-sampler.html#cb11-38" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb11-39"><a href="gibbs-sampler.html#cb11-39" tabindex="-1"></a><span class="co">#' @export</span></span>
+<span id="cb11-40"><a href="gibbs-sampler.html#cb11-40" tabindex="-1"></a><span id="gibbs_sampler">gibbs_sampler</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(Y, Fmat, K,</span>
+<span id="cb11-41"><a href="gibbs-sampler.html#cb11-41" tabindex="-1"></a>                          <span class="at">n_iter =</span> <span class="dv">600</span>,</span>
+<span id="cb11-42"><a href="gibbs-sampler.html#cb11-42" tabindex="-1"></a>                          <span class="at">burn =</span> <span class="dv">300</span>,</span>
+<span id="cb11-43"><a href="gibbs-sampler.html#cb11-43" tabindex="-1"></a>                          <span class="at">alpha_pi =</span> <span class="cn">NULL</span>,</span>
+<span id="cb11-44"><a href="gibbs-sampler.html#cb11-44" tabindex="-1"></a>                          <span class="at">m0 =</span> <span class="cn">NULL</span>,</span>
+<span id="cb11-45"><a href="gibbs-sampler.html#cb11-45" tabindex="-1"></a>                          <span class="at">C0 =</span> <span class="cn">NULL</span>,</span>
+<span id="cb11-46"><a href="gibbs-sampler.html#cb11-46" tabindex="-1"></a>                          <span class="at">G =</span> <span class="cn">NULL</span>,</span>
+<span id="cb11-47"><a href="gibbs-sampler.html#cb11-47" tabindex="-1"></a>                          <span class="at">W =</span> <span class="cn">NULL</span>,</span>
+<span id="cb11-48"><a href="gibbs-sampler.html#cb11-48" tabindex="-1"></a>                          <span class="at">r_tune =</span> <span class="cn">NULL</span>,</span>
+<span id="cb11-49"><a href="gibbs-sampler.html#cb11-49" tabindex="-1"></a>                          <span class="at">Z_true =</span> <span class="cn">NULL</span>,</span>
+<span id="cb11-50"><a href="gibbs-sampler.html#cb11-50" tabindex="-1"></a>                          <span class="at">relabel_freq =</span> <span class="dv">1</span>,</span>
+<span id="cb11-51"><a href="gibbs-sampler.html#cb11-51" tabindex="-1"></a>                          <span class="at">print_freq =</span> <span class="dv">100</span>,</span>
+<span id="cb11-52"><a href="gibbs-sampler.html#cb11-52" tabindex="-1"></a>                          <span class="at">store_theta =</span> <span class="cn">FALSE</span>,</span>
+<span id="cb11-53"><a href="gibbs-sampler.html#cb11-53" tabindex="-1"></a>                          <span class="at">seed =</span> <span class="cn">NULL</span>){</span>
+<span id="cb11-54"><a href="gibbs-sampler.html#cb11-54" tabindex="-1"></a></span>
+<span id="cb11-55"><a href="gibbs-sampler.html#cb11-55" tabindex="-1"></a>    <span class="do">## Set seed for reproducibility</span></span>
+<span id="cb11-56"><a href="gibbs-sampler.html#cb11-56" tabindex="-1"></a>    <span class="cf">if</span>(<span class="sc">!</span><span class="fu">is.null</span>(seed)){</span>
+<span id="cb11-57"><a href="gibbs-sampler.html#cb11-57" tabindex="-1"></a>        <span class="fu">set.seed</span>(seed)</span>
+<span id="cb11-58"><a href="gibbs-sampler.html#cb11-58" tabindex="-1"></a>    }</span>
+<span id="cb11-59"><a href="gibbs-sampler.html#cb11-59" tabindex="-1"></a></span>
+<span id="cb11-60"><a href="gibbs-sampler.html#cb11-60" tabindex="-1"></a>    <span class="do">## Extract dimensions</span></span>
+<span id="cb11-61"><a href="gibbs-sampler.html#cb11-61" tabindex="-1"></a>    n  <span class="ot">&lt;-</span> <span class="fu">nrow</span>(Y)</span>
+<span id="cb11-62"><a href="gibbs-sampler.html#cb11-62" tabindex="-1"></a>    TT <span class="ot">&lt;-</span> <span class="fu">ncol</span>(Y)</span>
+<span id="cb11-63"><a href="gibbs-sampler.html#cb11-63" tabindex="-1"></a>    p  <span class="ot">&lt;-</span> <span class="fu">ncol</span>(Fmat)</span>
+<span id="cb11-64"><a href="gibbs-sampler.html#cb11-64" tabindex="-1"></a></span>
+<span id="cb11-65"><a href="gibbs-sampler.html#cb11-65" tabindex="-1"></a>    <span class="do">## Set default MCMC settings if not provided</span></span>
+<span id="cb11-66"><a href="gibbs-sampler.html#cb11-66" tabindex="-1"></a>    <span class="cf">if</span>(<span class="fu">is.null</span>(alpha_pi)){</span>
+<span id="cb11-67"><a href="gibbs-sampler.html#cb11-67" tabindex="-1"></a>        alpha_pi <span class="ot">&lt;-</span> <span class="fu">rep</span>(<span class="dv">1</span>, K)</span>
+<span id="cb11-68"><a href="gibbs-sampler.html#cb11-68" tabindex="-1"></a>    }</span>
+<span id="cb11-69"><a href="gibbs-sampler.html#cb11-69" tabindex="-1"></a></span>
+<span id="cb11-70"><a href="gibbs-sampler.html#cb11-70" tabindex="-1"></a>    <span class="cf">if</span>(<span class="fu">is.null</span>(m0)){</span>
+<span id="cb11-71"><a href="gibbs-sampler.html#cb11-71" tabindex="-1"></a>        m0 <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="fu">log</span>(<span class="fu">mean</span>(Y) <span class="sc">+</span> <span class="fl">0.1</span>), <span class="dv">0</span>)</span>
+<span id="cb11-72"><a href="gibbs-sampler.html#cb11-72" tabindex="-1"></a>        <span class="cf">if</span>(<span class="fu">length</span>(m0) <span class="sc">&lt;</span> p){</span>
+<span id="cb11-73"><a href="gibbs-sampler.html#cb11-73" tabindex="-1"></a>            m0 <span class="ot">&lt;-</span> <span class="fu">c</span>(m0, <span class="fu">rep</span>(<span class="dv">0</span>, p <span class="sc">-</span> <span class="fu">length</span>(m0)))</span>
+<span id="cb11-74"><a href="gibbs-sampler.html#cb11-74" tabindex="-1"></a>        }</span>
+<span id="cb11-75"><a href="gibbs-sampler.html#cb11-75" tabindex="-1"></a>    }</span>
+<span id="cb11-76"><a href="gibbs-sampler.html#cb11-76" tabindex="-1"></a></span>
+<span id="cb11-77"><a href="gibbs-sampler.html#cb11-77" tabindex="-1"></a>    <span class="cf">if</span>(<span class="fu">is.null</span>(C0)){</span>
+<span id="cb11-78"><a href="gibbs-sampler.html#cb11-78" tabindex="-1"></a>        C0 <span class="ot">&lt;-</span> <span class="fu">diag</span>(<span class="fu">c</span>(<span class="dv">5</span>, <span class="dv">2</span>))</span>
+<span id="cb11-79"><a href="gibbs-sampler.html#cb11-79" tabindex="-1"></a>        <span class="cf">if</span>(<span class="fu">nrow</span>(C0) <span class="sc">&lt;</span> p){</span>
+<span id="cb11-80"><a href="gibbs-sampler.html#cb11-80" tabindex="-1"></a>            C0 <span class="ot">&lt;-</span> <span class="fu">diag</span>(p) <span class="sc">*</span> <span class="dv">5</span></span>
+<span id="cb11-81"><a href="gibbs-sampler.html#cb11-81" tabindex="-1"></a>        }</span>
+<span id="cb11-82"><a href="gibbs-sampler.html#cb11-82" tabindex="-1"></a>    }</span>
+<span id="cb11-83"><a href="gibbs-sampler.html#cb11-83" tabindex="-1"></a></span>
+<span id="cb11-84"><a href="gibbs-sampler.html#cb11-84" tabindex="-1"></a>    <span class="cf">if</span>(<span class="fu">is.null</span>(G)){</span>
+<span id="cb11-85"><a href="gibbs-sampler.html#cb11-85" tabindex="-1"></a>        G <span class="ot">&lt;-</span> <span class="fu">diag</span>(p)</span>
+<span id="cb11-86"><a href="gibbs-sampler.html#cb11-86" tabindex="-1"></a>    }</span>
+<span id="cb11-87"><a href="gibbs-sampler.html#cb11-87" tabindex="-1"></a></span>
+<span id="cb11-88"><a href="gibbs-sampler.html#cb11-88" tabindex="-1"></a>    <span class="cf">if</span>(<span class="fu">is.null</span>(W)){</span>
+<span id="cb11-89"><a href="gibbs-sampler.html#cb11-89" tabindex="-1"></a>        W <span class="ot">&lt;-</span> <span class="fu">diag</span>(<span class="fu">c</span>(<span class="fl">0.02</span>, <span class="fl">0.005</span>))</span>
+<span id="cb11-90"><a href="gibbs-sampler.html#cb11-90" tabindex="-1"></a>        <span class="cf">if</span>(<span class="fu">nrow</span>(W) <span class="sc">&lt;</span> p){</span>
+<span id="cb11-91"><a href="gibbs-sampler.html#cb11-91" tabindex="-1"></a>            W <span class="ot">&lt;-</span> <span class="fu">diag</span>(p) <span class="sc">*</span> <span class="fl">0.01</span></span>
+<span id="cb11-92"><a href="gibbs-sampler.html#cb11-92" tabindex="-1"></a>        }</span>
+<span id="cb11-93"><a href="gibbs-sampler.html#cb11-93" tabindex="-1"></a>    }</span>
+<span id="cb11-94"><a href="gibbs-sampler.html#cb11-94" tabindex="-1"></a></span>
+<span id="cb11-95"><a href="gibbs-sampler.html#cb11-95" tabindex="-1"></a>    <span class="cf">if</span>(<span class="fu">is.null</span>(r_tune)){</span>
+<span id="cb11-96"><a href="gibbs-sampler.html#cb11-96" tabindex="-1"></a>        r_tune <span class="ot">&lt;-</span> (<span class="fu">max</span>(Y) <span class="sc">+</span> <span class="fu">sqrt</span>(<span class="fu">max</span>(Y)) <span class="sc">*</span> <span class="dv">3</span>) <span class="sc">*</span> <span class="dv">50</span></span>
+<span id="cb11-97"><a href="gibbs-sampler.html#cb11-97" tabindex="-1"></a>    }</span>
+<span id="cb11-98"><a href="gibbs-sampler.html#cb11-98" tabindex="-1"></a></span>
+<span id="cb11-99"><a href="gibbs-sampler.html#cb11-99" tabindex="-1"></a>    <span class="do">## Initialize chain</span></span>
+<span id="cb11-100"><a href="gibbs-sampler.html#cb11-100" tabindex="-1"></a>    Z <span class="ot">&lt;-</span> <span class="fu">sample</span>(<span class="fu">seq_len</span>(K), <span class="at">size =</span> n, <span class="at">replace =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb11-101"><a href="gibbs-sampler.html#cb11-101" tabindex="-1"></a>    pi_vec <span class="ot">&lt;-</span> <a href="helpers-functions.html#rdirichlet1">rdirichlet1</a>(alpha_pi <span class="sc">+</span> <span class="fu">tabulate</span>(Z, <span class="at">nbins =</span> K))</span>
+<span id="cb11-102"><a href="gibbs-sampler.html#cb11-102" tabindex="-1"></a></span>
+<span id="cb11-103"><a href="gibbs-sampler.html#cb11-103" tabindex="-1"></a>    theta <span class="ot">&lt;-</span> <span class="fu">array</span>(<span class="cn">NA</span>, <span class="at">dim =</span> <span class="fu">c</span>(K, TT, p))</span>
+<span id="cb11-104"><a href="gibbs-sampler.html#cb11-104" tabindex="-1"></a>    <span class="cf">for</span>(k <span class="cf">in</span> <span class="fu">seq_len</span>(K)){</span>
+<span id="cb11-105"><a href="gibbs-sampler.html#cb11-105" tabindex="-1"></a>        theta[k, , ] <span class="ot">&lt;-</span> <a href="gibbs-sampler.html#sample_prior_theta">sample_prior_theta</a>(TT, m0, C0, G, W)</span>
+<span id="cb11-106"><a href="gibbs-sampler.html#cb11-106" tabindex="-1"></a>    }</span>
+<span id="cb11-107"><a href="gibbs-sampler.html#cb11-107" tabindex="-1"></a></span>
+<span id="cb11-108"><a href="gibbs-sampler.html#cb11-108" tabindex="-1"></a>    <span class="do">## Initial label correction</span></span>
+<span id="cb11-109"><a href="gibbs-sampler.html#cb11-109" tabindex="-1"></a>    rel <span class="ot">&lt;-</span> <a href="gibbs-sampler.html#relabel_by_mean_intensity">relabel_by_mean_intensity</a>(theta, pi_vec, Z, Fmat)</span>
+<span id="cb11-110"><a href="gibbs-sampler.html#cb11-110" tabindex="-1"></a>    theta <span class="ot">&lt;-</span> rel<span class="sc">$</span>theta</span>
+<span id="cb11-111"><a href="gibbs-sampler.html#cb11-111" tabindex="-1"></a>    pi_vec <span class="ot">&lt;-</span> rel<span class="sc">$</span>pi</span>
+<span id="cb11-112"><a href="gibbs-sampler.html#cb11-112" tabindex="-1"></a>    Z <span class="ot">&lt;-</span> rel<span class="sc">$</span>Z</span>
+<span id="cb11-113"><a href="gibbs-sampler.html#cb11-113" tabindex="-1"></a></span>
+<span id="cb11-114"><a href="gibbs-sampler.html#cb11-114" tabindex="-1"></a>    <span class="do">## Storage</span></span>
+<span id="cb11-115"><a href="gibbs-sampler.html#cb11-115" tabindex="-1"></a>    pi_store <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="cn">NA</span>, <span class="at">nrow =</span> n_iter, <span class="at">ncol =</span> K)</span>
+<span id="cb11-116"><a href="gibbs-sampler.html#cb11-116" tabindex="-1"></a>    size_store <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="cn">NA</span>, <span class="at">nrow =</span> n_iter, <span class="at">ncol =</span> K)</span>
+<span id="cb11-117"><a href="gibbs-sampler.html#cb11-117" tabindex="-1"></a>    mean_lambda_store <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="cn">NA</span>, <span class="at">nrow =</span> n_iter, <span class="at">ncol =</span> K)</span>
+<span id="cb11-118"><a href="gibbs-sampler.html#cb11-118" tabindex="-1"></a>    lambda_store <span class="ot">&lt;-</span> <span class="fu">array</span>(<span class="cn">NA</span>, <span class="at">dim =</span> <span class="fu">c</span>(n_iter, K, TT))</span>
+<span id="cb11-119"><a href="gibbs-sampler.html#cb11-119" tabindex="-1"></a>    Z_store <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="cn">NA_integer_</span>, <span class="at">nrow =</span> n_iter, <span class="at">ncol =</span> n)</span>
+<span id="cb11-120"><a href="gibbs-sampler.html#cb11-120" tabindex="-1"></a></span>
+<span id="cb11-121"><a href="gibbs-sampler.html#cb11-121" tabindex="-1"></a>    theta_store <span class="ot">&lt;-</span> <span class="cn">NULL</span></span>
+<span id="cb11-122"><a href="gibbs-sampler.html#cb11-122" tabindex="-1"></a>    <span class="cf">if</span>(store_theta){</span>
+<span id="cb11-123"><a href="gibbs-sampler.html#cb11-123" tabindex="-1"></a>        theta_store <span class="ot">&lt;-</span> <span class="fu">array</span>(<span class="cn">NA</span>, <span class="at">dim =</span> <span class="fu">c</span>(n_iter, K, TT, p))</span>
+<span id="cb11-124"><a href="gibbs-sampler.html#cb11-124" tabindex="-1"></a>    }</span>
+<span id="cb11-125"><a href="gibbs-sampler.html#cb11-125" tabindex="-1"></a></span>
+<span id="cb11-126"><a href="gibbs-sampler.html#cb11-126" tabindex="-1"></a>    ari_store <span class="ot">&lt;-</span> <span class="fu">numeric</span>(n_iter)</span>
+<span id="cb11-127"><a href="gibbs-sampler.html#cb11-127" tabindex="-1"></a>    acc_store <span class="ot">&lt;-</span> <span class="fu">numeric</span>(n_iter)</span>
+<span id="cb11-128"><a href="gibbs-sampler.html#cb11-128" tabindex="-1"></a></span>
+<span id="cb11-129"><a href="gibbs-sampler.html#cb11-129" tabindex="-1"></a>    start_time <span class="ot">&lt;-</span> <span class="fu">Sys.time</span>()</span>
+<span id="cb11-130"><a href="gibbs-sampler.html#cb11-130" tabindex="-1"></a></span>
+<span id="cb11-131"><a href="gibbs-sampler.html#cb11-131" tabindex="-1"></a>    <span class="do">## Run MCMC</span></span>
+<span id="cb11-132"><a href="gibbs-sampler.html#cb11-132" tabindex="-1"></a>    <span class="cf">for</span>(iter <span class="cf">in</span> <span class="fu">seq_len</span>(n_iter)){</span>
+<span id="cb11-133"><a href="gibbs-sampler.html#cb11-133" tabindex="-1"></a></span>
+<span id="cb11-134"><a href="gibbs-sampler.html#cb11-134" tabindex="-1"></a>        <span class="do">## 1. Sample theta_{k,1:T} using PG + FFBS</span></span>
+<span id="cb11-135"><a href="gibbs-sampler.html#cb11-135" tabindex="-1"></a>        theta <span class="ot">&lt;-</span> <a href="gibbs-sampler.html#sample_theta_all">sample_theta_all</a>(</span>
+<span id="cb11-136"><a href="gibbs-sampler.html#cb11-136" tabindex="-1"></a>            <span class="at">Y =</span> Y,</span>
+<span id="cb11-137"><a href="gibbs-sampler.html#cb11-137" tabindex="-1"></a>            <span class="at">Z =</span> Z,</span>
+<span id="cb11-138"><a href="gibbs-sampler.html#cb11-138" tabindex="-1"></a>            <span class="at">theta =</span> theta,</span>
+<span id="cb11-139"><a href="gibbs-sampler.html#cb11-139" tabindex="-1"></a>            <span class="at">Fmat =</span> Fmat,</span>
+<span id="cb11-140"><a href="gibbs-sampler.html#cb11-140" tabindex="-1"></a>            <span class="at">m0 =</span> m0,</span>
+<span id="cb11-141"><a href="gibbs-sampler.html#cb11-141" tabindex="-1"></a>            <span class="at">C0 =</span> C0,</span>
+<span id="cb11-142"><a href="gibbs-sampler.html#cb11-142" tabindex="-1"></a>            <span class="at">G =</span> G,</span>
+<span id="cb11-143"><a href="gibbs-sampler.html#cb11-143" tabindex="-1"></a>            <span class="at">W =</span> W,</span>
+<span id="cb11-144"><a href="gibbs-sampler.html#cb11-144" tabindex="-1"></a>            <span class="at">r_tune =</span> r_tune,</span>
+<span id="cb11-145"><a href="gibbs-sampler.html#cb11-145" tabindex="-1"></a>            <span class="at">K =</span> K</span>
+<span id="cb11-146"><a href="gibbs-sampler.html#cb11-146" tabindex="-1"></a>        )</span>
+<span id="cb11-147"><a href="gibbs-sampler.html#cb11-147" tabindex="-1"></a></span>
+<span id="cb11-148"><a href="gibbs-sampler.html#cb11-148" tabindex="-1"></a>        <span class="do">## 2. Sample allocations Z_i conditional on theta</span></span>
+<span id="cb11-149"><a href="gibbs-sampler.html#cb11-149" tabindex="-1"></a>        Z <span class="ot">&lt;-</span> <a href="gibbs-sampler.html#update_Z_given_theta">update_Z_given_theta</a>(Y, theta, Fmat, pi_vec)</span>
+<span id="cb11-150"><a href="gibbs-sampler.html#cb11-150" tabindex="-1"></a></span>
+<span id="cb11-151"><a href="gibbs-sampler.html#cb11-151" tabindex="-1"></a>        <span class="do">## 3. Sample pi (cluster probabilities)</span></span>
+<span id="cb11-152"><a href="gibbs-sampler.html#cb11-152" tabindex="-1"></a>        Nk <span class="ot">&lt;-</span> <span class="fu">tabulate</span>(Z, <span class="at">nbins =</span> K)</span>
+<span id="cb11-153"><a href="gibbs-sampler.html#cb11-153" tabindex="-1"></a>        pi_vec <span class="ot">&lt;-</span> <a href="helpers-functions.html#rdirichlet1">rdirichlet1</a>(alpha_pi <span class="sc">+</span> Nk)</span>
+<span id="cb11-154"><a href="gibbs-sampler.html#cb11-154" tabindex="-1"></a></span>
+<span id="cb11-155"><a href="gibbs-sampler.html#cb11-155" tabindex="-1"></a>        <span class="do">## 4. Label-switching correction</span></span>
+<span id="cb11-156"><a href="gibbs-sampler.html#cb11-156" tabindex="-1"></a>        <span class="do">##    This imposes the ordering:</span></span>
+<span id="cb11-157"><a href="gibbs-sampler.html#cb11-157" tabindex="-1"></a>        <span class="do">##    cluster 1 has smallest average intensity,</span></span>
+<span id="cb11-158"><a href="gibbs-sampler.html#cb11-158" tabindex="-1"></a>        <span class="do">##    cluster K has largest average intensity.</span></span>
+<span id="cb11-159"><a href="gibbs-sampler.html#cb11-159" tabindex="-1"></a>        <span class="cf">if</span>(iter <span class="sc">%%</span> relabel_freq <span class="sc">==</span> <span class="dv">0</span>){</span>
+<span id="cb11-160"><a href="gibbs-sampler.html#cb11-160" tabindex="-1"></a>            rel <span class="ot">&lt;-</span> <a href="gibbs-sampler.html#relabel_by_mean_intensity">relabel_by_mean_intensity</a>(theta, pi_vec, Z, Fmat)</span>
+<span id="cb11-161"><a href="gibbs-sampler.html#cb11-161" tabindex="-1"></a>            theta <span class="ot">&lt;-</span> rel<span class="sc">$</span>theta</span>
+<span id="cb11-162"><a href="gibbs-sampler.html#cb11-162" tabindex="-1"></a>            pi_vec <span class="ot">&lt;-</span> rel<span class="sc">$</span>pi</span>
+<span id="cb11-163"><a href="gibbs-sampler.html#cb11-163" tabindex="-1"></a>            Z <span class="ot">&lt;-</span> rel<span class="sc">$</span>Z</span>
+<span id="cb11-164"><a href="gibbs-sampler.html#cb11-164" tabindex="-1"></a>        }</span>
+<span id="cb11-165"><a href="gibbs-sampler.html#cb11-165" tabindex="-1"></a></span>
+<span id="cb11-166"><a href="gibbs-sampler.html#cb11-166" tabindex="-1"></a>        <span class="do">## Store samples</span></span>
+<span id="cb11-167"><a href="gibbs-sampler.html#cb11-167" tabindex="-1"></a>        lambda_cur <span class="ot">&lt;-</span> <a href="helpers-functions.html#get_lambda">get_lambda</a>(theta, Fmat)</span>
+<span id="cb11-168"><a href="gibbs-sampler.html#cb11-168" tabindex="-1"></a></span>
+<span id="cb11-169"><a href="gibbs-sampler.html#cb11-169" tabindex="-1"></a>        pi_store[iter, ] <span class="ot">&lt;-</span> pi_vec</span>
+<span id="cb11-170"><a href="gibbs-sampler.html#cb11-170" tabindex="-1"></a>        size_store[iter, ] <span class="ot">&lt;-</span> <span class="fu">tabulate</span>(Z, <span class="at">nbins =</span> K)</span>
+<span id="cb11-171"><a href="gibbs-sampler.html#cb11-171" tabindex="-1"></a>        mean_lambda_store[iter, ] <span class="ot">&lt;-</span> <span class="fu">rowMeans</span>(lambda_cur)</span>
+<span id="cb11-172"><a href="gibbs-sampler.html#cb11-172" tabindex="-1"></a>        lambda_store[iter, , ] <span class="ot">&lt;-</span> lambda_cur</span>
+<span id="cb11-173"><a href="gibbs-sampler.html#cb11-173" tabindex="-1"></a>        Z_store[iter, ] <span class="ot">&lt;-</span> Z</span>
+<span id="cb11-174"><a href="gibbs-sampler.html#cb11-174" tabindex="-1"></a></span>
+<span id="cb11-175"><a href="gibbs-sampler.html#cb11-175" tabindex="-1"></a>        <span class="cf">if</span>(store_theta){</span>
+<span id="cb11-176"><a href="gibbs-sampler.html#cb11-176" tabindex="-1"></a>            theta_store[iter, , , ] <span class="ot">&lt;-</span> theta</span>
+<span id="cb11-177"><a href="gibbs-sampler.html#cb11-177" tabindex="-1"></a>        }</span>
+<span id="cb11-178"><a href="gibbs-sampler.html#cb11-178" tabindex="-1"></a></span>
+<span id="cb11-179"><a href="gibbs-sampler.html#cb11-179" tabindex="-1"></a>        <span class="do">## Diagnostics (if true labels provided)</span></span>
+<span id="cb11-180"><a href="gibbs-sampler.html#cb11-180" tabindex="-1"></a>        <span class="cf">if</span>(<span class="sc">!</span><span class="fu">is.null</span>(Z_true)){</span>
+<span id="cb11-181"><a href="gibbs-sampler.html#cb11-181" tabindex="-1"></a>            ari_store[iter] <span class="ot">&lt;-</span> <a href="helpers-functions.html#adj_rand_index">adj_rand_index</a>(Z_true, Z)</span>
+<span id="cb11-182"><a href="gibbs-sampler.html#cb11-182" tabindex="-1"></a>            acc_store[iter] <span class="ot">&lt;-</span> <a href="helpers-functions.html#best_label_accuracy">best_label_accuracy</a>(Z_true, Z, K)</span>
+<span id="cb11-183"><a href="gibbs-sampler.html#cb11-183" tabindex="-1"></a>        }</span>
+<span id="cb11-184"><a href="gibbs-sampler.html#cb11-184" tabindex="-1"></a></span>
+<span id="cb11-185"><a href="gibbs-sampler.html#cb11-185" tabindex="-1"></a>        <span class="do">## Print progress</span></span>
+<span id="cb11-186"><a href="gibbs-sampler.html#cb11-186" tabindex="-1"></a>        <span class="cf">if</span>(iter <span class="sc">%%</span> print_freq <span class="sc">==</span> <span class="dv">0</span>){</span>
+<span id="cb11-187"><a href="gibbs-sampler.html#cb11-187" tabindex="-1"></a>            <a href="helpers-functions.html#printprogress">printprogress</a>(</span>
+<span id="cb11-188"><a href="gibbs-sampler.html#cb11-188" tabindex="-1"></a>                <span class="at">isim =</span> iter,</span>
+<span id="cb11-189"><a href="gibbs-sampler.html#cb11-189" tabindex="-1"></a>                <span class="at">nsim =</span> n_iter,</span>
+<span id="cb11-190"><a href="gibbs-sampler.html#cb11-190" tabindex="-1"></a>                <span class="at">type =</span> <span class="st">"MCMC iteration"</span>,</span>
+<span id="cb11-191"><a href="gibbs-sampler.html#cb11-191" tabindex="-1"></a>                <span class="at">start.time =</span> start_time,</span>
+<span id="cb11-192"><a href="gibbs-sampler.html#cb11-192" tabindex="-1"></a>                <span class="at">fill =</span> <span class="cn">TRUE</span></span>
+<span id="cb11-193"><a href="gibbs-sampler.html#cb11-193" tabindex="-1"></a>            )</span>
+<span id="cb11-194"><a href="gibbs-sampler.html#cb11-194" tabindex="-1"></a>            <span class="cf">if</span>(<span class="sc">!</span><span class="fu">is.null</span>(Z_true)){</span>
+<span id="cb11-195"><a href="gibbs-sampler.html#cb11-195" tabindex="-1"></a>                <span class="fu">cat</span>(</span>
+<span id="cb11-196"><a href="gibbs-sampler.html#cb11-196" tabindex="-1"></a>                    <span class="st">" | ARI ="</span>, <span class="fu">round</span>(ari_store[iter], <span class="dv">3</span>),</span>
+<span id="cb11-197"><a href="gibbs-sampler.html#cb11-197" tabindex="-1"></a>                    <span class="st">"| best accuracy ="</span>, <span class="fu">round</span>(acc_store[iter], <span class="dv">3</span>),</span>
+<span id="cb11-198"><a href="gibbs-sampler.html#cb11-198" tabindex="-1"></a>                    <span class="st">"</span><span class="sc">\n</span><span class="st">"</span></span>
+<span id="cb11-199"><a href="gibbs-sampler.html#cb11-199" tabindex="-1"></a>                )</span>
+<span id="cb11-200"><a href="gibbs-sampler.html#cb11-200" tabindex="-1"></a>            } <span class="cf">else</span> {</span>
+<span id="cb11-201"><a href="gibbs-sampler.html#cb11-201" tabindex="-1"></a>                <span class="fu">cat</span>(<span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb11-202"><a href="gibbs-sampler.html#cb11-202" tabindex="-1"></a>            }</span>
+<span id="cb11-203"><a href="gibbs-sampler.html#cb11-203" tabindex="-1"></a>        }</span>
+<span id="cb11-204"><a href="gibbs-sampler.html#cb11-204" tabindex="-1"></a>    }</span>
+<span id="cb11-205"><a href="gibbs-sampler.html#cb11-205" tabindex="-1"></a></span>
+<span id="cb11-206"><a href="gibbs-sampler.html#cb11-206" tabindex="-1"></a>    <span class="do">## Compute effective sample size (optional diagnostic)</span></span>
+<span id="cb11-207"><a href="gibbs-sampler.html#cb11-207" tabindex="-1"></a>    end_time <span class="ot">&lt;-</span> <span class="fu">Sys.time</span>()</span>
+<span id="cb11-208"><a href="gibbs-sampler.html#cb11-208" tabindex="-1"></a>    total_time <span class="ot">&lt;-</span> <span class="fu">as.numeric</span>(<span class="fu">difftime</span>(end_time, start_time, <span class="at">units =</span> <span class="st">"secs"</span>))</span>
+<span id="cb11-209"><a href="gibbs-sampler.html#cb11-209" tabindex="-1"></a></span>
+<span id="cb11-210"><a href="gibbs-sampler.html#cb11-210" tabindex="-1"></a>    <span class="do">## Prepare output</span></span>
+<span id="cb11-211"><a href="gibbs-sampler.html#cb11-211" tabindex="-1"></a>    ret <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb11-212"><a href="gibbs-sampler.html#cb11-212" tabindex="-1"></a>        <span class="at">theta =</span> theta_store,</span>
+<span id="cb11-213"><a href="gibbs-sampler.html#cb11-213" tabindex="-1"></a>        <span class="at">pi =</span> pi_store,</span>
+<span id="cb11-214"><a href="gibbs-sampler.html#cb11-214" tabindex="-1"></a>        <span class="at">Z =</span> Z_store,</span>
+<span id="cb11-215"><a href="gibbs-sampler.html#cb11-215" tabindex="-1"></a>        <span class="at">lambda =</span> lambda_store,</span>
+<span id="cb11-216"><a href="gibbs-sampler.html#cb11-216" tabindex="-1"></a>        <span class="at">mean_lambda =</span> mean_lambda_store,</span>
+<span id="cb11-217"><a href="gibbs-sampler.html#cb11-217" tabindex="-1"></a>        <span class="at">size =</span> size_store,</span>
+<span id="cb11-218"><a href="gibbs-sampler.html#cb11-218" tabindex="-1"></a>        <span class="at">ari =</span> ari_store,</span>
+<span id="cb11-219"><a href="gibbs-sampler.html#cb11-219" tabindex="-1"></a>        <span class="at">acc =</span> acc_store,</span>
+<span id="cb11-220"><a href="gibbs-sampler.html#cb11-220" tabindex="-1"></a>        <span class="at">settings =</span> <span class="fu">list</span>(</span>
+<span id="cb11-221"><a href="gibbs-sampler.html#cb11-221" tabindex="-1"></a>            <span class="at">n_iter =</span> n_iter,</span>
+<span id="cb11-222"><a href="gibbs-sampler.html#cb11-222" tabindex="-1"></a>            <span class="at">burn =</span> burn,</span>
+<span id="cb11-223"><a href="gibbs-sampler.html#cb11-223" tabindex="-1"></a>            <span class="at">K =</span> K,</span>
+<span id="cb11-224"><a href="gibbs-sampler.html#cb11-224" tabindex="-1"></a>            <span class="at">n =</span> n,</span>
+<span id="cb11-225"><a href="gibbs-sampler.html#cb11-225" tabindex="-1"></a>            <span class="at">TT =</span> TT,</span>
+<span id="cb11-226"><a href="gibbs-sampler.html#cb11-226" tabindex="-1"></a>            <span class="at">p =</span> p,</span>
+<span id="cb11-227"><a href="gibbs-sampler.html#cb11-227" tabindex="-1"></a>            <span class="at">alpha_pi =</span> alpha_pi,</span>
+<span id="cb11-228"><a href="gibbs-sampler.html#cb11-228" tabindex="-1"></a>            <span class="at">m0 =</span> m0,</span>
+<span id="cb11-229"><a href="gibbs-sampler.html#cb11-229" tabindex="-1"></a>            <span class="at">C0 =</span> C0,</span>
+<span id="cb11-230"><a href="gibbs-sampler.html#cb11-230" tabindex="-1"></a>            <span class="at">G =</span> G,</span>
+<span id="cb11-231"><a href="gibbs-sampler.html#cb11-231" tabindex="-1"></a>            <span class="at">W =</span> W,</span>
+<span id="cb11-232"><a href="gibbs-sampler.html#cb11-232" tabindex="-1"></a>            <span class="at">r_tune =</span> r_tune,</span>
+<span id="cb11-233"><a href="gibbs-sampler.html#cb11-233" tabindex="-1"></a>            <span class="at">total_time =</span> total_time,</span>
+<span id="cb11-234"><a href="gibbs-sampler.html#cb11-234" tabindex="-1"></a>            <span class="at">seed =</span> seed</span>
+<span id="cb11-235"><a href="gibbs-sampler.html#cb11-235" tabindex="-1"></a>        )</span>
+<span id="cb11-236"><a href="gibbs-sampler.html#cb11-236" tabindex="-1"></a>    )</span>
+<span id="cb11-237"><a href="gibbs-sampler.html#cb11-237" tabindex="-1"></a></span>
+<span id="cb11-238"><a href="gibbs-sampler.html#cb11-238" tabindex="-1"></a>    <span class="fu">class</span>(ret) <span class="ot">&lt;-</span> <span class="st">"bdynets_mcmc"</span></span>
+<span id="cb11-239"><a href="gibbs-sampler.html#cb11-239" tabindex="-1"></a>    <span class="fu">return</span>(ret)</span>
+<span id="cb11-240"><a href="gibbs-sampler.html#cb11-240" tabindex="-1"></a>}</span>
+<span id="cb11-241"><a href="gibbs-sampler.html#cb11-241" tabindex="-1"></a></span>
+<span id="cb11-242"><a href="gibbs-sampler.html#cb11-242" tabindex="-1"></a><span class="co">#' Summarize MCMC results from gibbs_sampler.</span></span>
+<span id="cb11-243"><a href="gibbs-sampler.html#cb11-243" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb11-244"><a href="gibbs-sampler.html#cb11-244" tabindex="-1"></a><span class="co">#' @param object Object of class "bdynets_mcmc".</span></span>
+<span id="cb11-245"><a href="gibbs-sampler.html#cb11-245" tabindex="-1"></a><span class="co">#' @param burn Number of burn-in iterations to discard.</span></span>
+<span id="cb11-246"><a href="gibbs-sampler.html#cb11-246" tabindex="-1"></a><span class="co">#' @param ... Additional arguments (not used).</span></span>
+<span id="cb11-247"><a href="gibbs-sampler.html#cb11-247" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb11-248"><a href="gibbs-sampler.html#cb11-248" tabindex="-1"></a><span class="co">#' @export</span></span>
+<span id="cb11-249"><a href="gibbs-sampler.html#cb11-249" tabindex="-1"></a><span id="summary.bdynets_mcmc">summary.bdynets_mcmc</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(object, <span class="at">burn =</span> <span class="cn">NULL</span>, ...){</span>
+<span id="cb11-250"><a href="gibbs-sampler.html#cb11-250" tabindex="-1"></a></span>
+<span id="cb11-251"><a href="gibbs-sampler.html#cb11-251" tabindex="-1"></a>    <span class="cf">if</span>(<span class="fu">is.null</span>(burn)){</span>
+<span id="cb11-252"><a href="gibbs-sampler.html#cb11-252" tabindex="-1"></a>        burn <span class="ot">&lt;-</span> object<span class="sc">$</span>settings<span class="sc">$</span>burn</span>
+<span id="cb11-253"><a href="gibbs-sampler.html#cb11-253" tabindex="-1"></a>    }</span>
+<span id="cb11-254"><a href="gibbs-sampler.html#cb11-254" tabindex="-1"></a></span>
+<span id="cb11-255"><a href="gibbs-sampler.html#cb11-255" tabindex="-1"></a>    n_iter <span class="ot">&lt;-</span> object<span class="sc">$</span>settings<span class="sc">$</span>n_iter</span>
+<span id="cb11-256"><a href="gibbs-sampler.html#cb11-256" tabindex="-1"></a>    keep_idx <span class="ot">&lt;-</span> <span class="fu">seq</span>(burn <span class="sc">+</span> <span class="dv">1</span>, n_iter)</span>
+<span id="cb11-257"><a href="gibbs-sampler.html#cb11-257" tabindex="-1"></a></span>
+<span id="cb11-258"><a href="gibbs-sampler.html#cb11-258" tabindex="-1"></a>    <span class="fu">cat</span>(<span class="st">"Bayesian Dynamic Network MCMC Summary</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb11-259"><a href="gibbs-sampler.html#cb11-259" tabindex="-1"></a>    <span class="fu">cat</span>(<span class="st">"=====================================</span><span class="sc">\n\n</span><span class="st">"</span>)</span>
+<span id="cb11-260"><a href="gibbs-sampler.html#cb11-260" tabindex="-1"></a></span>
+<span id="cb11-261"><a href="gibbs-sampler.html#cb11-261" tabindex="-1"></a>    <span class="fu">cat</span>(<span class="st">"MCMC Settings:</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb11-262"><a href="gibbs-sampler.html#cb11-262" tabindex="-1"></a>    <span class="fu">cat</span>(<span class="st">"  Total iterations:"</span>, n_iter, <span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb11-263"><a href="gibbs-sampler.html#cb11-263" tabindex="-1"></a>    <span class="fu">cat</span>(<span class="st">"  Burn-in:"</span>, burn, <span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb11-264"><a href="gibbs-sampler.html#cb11-264" tabindex="-1"></a>    <span class="fu">cat</span>(<span class="st">"  Kept samples:"</span>, <span class="fu">length</span>(keep_idx), <span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb11-265"><a href="gibbs-sampler.html#cb11-265" tabindex="-1"></a>    <span class="fu">cat</span>(<span class="st">"  Number of clusters (K):"</span>, object<span class="sc">$</span>settings<span class="sc">$</span>K, <span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb11-266"><a href="gibbs-sampler.html#cb11-266" tabindex="-1"></a>    <span class="fu">cat</span>(<span class="st">"  Number of observations (n):"</span>, object<span class="sc">$</span>settings<span class="sc">$</span>n, <span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb11-267"><a href="gibbs-sampler.html#cb11-267" tabindex="-1"></a>    <span class="fu">cat</span>(<span class="st">"  Time points (TT):"</span>, object<span class="sc">$</span>settings<span class="sc">$</span>TT, <span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb11-268"><a href="gibbs-sampler.html#cb11-268" tabindex="-1"></a>    <span class="fu">cat</span>(<span class="st">"  State dimension (p):"</span>, object<span class="sc">$</span>settings<span class="sc">$</span>p, <span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb11-269"><a href="gibbs-sampler.html#cb11-269" tabindex="-1"></a>    <span class="fu">cat</span>(<span class="st">"  Total runtime:"</span>, <span class="fu">round</span>(object<span class="sc">$</span>settings<span class="sc">$</span>total_time, <span class="dv">2</span>), <span class="st">"seconds</span><span class="sc">\n\n</span><span class="st">"</span>)</span>
+<span id="cb11-270"><a href="gibbs-sampler.html#cb11-270" tabindex="-1"></a></span>
+<span id="cb11-271"><a href="gibbs-sampler.html#cb11-271" tabindex="-1"></a>    <span class="fu">cat</span>(<span class="st">"Cluster Probabilities (pi) - Posterior Mean:</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb11-272"><a href="gibbs-sampler.html#cb11-272" tabindex="-1"></a>    pi_mean <span class="ot">&lt;-</span> <span class="fu">colMeans</span>(object<span class="sc">$</span>pi[keep_idx, , <span class="at">drop =</span> <span class="cn">FALSE</span>])</span>
+<span id="cb11-273"><a href="gibbs-sampler.html#cb11-273" tabindex="-1"></a>    <span class="fu">print</span>(<span class="fu">round</span>(pi_mean, <span class="dv">4</span>))</span>
+<span id="cb11-274"><a href="gibbs-sampler.html#cb11-274" tabindex="-1"></a>    <span class="fu">cat</span>(<span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb11-275"><a href="gibbs-sampler.html#cb11-275" tabindex="-1"></a></span>
+<span id="cb11-276"><a href="gibbs-sampler.html#cb11-276" tabindex="-1"></a>    <span class="fu">cat</span>(<span class="st">"Cluster Sizes - Posterior Mean:</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb11-277"><a href="gibbs-sampler.html#cb11-277" tabindex="-1"></a>    size_mean <span class="ot">&lt;-</span> <span class="fu">colMeans</span>(object<span class="sc">$</span>size[keep_idx, , <span class="at">drop =</span> <span class="cn">FALSE</span>])</span>
+<span id="cb11-278"><a href="gibbs-sampler.html#cb11-278" tabindex="-1"></a>    <span class="fu">print</span>(<span class="fu">round</span>(size_mean, <span class="dv">2</span>))</span>
+<span id="cb11-279"><a href="gibbs-sampler.html#cb11-279" tabindex="-1"></a>    <span class="fu">cat</span>(<span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb11-280"><a href="gibbs-sampler.html#cb11-280" tabindex="-1"></a></span>
+<span id="cb11-281"><a href="gibbs-sampler.html#cb11-281" tabindex="-1"></a>    <span class="cf">if</span>(<span class="fu">length</span>(object<span class="sc">$</span>ari) <span class="sc">&gt;</span> <span class="dv">0</span> <span class="sc">&amp;&amp;</span> <span class="fu">any</span>(object<span class="sc">$</span>ari <span class="sc">&gt;</span> <span class="dv">0</span>)){</span>
+<span id="cb11-282"><a href="gibbs-sampler.html#cb11-282" tabindex="-1"></a>        <span class="fu">cat</span>(<span class="st">"Clustering Accuracy (post burn-in):</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb11-283"><a href="gibbs-sampler.html#cb11-283" tabindex="-1"></a>        <span class="fu">cat</span>(<span class="st">"  Mean ARI:"</span>, <span class="fu">round</span>(<span class="fu">mean</span>(object<span class="sc">$</span>ari[keep_idx]), <span class="dv">4</span>), <span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb11-284"><a href="gibbs-sampler.html#cb11-284" tabindex="-1"></a>        <span class="fu">cat</span>(<span class="st">"  Mean Best Accuracy:"</span>, <span class="fu">round</span>(<span class="fu">mean</span>(object<span class="sc">$</span>acc[keep_idx]), <span class="dv">4</span>), <span class="st">"</span><span class="sc">\n\n</span><span class="st">"</span>)</span>
+<span id="cb11-285"><a href="gibbs-sampler.html#cb11-285" tabindex="-1"></a>    }</span>
+<span id="cb11-286"><a href="gibbs-sampler.html#cb11-286" tabindex="-1"></a></span>
+<span id="cb11-287"><a href="gibbs-sampler.html#cb11-287" tabindex="-1"></a>    <span class="fu">cat</span>(<span class="st">"Mean Intensity per Cluster - Posterior Mean:</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb11-288"><a href="gibbs-sampler.html#cb11-288" tabindex="-1"></a>    lambda_mean <span class="ot">&lt;-</span> <span class="fu">colMeans</span>(object<span class="sc">$</span>mean_lambda[keep_idx, , <span class="at">drop =</span> <span class="cn">FALSE</span>])</span>
+<span id="cb11-289"><a href="gibbs-sampler.html#cb11-289" tabindex="-1"></a>    <span class="fu">print</span>(<span class="fu">round</span>(lambda_mean, <span class="dv">4</span>))</span>
+<span id="cb11-290"><a href="gibbs-sampler.html#cb11-290" tabindex="-1"></a></span>
+<span id="cb11-291"><a href="gibbs-sampler.html#cb11-291" tabindex="-1"></a>    <span class="fu">invisible</span>(object)</span>
+<span id="cb11-292"><a href="gibbs-sampler.html#cb11-292" tabindex="-1"></a>}</span>
+<span id="cb11-293"><a href="gibbs-sampler.html#cb11-293" tabindex="-1"></a></span>
+<span id="cb11-294"><a href="gibbs-sampler.html#cb11-294" tabindex="-1"></a><span class="co">#' Plot MCMC diagnostics for bdynets_mcmc object.</span></span>
+<span id="cb11-295"><a href="gibbs-sampler.html#cb11-295" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb11-296"><a href="gibbs-sampler.html#cb11-296" tabindex="-1"></a><span class="co">#' @param x Object of class "bdynets_mcmc".</span></span>
+<span id="cb11-297"><a href="gibbs-sampler.html#cb11-297" tabindex="-1"></a><span class="co">#' @param burn Number of burn-in iterations to discard.</span></span>
+<span id="cb11-298"><a href="gibbs-sampler.html#cb11-298" tabindex="-1"></a><span class="co">#' @param type Type of plot: "trace", "density", "ari", or "all".</span></span>
+<span id="cb11-299"><a href="gibbs-sampler.html#cb11-299" tabindex="-1"></a><span class="co">#' @param ... Additional arguments passed to plot.</span></span>
+<span id="cb11-300"><a href="gibbs-sampler.html#cb11-300" tabindex="-1"></a><span class="co">#'</span></span>
+<span id="cb11-301"><a href="gibbs-sampler.html#cb11-301" tabindex="-1"></a><span class="co">#' @export</span></span>
+<span id="cb11-302"><a href="gibbs-sampler.html#cb11-302" tabindex="-1"></a><span id="plot.bdynets_mcmc">plot.bdynets_mcmc</span> <span class="ot">&lt;-</span> <span class="cf">function</span>(x, <span class="at">burn =</span> <span class="cn">NULL</span>, <span class="at">type =</span> <span class="st">"all"</span>, ...){</span>
+<span id="cb11-303"><a href="gibbs-sampler.html#cb11-303" tabindex="-1"></a></span>
+<span id="cb11-304"><a href="gibbs-sampler.html#cb11-304" tabindex="-1"></a>    <span class="cf">if</span>(<span class="fu">is.null</span>(burn)){</span>
+<span id="cb11-305"><a href="gibbs-sampler.html#cb11-305" tabindex="-1"></a>        burn <span class="ot">&lt;-</span> x<span class="sc">$</span>settings<span class="sc">$</span>burn</span>
+<span id="cb11-306"><a href="gibbs-sampler.html#cb11-306" tabindex="-1"></a>    }</span>
+<span id="cb11-307"><a href="gibbs-sampler.html#cb11-307" tabindex="-1"></a></span>
+<span id="cb11-308"><a href="gibbs-sampler.html#cb11-308" tabindex="-1"></a>    keep_idx <span class="ot">&lt;-</span> <span class="fu">seq</span>(burn <span class="sc">+</span> <span class="dv">1</span>, x<span class="sc">$</span>settings<span class="sc">$</span>n_iter)</span>
+<span id="cb11-309"><a href="gibbs-sampler.html#cb11-309" tabindex="-1"></a>    K <span class="ot">&lt;-</span> x<span class="sc">$</span>settings<span class="sc">$</span>K</span>
+<span id="cb11-310"><a href="gibbs-sampler.html#cb11-310" tabindex="-1"></a></span>
+<span id="cb11-311"><a href="gibbs-sampler.html#cb11-311" tabindex="-1"></a>    <span class="cf">if</span>(type <span class="sc">==</span> <span class="st">"trace"</span> <span class="sc">||</span> type <span class="sc">==</span> <span class="st">"all"</span>){</span>
+<span id="cb11-312"><a href="gibbs-sampler.html#cb11-312" tabindex="-1"></a>        <span class="do">## Trace plots for cluster probabilities</span></span>
+<span id="cb11-313"><a href="gibbs-sampler.html#cb11-313" tabindex="-1"></a>        <span class="fu">matplot</span>(</span>
+<span id="cb11-314"><a href="gibbs-sampler.html#cb11-314" tabindex="-1"></a>            keep_idx, x<span class="sc">$</span>pi[keep_idx, ],</span>
+<span id="cb11-315"><a href="gibbs-sampler.html#cb11-315" tabindex="-1"></a>            <span class="at">type =</span> <span class="st">"l"</span>,</span>
+<span id="cb11-316"><a href="gibbs-sampler.html#cb11-316" tabindex="-1"></a>            <span class="at">lty =</span> <span class="dv">1</span>,</span>
+<span id="cb11-317"><a href="gibbs-sampler.html#cb11-317" tabindex="-1"></a>            <span class="at">col =</span> <span class="fu">seq_len</span>(K),</span>
+<span id="cb11-318"><a href="gibbs-sampler.html#cb11-318" tabindex="-1"></a>            <span class="at">xlab =</span> <span class="st">"Iteration"</span>,</span>
+<span id="cb11-319"><a href="gibbs-sampler.html#cb11-319" tabindex="-1"></a>            <span class="at">ylab =</span> <span class="st">"Cluster Probability"</span>,</span>
+<span id="cb11-320"><a href="gibbs-sampler.html#cb11-320" tabindex="-1"></a>            <span class="at">main =</span> <span class="st">"Trace Plot: Cluster Probabilities (pi)"</span></span>
+<span id="cb11-321"><a href="gibbs-sampler.html#cb11-321" tabindex="-1"></a>        )</span>
+<span id="cb11-322"><a href="gibbs-sampler.html#cb11-322" tabindex="-1"></a>        <span class="fu">legend</span>(<span class="st">"topright"</span>, <span class="at">legend =</span> <span class="fu">paste</span>(<span class="st">"Cluster"</span>, <span class="fu">seq_len</span>(K)),</span>
+<span id="cb11-323"><a href="gibbs-sampler.html#cb11-323" tabindex="-1"></a>               <span class="at">col =</span> <span class="fu">seq_len</span>(K), <span class="at">lty =</span> <span class="dv">1</span>, <span class="at">cex =</span> <span class="fl">0.8</span>)</span>
+<span id="cb11-324"><a href="gibbs-sampler.html#cb11-324" tabindex="-1"></a>    }</span>
+<span id="cb11-325"><a href="gibbs-sampler.html#cb11-325" tabindex="-1"></a></span>
+<span id="cb11-326"><a href="gibbs-sampler.html#cb11-326" tabindex="-1"></a>    <span class="cf">if</span>(type <span class="sc">==</span> <span class="st">"ari"</span> <span class="sc">||</span> type <span class="sc">==</span> <span class="st">"all"</span>){</span>
+<span id="cb11-327"><a href="gibbs-sampler.html#cb11-327" tabindex="-1"></a>        <span class="cf">if</span>(<span class="fu">length</span>(x<span class="sc">$</span>ari) <span class="sc">&gt;</span> <span class="dv">0</span> <span class="sc">&amp;&amp;</span> <span class="fu">any</span>(x<span class="sc">$</span>ari <span class="sc">&gt;</span> <span class="dv">0</span>)){</span>
+<span id="cb11-328"><a href="gibbs-sampler.html#cb11-328" tabindex="-1"></a>            <span class="do">## ARI over iterations</span></span>
+<span id="cb11-329"><a href="gibbs-sampler.html#cb11-329" tabindex="-1"></a>            <span class="fu">plot</span>(</span>
+<span id="cb11-330"><a href="gibbs-sampler.html#cb11-330" tabindex="-1"></a>                keep_idx, x<span class="sc">$</span>ari[keep_idx],</span>
+<span id="cb11-331"><a href="gibbs-sampler.html#cb11-331" tabindex="-1"></a>                <span class="at">type =</span> <span class="st">"l"</span>,</span>
+<span id="cb11-332"><a href="gibbs-sampler.html#cb11-332" tabindex="-1"></a>                <span class="at">col =</span> <span class="st">"blue"</span>,</span>
+<span id="cb11-333"><a href="gibbs-sampler.html#cb11-333" tabindex="-1"></a>                <span class="at">lwd =</span> <span class="dv">2</span>,</span>
+<span id="cb11-334"><a href="gibbs-sampler.html#cb11-334" tabindex="-1"></a>                <span class="at">xlab =</span> <span class="st">"Iteration"</span>,</span>
+<span id="cb11-335"><a href="gibbs-sampler.html#cb11-335" tabindex="-1"></a>                <span class="at">ylab =</span> <span class="st">"Adjusted Rand Index"</span>,</span>
+<span id="cb11-336"><a href="gibbs-sampler.html#cb11-336" tabindex="-1"></a>                <span class="at">main =</span> <span class="st">"Clustering Accuracy (ARI) Over Iterations"</span></span>
+<span id="cb11-337"><a href="gibbs-sampler.html#cb11-337" tabindex="-1"></a>            )</span>
+<span id="cb11-338"><a href="gibbs-sampler.html#cb11-338" tabindex="-1"></a>            <span class="fu">abline</span>(<span class="at">h =</span> <span class="fu">mean</span>(x<span class="sc">$</span>ari[keep_idx]), <span class="at">col =</span> <span class="st">"red"</span>, <span class="at">lty =</span> <span class="dv">2</span>)</span>
+<span id="cb11-339"><a href="gibbs-sampler.html#cb11-339" tabindex="-1"></a>        }</span>
+<span id="cb11-340"><a href="gibbs-sampler.html#cb11-340" tabindex="-1"></a>    }</span>
+<span id="cb11-341"><a href="gibbs-sampler.html#cb11-341" tabindex="-1"></a></span>
+<span id="cb11-342"><a href="gibbs-sampler.html#cb11-342" tabindex="-1"></a>    <span class="cf">if</span>(type <span class="sc">==</span> <span class="st">"size"</span> <span class="sc">||</span> type <span class="sc">==</span> <span class="st">"all"</span>){</span>
+<span id="cb11-343"><a href="gibbs-sampler.html#cb11-343" tabindex="-1"></a>        <span class="do">## Cluster sizes over iterations</span></span>
+<span id="cb11-344"><a href="gibbs-sampler.html#cb11-344" tabindex="-1"></a>        <span class="fu">matplot</span>(</span>
+<span id="cb11-345"><a href="gibbs-sampler.html#cb11-345" tabindex="-1"></a>            keep_idx, x<span class="sc">$</span>size[keep_idx, ],</span>
+<span id="cb11-346"><a href="gibbs-sampler.html#cb11-346" tabindex="-1"></a>            <span class="at">type =</span> <span class="st">"l"</span>,</span>
+<span id="cb11-347"><a href="gibbs-sampler.html#cb11-347" tabindex="-1"></a>            <span class="at">lty =</span> <span class="dv">1</span>,</span>
+<span id="cb11-348"><a href="gibbs-sampler.html#cb11-348" tabindex="-1"></a>            <span class="at">col =</span> <span class="fu">seq_len</span>(K),</span>
+<span id="cb11-349"><a href="gibbs-sampler.html#cb11-349" tabindex="-1"></a>            <span class="at">xlab =</span> <span class="st">"Iteration"</span>,</span>
+<span id="cb11-350"><a href="gibbs-sampler.html#cb11-350" tabindex="-1"></a>            <span class="at">ylab =</span> <span class="st">"Cluster Size"</span>,</span>
+<span id="cb11-351"><a href="gibbs-sampler.html#cb11-351" tabindex="-1"></a>            <span class="at">main =</span> <span class="st">"Trace Plot: Cluster Sizes"</span></span>
+<span id="cb11-352"><a href="gibbs-sampler.html#cb11-352" tabindex="-1"></a>        )</span>
+<span id="cb11-353"><a href="gibbs-sampler.html#cb11-353" tabindex="-1"></a>        <span class="fu">legend</span>(<span class="st">"topright"</span>, <span class="at">legend =</span> <span class="fu">paste</span>(<span class="st">"Cluster"</span>, <span class="fu">seq_len</span>(K)),</span>
+<span id="cb11-354"><a href="gibbs-sampler.html#cb11-354" tabindex="-1"></a>               <span class="at">col =</span> <span class="fu">seq_len</span>(K), <span class="at">lty =</span> <span class="dv">1</span>, <span class="at">cex =</span> <span class="fl">0.8</span>)</span>
+<span id="cb11-355"><a href="gibbs-sampler.html#cb11-355" tabindex="-1"></a>    }</span>
+<span id="cb11-356"><a href="gibbs-sampler.html#cb11-356" tabindex="-1"></a></span>
+<span id="cb11-357"><a href="gibbs-sampler.html#cb11-357" tabindex="-1"></a>    <span class="fu">invisible</span>(x)</span>
+<span id="cb11-358"><a href="gibbs-sampler.html#cb11-358" tabindex="-1"></a>}</span></code></pre></div>
+
+</div>
+</div>
+            </section>
+</div>
+        </div>
+      </div>
+<a href="syntheticdata.html" class="navigation navigation-prev " aria-label="Previous page"><i class="fa fa-angle-left"></i></a>
+<a href="simulation-study-bayesian-dynamic-network-for-traffic-data.html" class="navigation navigation-next " aria-label="Next page"><i class="fa fa-angle-right"></i></a>
+    </div>
+  </div>
+<script src="libs/gitbook-2.6.7/js/app.min.js"></script><script src="libs/gitbook-2.6.7/js/clipboard.min.js"></script><script src="libs/gitbook-2.6.7/js/plugin-search.js"></script><script src="libs/gitbook-2.6.7/js/plugin-sharing.js"></script><script src="libs/gitbook-2.6.7/js/plugin-fontsettings.js"></script><script src="libs/gitbook-2.6.7/js/plugin-bookdown.js"></script><script src="libs/gitbook-2.6.7/js/jquery.highlight.js"></script><script src="libs/gitbook-2.6.7/js/plugin-clipboard.js"></script><script>
+gitbook.require(["gitbook"], function(gitbook) {
+gitbook.start({
+"sharing": {
+"github": false,
+"facebook": true,
+"twitter": true,
+"linkedin": false,
+"weibo": false,
+"instapaper": false,
+"vk": false,
+"whatsapp": false,
+"all": ["facebook", "twitter", "linkedin", "weibo", "instapaper"]
+},
+"fontsettings": {
+"theme": "white",
+"family": "sans",
+"size": 2
+},
+"edit": {
+"link": null,
+"text": null
+},
+"history": {
+"link": null,
+"text": null
+},
+"view": {
+"link": null,
+"text": null
+},
+"download": null,
+"search": {
+"engine": "fuse",
+"options": null
+},
+"toc": {
+"collapse": "subsection"
+}
+});
+});
+</script>
+</body>
+</html>

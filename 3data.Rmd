@@ -1,0 +1,2 @@
+# Generating synthetic data {#syntheticdata}
+
