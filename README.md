@@ -17,7 +17,10 @@ if (!requireNamespace("devtools", quietly = TRUE)) {
 }
 
 # Install bdynets from GitHub
-devtools::install_github("your-username/bdynets", dependencies = TRUE)
+devtools::install_github("sj156/bdynets", dependencies = TRUE)
+```
 
+```r
 # Load the package
 library(bdynets)
+``` 
