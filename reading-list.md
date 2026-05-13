@@ -221,6 +221,12 @@ This is not necessary for a first GP reading group, but it is valuable for advan
 
 ---
 
+## Papers
+
+TBD
+
+---
+
 ## 8-Week Reading Plan
 
 ### Week 1 — Bayesian Regression and GP Basics
@@ -403,23 +409,4 @@ Choose one direction.
 
 ---
 
-## Final Recommendation
-
-For a fast and balanced reading group, use this structure:
-
-| Purpose | Book |
-|---|---|
-| Main GP textbook | Rasmussen & Williams |
-| Practical modeling | Gramacy |
-| Spatial/statistical theory | Stein |
-| Computer experiments | Santner, Williams & Notz |
-| Modern ML background | Murphy |
-| Bayesian optimization | Garnett |
-| Kernel/RKHS background | Schölkopf & Smola |
-| Bayesian nonparametric theory | Ghosal & van der Vaart |
-
-The most efficient core combination is:
-
-> **Rasmussen & Williams + Gramacy + Stein + Garnett**
-
-This gives the group a strong foundation in GP regression, kernels, hyperparameter learning, computation, kriging, surrogate modeling, and Bayesian optimization.
+Overleaf link: https://www.overleaf.com/7823943244fhhdpbqnkjbb#3f1c67
