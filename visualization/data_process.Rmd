@@ -4,6 +4,7 @@ output: html_document
 ---
 
 ## 1.Initial Data
+*variables used in our application are in blue*
 ### 1.1 *input_node.csv*: Represents the intersections or endpoints on the map.
 * **name**: Intersection or node name.
 
