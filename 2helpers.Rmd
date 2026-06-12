@@ -204,4 +204,689 @@ mode_int <- function(x, K){
 ```
 
 
+## SANDNM helpers
+
+The following helper functions support the spatially adaptive neighborhood dynamic network model (SANDNM) simulation study.
+
+```{r sandnm-helpers, send_to = 'R/all-helpers.R'}
+#' SANDNM helper functions here
+#' Fourier seasonal features for SANDNM.
+#'
+#' @param t_global Time index.
+#' @param steps_day Number of time points per day.
+#' @param harmonics Number of Fourier harmonics.
+sandnm_season_features <- function(t_global, steps_day = 48, harmonics = 2){
+    if(harmonics <= 0) return(numeric(0))
+    h <- (t_global - 1) %% steps_day
+    out <- numeric(2 * harmonics)
+    nm <- character(2 * harmonics)
+    for(j in seq_len(harmonics)){
+        angle <- 2 * pi * j * h / steps_day
+        out[2 * j - 1] <- sin(angle)
+        out[2 * j] <- cos(angle)
+        nm[2 * j - 1] <- paste0("sin", j)
+        nm[2 * j] <- paste0("cos", j)
+    }
+    names(out) <- nm
+    return(out)
+}
+
+#' Baseline dimension for SANDNM.
+sandnm_baseline_dim <- function(harmonics = 2){
+    return(1 + 2 * harmonics)
+}
+
+#' Numerically stable Cholesky factorization.
+sandnm_chol_safe <- function(A, jitter = 1e-8, max_tries = 6){
+    A <- (A + t(A)) / 2
+    for(i in seq_len(max_tries)){
+        out <- tryCatch(chol(A + diag(jitter, nrow(A))), error = function(e) NULL)
+        if(!is.null(out)) return(out)
+        jitter <- jitter * 10
+    }
+    return(chol(A + diag(jitter, nrow(A))))
+}
+
+#' Inverse of a symmetric positive definite matrix.
+sandnm_inv_spd <- function(A){
+    return(chol2inv(sandnm_chol_safe(A)))
+}
+
+#' Multivariate normal draw using a Cholesky factor.
+sandnm_rmvn_chol <- function(mu, Sigma){
+    U <- sandnm_chol_safe(Sigma)
+    return(as.numeric(mu + t(U) %*% rnorm(length(mu))))
+}
+
+#' Vectorized Polya--Gamma sampler.
+sandnm_rpg_vec <- function(b, z){
+    if(requireNamespace("BayesLogit", quietly = TRUE)){
+        return(BayesLogit::rpg(num = length(z), h = b, z = z))
+    }
+    stop("Package 'BayesLogit' is required for sandnm_rpg_vec().")
+}
+
+#' Log harmonic mean of exponential log values.
+sandnm_log_hmean_exp <- function(logx){
+    a <- max(-logx)
+    return(-(a + log(mean(exp(-logx - a)))))
+}
+
+#' Log-density of a half-Cauchy distribution up to numerical constants.
+sandnm_log_half_cauchy <- function(x, scale){
+    return(ifelse(x > 0, log(2 / pi) + log(scale) - log(x^2 + scale^2), -Inf))
+}
+
+#' Progress message with estimated remaining time.
+sandnm_eta_message <- function(label, iter, total_iter, start_time){
+    now <- Sys.time()
+    elapsed_sec <- as.numeric(difftime(now, start_time, units = "secs"))
+    sec_per_iter <- elapsed_sec / max(iter, 1)
+    remain_sec <- sec_per_iter * max(total_iter - iter, 0)
+    finish_time <- now + remain_sec
+    return(paste0(
+        "[", format(now, "%Y-%m-%d %H:%M:%S"), "] ",
+        label, " | iter ", iter, "/", total_iter,
+        " (", sprintf("%.1f", 100 * iter / total_iter), "%)",
+        " | elapsed ", sprintf("%.1f", elapsed_sec / 60), " min",
+        " | remaining ", sprintf("%.1f", remain_sec / 60), " min",
+        " | expected finish: ", format(finish_time, "%H:%M:%S")
+    ))
+}
+
+#' Construct lagged covariates from count data.
+sandnm_make_lag_covariates <- function(Y, y0, center = log(8), scale_x = 2){
+    TT <- nrow(Y)
+    E <- ncol(Y)
+    Xlag <- matrix(NA_real_, TT, E)
+    for(tt in seq_len(TT)){
+        y_lag <- if(tt == 1) y0 else Y[tt - 1, ]
+        Xlag[tt, ] <- (log1p(y_lag) - center) / scale_x
+    }
+    return(Xlag)
+}
+
+#' Construct edge-wise block design matrices.
+sandnm_make_X_blocks <- function(Y, y0, pair_table, t_start = 1,
+                                 steps_day = 48, harmonics = 2,
+                                 center = log(8), scale_x = 2){
+    TT <- nrow(Y)
+    E <- ncol(Y)
+    B <- sandnm_baseline_dim(harmonics)
+    Xlag <- sandnm_make_lag_covariates(Y, y0, center, scale_x)
+
+    if(harmonics > 0){
+        base_names <- c("intercept", unlist(lapply(seq_len(harmonics), function(j){
+            c(paste0("sin", j), paste0("cos", j))
+        })))
+    } else {
+        base_names <- "intercept"
+    }
+
+    S <- matrix(1, nrow = TT, ncol = B)
+    colnames(S) <- base_names
+    if(B > 1){
+        for(tt in seq_len(TT)){
+            S[tt, 2:B] <- sandnm_season_features(t_start + tt - 1, steps_day, harmonics)
+        }
+    }
+
+    X_blocks <- vector("list", E)
+    pair_blocks <- vector("list", E)
+    for(e in seq_len(E)){
+        rows_e <- which(pair_table$target == e)
+        pt_e <- pair_table[rows_e, , drop = FALSE]
+        q <- nrow(pt_e)
+        X_e <- matrix(0, nrow = TT, ncol = B + q)
+        X_e[, seq_len(B)] <- S
+        if(q > 0){
+            X_e[, B + seq_len(q)] <- Xlag[, pt_e$source, drop = FALSE]
+        }
+        colnames(X_e) <- c(base_names, pt_e$pair_name)
+        X_blocks[[e]] <- X_e
+        pair_blocks[[e]] <- pt_e
+    }
+
+    attr(X_blocks, "B") <- B
+    attr(X_blocks, "E") <- E
+    attr(X_blocks, "T") <- TT
+    attr(X_blocks, "steps_day") <- steps_day
+    attr(X_blocks, "harmonics") <- harmonics
+    attr(X_blocks, "center") <- center
+    attr(X_blocks, "scale_x") <- scale_x
+    attr(X_blocks, "t_start") <- t_start
+    attr(X_blocks, "pair_blocks") <- pair_blocks
+    return(X_blocks)
+}
+
+#' Compute linear predictors for fixed block states.
+sandnm_compute_eta_blocks <- function(X_blocks, theta_blocks){
+    E <- length(X_blocks)
+    TT <- nrow(X_blocks[[1]])
+    eta <- matrix(NA_real_, nrow = TT, ncol = E)
+    for(e in seq_len(E)){
+        eta[, e] <- rowSums(X_blocks[[e]] * theta_blocks[[e]])
+    }
+    return(eta)
+}
+
+#' Compute linear predictors for shrinkage block states.
+sandnm_compute_eta_blocks_scaled <- function(X_blocks, beta_blocks, lambda_blocks){
+    E <- length(X_blocks)
+    TT <- nrow(X_blocks[[1]])
+    eta <- matrix(NA_real_, nrow = TT, ncol = E)
+    for(e in seq_len(E)){
+        eta[, e] <- rowSums(X_blocks[[e]] * sweep(beta_blocks[[e]], 2, lambda_blocks[[e]], `*`))
+    }
+    return(eta)
+}
+
+#' Gaussian FFBS for a univariate observation block.
+sandnm_ffbs_univ_dlm <- function(y, omega, X, W_diag, m0, C0, sample_state = TRUE){
+    TT <- length(y)
+    p <- length(m0)
+    m <- matrix(NA_real_, TT, p)
+    a <- matrix(NA_real_, TT, p)
+    C <- array(NA_real_, dim = c(p, p, TT))
+    R <- array(NA_real_, dim = c(p, p, TT))
+
+    m_prev <- m0
+    C_prev <- C0
+    W <- diag(W_diag, p)
+    loglik <- 0
+
+    for(tt in seq_len(TT)){
+        f_t <- X[tt, ]
+        a_t <- m_prev
+        R_t <- C_prev + W
+        Rinv_t <- sandnm_inv_spd(R_t)
+        P_t <- Rinv_t + omega[tt] * tcrossprod(f_t)
+        C_t <- sandnm_inv_spd(P_t)
+        e_t <- y[tt] - sum(f_t * a_t)
+        z_t <- omega[tt] * f_t * e_t
+        m_t <- a_t + as.numeric(C_t %*% z_t)
+        Q_t <- 1 / omega[tt] + as.numeric(t(f_t) %*% R_t %*% f_t)
+        loglik <- loglik + dnorm(e_t, mean = 0, sd = sqrt(Q_t), log = TRUE)
+
+        a[tt, ] <- a_t
+        R[, , tt] <- R_t
+        m[tt, ] <- m_t
+        C[, , tt] <- C_t
+        m_prev <- m_t
+        C_prev <- C_t
+    }
+
+    if(!sample_state){
+        return(list(m = m, C = C, a = a, R = R, loglik = loglik))
+    }
+
+    theta <- matrix(NA_real_, TT, p)
+    theta[TT, ] <- sandnm_rmvn_chol(m[TT, ], C[, , TT])
+    if(TT > 1){
+        for(tt in (TT - 1):1){
+            B_t <- C[, , tt] %*% sandnm_inv_spd(R[, , tt + 1])
+            mean_t <- m[tt, ] + as.numeric(B_t %*% (theta[tt + 1, ] - a[tt + 1, ]))
+            Cov_t <- C[, , tt] - B_t %*% R[, , tt + 1] %*% t(B_t)
+            Cov_t <- (Cov_t + t(Cov_t)) / 2
+            theta[tt, ] <- sandnm_rmvn_chol(mean_t, Cov_t)
+        }
+    }
+    return(list(theta = theta, m = m, C = C, a = a, R = R, loglik = loglik))
+}
+
+#' Block PG-FFBS for a fixed-neighborhood SANDNM.
+sandnm_run_pgffbs_fixed_blocks <- function(Y, y0, pair_table, t_start = 1,
+                                           steps_day = 48, harmonics = 2,
+                                           center = log(8), scale_x = 2,
+                                           r_pg = NULL, n_iter = 500,
+                                           burn = 250, thin = 2,
+                                           state_sd_baseline = NULL,
+                                           state_sd_pair = 0.0015,
+                                           verbose = TRUE,
+                                           progress_every = 20,
+                                           label = "fixed-block"){
+    TT <- nrow(Y)
+    E <- ncol(Y)
+    B <- sandnm_baseline_dim(harmonics)
+    X_blocks <- sandnm_make_X_blocks(Y, y0, pair_table, t_start, steps_day, harmonics, center, scale_x)
+
+    if(is.null(r_pg)) r_pg <- ceiling((max(Y) + 2 * sqrt(max(Y))) * 50)
+    if(is.null(state_sd_baseline)) state_sd_baseline <- c(0.0020, rep(0.0008, B - 1))
+
+    bmat <- Y + r_pg
+    kappa <- (Y - r_pg) / 2
+    log_r <- log(r_pg)
+
+    theta_blocks <- vector("list", E)
+    state_sd_blocks <- vector("list", E)
+    m0_blocks <- vector("list", E)
+    C0_blocks <- vector("list", E)
+
+    for(e in seq_len(E)){
+        p_e <- ncol(X_blocks[[e]])
+        q_e <- p_e - B
+        m0_e <- c(log(mean(Y[, e]) + 0.1), rep(0, B - 1), rep(0, q_e))
+        names(m0_e) <- colnames(X_blocks[[e]])
+        C0_e <- diag(c(0.6, rep(0.35, B - 1), rep(0.20, q_e))^2)
+        sd_e <- c(state_sd_baseline, rep(state_sd_pair, q_e))
+        theta_blocks[[e]] <- matrix(rep(m0_e, TT), nrow = TT, byrow = TRUE)
+        colnames(theta_blocks[[e]]) <- colnames(X_blocks[[e]])
+        state_sd_blocks[[e]] <- sd_e
+        m0_blocks[[e]] <- m0_e
+        C0_blocks[[e]] <- C0_e
+    }
+
+    n_save <- floor((n_iter - burn) / thin)
+    thetaT_save <- vector("list", E)
+    for(e in seq_len(E)) thetaT_save[[e]] <- matrix(NA_real_, nrow = n_save, ncol = ncol(X_blocks[[e]]))
+    loglik_trace <- numeric(n_iter)
+    lambda_fit_sum <- matrix(0, nrow = TT, ncol = E)
+
+    start_time <- Sys.time()
+    if(verbose) message("Starting ", label, " at ", format(start_time, "%Y-%m-%d %H:%M:%S"))
+
+    save_id <- 0
+    for(it in seq_len(n_iter)){
+        eta <- sandnm_compute_eta_blocks(X_blocks, theta_blocks)
+        omega_vec <- sandnm_rpg_vec(as.vector(bmat), as.vector(eta - log_r))
+        Omega <- matrix(omega_vec, nrow = TT, ncol = E)
+        Ystar <- log_r + kappa / Omega
+
+        loglik_it <- 0
+        for(e in seq_len(E)){
+            ff <- sandnm_ffbs_univ_dlm(
+                y = Ystar[, e], omega = Omega[, e], X = X_blocks[[e]],
+                W_diag = state_sd_blocks[[e]]^2, m0 = m0_blocks[[e]],
+                C0 = C0_blocks[[e]], sample_state = TRUE
+            )
+            theta_blocks[[e]] <- ff$theta
+            loglik_it <- loglik_it + ff$loglik
+        }
+        loglik_trace[it] <- loglik_it
+
+        if(it > burn && ((it - burn) %% thin == 0)){
+            save_id <- save_id + 1
+            eta_save <- pmin(pmax(sandnm_compute_eta_blocks(X_blocks, theta_blocks), -8), 8)
+            lambda_fit_sum <- lambda_fit_sum + exp(eta_save)
+            for(e in seq_len(E)) thetaT_save[[e]][save_id, ] <- theta_blocks[[e]][TT, ]
+        }
+
+        if(verbose && (it == 1 || it %% progress_every == 0 || it == n_iter)){
+            message(sandnm_eta_message(label, it, n_iter, start_time))
+        }
+    }
+
+    return(list(
+        type = "fixed-block", label = label, pair_table = pair_table,
+        X_blocks = X_blocks, theta_blocks_last = theta_blocks,
+        thetaT_save = thetaT_save, loglik_trace = loglik_trace,
+        working_log_RB = sandnm_log_hmean_exp(loglik_trace[(burn + 1):n_iter]),
+        lambda_fit_mean = lambda_fit_sum / max(save_id, 1), burn = burn,
+        thin = thin, r_pg = r_pg, state_sd_blocks = state_sd_blocks,
+        t_train = TT, t_start = t_start, steps_day = steps_day,
+        harmonics = harmonics, center = center, scale_x = scale_x
+    ))
+}
+
+#' Block PG-FFBS for a shrinkage SANDNM.
+sandnm_run_pgffbs_shrinkage_blocks <- function(Y, y0, pair_table, t_start = 1,
+                                               steps_day = 48, harmonics = 2,
+                                               center = log(8), scale_x = 2,
+                                               r_pg = NULL, n_iter = 500,
+                                               burn = 250, thin = 2,
+                                               sigma_lambda = 0.8,
+                                               phi_lambda = 0.55,
+                                               mh_step = 0.12,
+                                               lambda_update_every = 2,
+                                               state_sd_baseline = NULL,
+                                               state_sd_beta = 0.0015,
+                                               verbose = TRUE,
+                                               progress_every = 20,
+                                               label = "shrinkage-block"){
+    TT <- nrow(Y)
+    E <- ncol(Y)
+    B <- sandnm_baseline_dim(harmonics)
+    X_blocks <- sandnm_make_X_blocks(Y, y0, pair_table, t_start, steps_day, harmonics, center, scale_x)
+    pair_blocks <- attr(X_blocks, "pair_blocks")
+
+    if(is.null(r_pg)) r_pg <- ceiling((max(Y) + 2 * sqrt(max(Y))) * 50)
+    if(is.null(state_sd_baseline)) state_sd_baseline <- c(0.0020, rep(0.0008, B - 1))
+
+    bmat <- Y + r_pg
+    kappa <- (Y - r_pg) / 2
+    log_r <- log(r_pg)
+
+    beta_blocks <- lambda_blocks <- lambda_scale_blocks <- vector("list", E)
+    state_sd_blocks <- m0_blocks <- C0_blocks <- vector("list", E)
+
+    for(e in seq_len(E)){
+        pt_e <- pair_blocks[[e]]
+        p_e <- ncol(X_blocks[[e]])
+        q_e <- p_e - B
+        m0_e <- c(log(mean(Y[, e]) + 0.1), rep(0, B - 1), rep(0, q_e))
+        names(m0_e) <- colnames(X_blocks[[e]])
+        C0_e <- diag(c(0.6, rep(0.35, B - 1), rep(0.35, q_e))^2)
+        sd_e <- c(state_sd_baseline, rep(state_sd_beta, q_e))
+        if(q_e > 0){
+            sc_pair <- sigma_lambda * exp(-phi_lambda * pt_e$distance)
+            sc_pair[pt_e$relation == "self"] <- sigma_lambda
+            lam_e <- c(rep(1, B), pmax(0.05, sc_pair))
+            sc_e <- c(rep(NA_real_, B), sc_pair)
+        } else {
+            lam_e <- rep(1, B)
+            sc_e <- rep(NA_real_, B)
+        }
+        beta_blocks[[e]] <- matrix(rep(m0_e, TT), nrow = TT, byrow = TRUE)
+        colnames(beta_blocks[[e]]) <- colnames(X_blocks[[e]])
+        lambda_blocks[[e]] <- lam_e
+        lambda_scale_blocks[[e]] <- sc_e
+        state_sd_blocks[[e]] <- sd_e
+        m0_blocks[[e]] <- m0_e
+        C0_blocks[[e]] <- C0_e
+    }
+
+    n_save <- floor((n_iter - burn) / thin)
+    betaT_save <- lambda_save <- vector("list", E)
+    for(e in seq_len(E)){
+        betaT_save[[e]] <- matrix(NA_real_, nrow = n_save, ncol = ncol(X_blocks[[e]]))
+        lambda_save[[e]] <- matrix(NA_real_, nrow = n_save, ncol = ncol(X_blocks[[e]]))
+    }
+
+    loglik_trace <- numeric(n_iter)
+    accept_trace <- numeric(n_iter)
+    lambda_fit_sum <- matrix(0, nrow = TT, ncol = E)
+
+    start_time <- Sys.time()
+    if(verbose) message("Starting ", label, " at ", format(start_time, "%Y-%m-%d %H:%M:%S"))
+
+    save_id <- 0
+    for(it in seq_len(n_iter)){
+        eta <- sandnm_compute_eta_blocks_scaled(X_blocks, beta_blocks, lambda_blocks)
+        omega_vec <- sandnm_rpg_vec(as.vector(bmat), as.vector(eta - log_r))
+        Omega <- matrix(omega_vec, nrow = TT, ncol = E)
+        Ystar <- log_r + kappa / Omega
+
+        loglik_it <- 0
+        for(e in seq_len(E)){
+            X_scaled <- sweep(X_blocks[[e]], 2, lambda_blocks[[e]], `*`)
+            ff <- sandnm_ffbs_univ_dlm(
+                y = Ystar[, e], omega = Omega[, e], X = X_scaled,
+                W_diag = state_sd_blocks[[e]]^2, m0 = m0_blocks[[e]],
+                C0 = C0_blocks[[e]], sample_state = TRUE
+            )
+            beta_blocks[[e]] <- ff$theta
+            loglik_it <- loglik_it + ff$loglik
+        }
+        loglik_trace[it] <- loglik_it
+
+        if(it %% lambda_update_every == 0){
+            accept <- 0
+            total_prop <- 0
+            eta <- sandnm_compute_eta_blocks_scaled(X_blocks, beta_blocks, lambda_blocks)
+            for(e in seq_len(E)){
+                p_e <- ncol(X_blocks[[e]])
+                if(p_e <= B) next
+                for(col in (B + 1):p_e){
+                    total_prop <- total_prop + 1
+                    lam_curr <- lambda_blocks[[e]][col]
+                    lam_prop <- exp(log(lam_curr) + rnorm(1, 0, mh_step))
+                    x_t <- X_blocks[[e]][, col]
+                    beta_t <- beta_blocks[[e]][, col]
+                    eta_prop <- eta[, e] - lam_curr * beta_t * x_t + lam_prop * beta_t * x_t
+                    res_curr <- Ystar[, e] - eta[, e]
+                    res_prop <- Ystar[, e] - eta_prop
+                    ll_diff <- -0.5 * sum(Omega[, e] * (res_prop^2 - res_curr^2))
+                    sc <- lambda_scale_blocks[[e]][col]
+                    lp_curr <- sandnm_log_half_cauchy(lam_curr, sc) + log(lam_curr)
+                    lp_prop <- sandnm_log_half_cauchy(lam_prop, sc) + log(lam_prop)
+                    if(log(runif(1)) < ll_diff + lp_prop - lp_curr){
+                        lambda_blocks[[e]][col] <- lam_prop
+                        eta[, e] <- eta_prop
+                        accept <- accept + 1
+                    }
+                }
+            }
+            accept_trace[it] <- accept / max(total_prop, 1)
+        }
+
+        if(it > burn && ((it - burn) %% thin == 0)){
+            save_id <- save_id + 1
+            eta_save <- pmin(pmax(sandnm_compute_eta_blocks_scaled(X_blocks, beta_blocks, lambda_blocks), -8), 8)
+            lambda_fit_sum <- lambda_fit_sum + exp(eta_save)
+            for(e in seq_len(E)){
+                betaT_save[[e]][save_id, ] <- beta_blocks[[e]][TT, ]
+                lambda_save[[e]][save_id, ] <- lambda_blocks[[e]]
+            }
+        }
+
+        if(verbose && (it == 1 || it %% progress_every == 0 || it == n_iter)){
+            msg <- sandnm_eta_message(label, it, n_iter, start_time)
+            if(it %% lambda_update_every == 0){
+                idx0 <- max(1, it - progress_every + 1)
+                msg <- paste0(msg, " | lambda accept = ", round(mean(accept_trace[idx0:it]), 3))
+            }
+            message(msg)
+        }
+    }
+
+    return(list(
+        type = "shrinkage-block", label = label, pair_table = pair_table,
+        X_blocks = X_blocks, beta_blocks_last = beta_blocks,
+        lambda_blocks_last = lambda_blocks, betaT_save = betaT_save,
+        lambda_save = lambda_save, loglik_trace = loglik_trace,
+        accept_trace = accept_trace,
+        working_log_RB = sandnm_log_hmean_exp(loglik_trace[(burn + 1):n_iter]),
+        lambda_fit_mean = lambda_fit_sum / max(save_id, 1), burn = burn,
+        thin = thin, r_pg = r_pg, state_sd_blocks = state_sd_blocks,
+        t_train = TT, t_start = t_start, steps_day = steps_day,
+        harmonics = harmonics, center = center, scale_x = scale_x
+    ))
+}
+
+#' Posterior mean fitted intensity for a block SANDNM object.
+sandnm_posterior_mean_intensity <- function(fit){
+    if(!is.null(fit$lambda_fit_mean)) return(fit$lambda_fit_mean)
+    if(fit$type == "fixed-block"){
+        eta <- sandnm_compute_eta_blocks(fit$X_blocks, fit$theta_blocks_last)
+    } else if(fit$type == "shrinkage-block"){
+        eta <- sandnm_compute_eta_blocks_scaled(fit$X_blocks, fit$beta_blocks_last, fit$lambda_blocks_last)
+    } else {
+        stop("Unsupported fit type.")
+    }
+    return(exp(pmin(pmax(eta, -8), 8)))
+}
+
+#' Single future design row for one edge block.
+sandnm_make_Xrow_future_block <- function(y_lag, pair_block, t_global,
+                                          steps_day = 48, harmonics = 2,
+                                          center = log(8), scale_x = 2){
+    B <- sandnm_baseline_dim(harmonics)
+    sfeat <- sandnm_season_features(t_global, steps_day, harmonics)
+    x_lag <- (log1p(y_lag) - center) / scale_x
+    q <- nrow(pair_block)
+    xrow <- numeric(B + q)
+    xrow[1] <- 1
+    if(B > 1) xrow[2:B] <- sfeat
+    if(q > 0) xrow[B + seq_len(q)] <- x_lag[pair_block$source]
+    return(xrow)
+}
+
+#' Recursive forecast for a block SANDNM object.
+sandnm_forecast_recursive_blocks <- function(fit, y_last_train, H, max_draws = 80,
+                                             seed = NULL, simulate_counts = TRUE,
+                                             eta_clip = c(-8, 8)){
+    if(!is.null(seed)) set.seed(seed)
+    if(!fit$type %in% c("fixed-block", "shrinkage-block")){
+        stop("Only fixed-block and shrinkage-block fits are supported.")
+    }
+    E <- length(fit$X_blocks)
+    pair_blocks <- attr(fit$X_blocks, "pair_blocks")
+    if(fit$type == "fixed-block") S <- nrow(fit$thetaT_save[[1]]) else S <- nrow(fit$betaT_save[[1]])
+    if(is.null(S) || length(S) != 1 || is.na(S) || S < 1) stop("No saved terminal posterior draws found.")
+    draw_id <- unique(round(seq(1, S, length.out = min(max_draws, S))))
+    D <- length(draw_id)
+    lambda_draws <- array(NA_real_, dim = c(D, H, E))
+    y_draws <- array(NA_real_, dim = c(D, H, E))
+
+    for(dd in seq_along(draw_id)){
+        s <- draw_id[dd]
+        y_prev <- as.numeric(y_last_train)
+        if(fit$type == "fixed-block"){
+            state_blocks <- vector("list", E)
+            for(e in seq_len(E)) state_blocks[[e]] <- as.numeric(fit$thetaT_save[[e]][s, ])
+            for(h in seq_len(H)){
+                t_global <- fit$t_start + fit$t_train + h - 1
+                lambda_h <- numeric(E)
+                for(e in seq_len(E)){
+                    state_blocks[[e]] <- state_blocks[[e]] + rnorm(length(state_blocks[[e]]), 0, fit$state_sd_blocks[[e]])
+                    xrow <- sandnm_make_Xrow_future_block(y_prev, pair_blocks[[e]], t_global, fit$steps_day, fit$harmonics, fit$center, fit$scale_x)
+                    eta_e <- sum(xrow * state_blocks[[e]])
+                    eta_e <- min(max(eta_e, eta_clip[1]), eta_clip[2])
+                    lambda_h[e] <- exp(eta_e)
+                }
+                lambda_draws[dd, h, ] <- lambda_h
+                y_new <- if(simulate_counts) rpois(E, lambda_h) else lambda_h
+                y_draws[dd, h, ] <- y_new
+                y_prev <- y_new
+            }
+        } else {
+            beta_blocks <- lambda_blocks <- vector("list", E)
+            for(e in seq_len(E)){
+                beta_blocks[[e]] <- as.numeric(fit$betaT_save[[e]][s, ])
+                lambda_blocks[[e]] <- as.numeric(fit$lambda_save[[e]][s, ])
+            }
+            for(h in seq_len(H)){
+                t_global <- fit$t_start + fit$t_train + h - 1
+                lambda_h <- numeric(E)
+                for(e in seq_len(E)){
+                    beta_blocks[[e]] <- beta_blocks[[e]] + rnorm(length(beta_blocks[[e]]), 0, fit$state_sd_blocks[[e]])
+                    xrow <- sandnm_make_Xrow_future_block(y_prev, pair_blocks[[e]], t_global, fit$steps_day, fit$harmonics, fit$center, fit$scale_x)
+                    eta_e <- sum(xrow * lambda_blocks[[e]] * beta_blocks[[e]])
+                    eta_e <- min(max(eta_e, eta_clip[1]), eta_clip[2])
+                    lambda_h[e] <- exp(eta_e)
+                }
+                lambda_draws[dd, h, ] <- lambda_h
+                y_new <- if(simulate_counts) rpois(E, lambda_h) else lambda_h
+                y_draws[dd, h, ] <- y_new
+                y_prev <- y_new
+            }
+        }
+    }
+    return(list(
+        type = paste0(fit$type, "-forecast"), label = fit$label,
+        lambda_draws = lambda_draws, y_draws = y_draws,
+        lambda_mean = apply(lambda_draws, c(2, 3), mean),
+        lambda_lower = apply(lambda_draws, c(2, 3), quantile, probs = 0.025),
+        lambda_upper = apply(lambda_draws, c(2, 3), quantile, probs = 0.975),
+        y_mean = apply(y_draws, c(2, 3), mean),
+        y_lower = apply(y_draws, c(2, 3), quantile, probs = 0.025),
+        y_upper = apply(y_draws, c(2, 3), quantile, probs = 0.975),
+        H = H, E = E, n_draws = D
+    ))
+}
+
+#' Score recursive forecast output.
+sandnm_score_forecast_blocks <- function(fc, Y_test, Lambda_test){
+    Lambda_hat <- fc$lambda_mean
+    Y_hat <- fc$y_mean
+    coverage_indicator <- Lambda_test >= fc$lambda_lower & Lambda_test <= fc$lambda_upper
+    return(data.frame(
+        model = fc$label,
+        forecast_log_score = mean(dpois(as.vector(Y_test), lambda = as.vector(Lambda_hat), log = TRUE)),
+        RMSE_lambda_test = sqrt(mean((Lambda_hat - Lambda_test)^2)),
+        MAE_lambda_test = mean(abs(Lambda_hat - Lambda_test)),
+        MAE_count_test = mean(abs(Y_hat - Y_test)),
+        MAE_total_flow_test = mean(abs(rowSums(Lambda_hat) - rowSums(Y_test))),
+        coverage_lambda_95 = mean(coverage_indicator, na.rm = TRUE)
+    ))
+}
+
+#' Score in-sample fitted intensity.
+sandnm_score_fit_blocks <- function(fit, Y, Lambda_true){
+    Lambda_hat <- sandnm_posterior_mean_intensity(fit)
+    return(data.frame(
+        model = fit$label,
+        model_type = fit$type,
+        in_sample_RMSE_lambda = sqrt(mean((Lambda_hat - Lambda_true)^2)),
+        in_sample_MAE_lambda = mean(abs(Lambda_hat - Lambda_true)),
+        in_sample_MAE_count = mean(abs(Lambda_hat - Y)),
+        in_sample_total_flow_MAE = mean(abs(rowSums(Lambda_hat) - rowSums(Y))),
+        in_sample_poisson_log_score = mean(dpois(as.vector(Y), lambda = as.vector(Lambda_hat), log = TRUE)),
+        working_log_RB = fit$working_log_RB
+    ))
+}
+
+#' Lag-correlation summary by edge-pair relation.
+sandnm_neighbor_correlation_summary <- function(Y, pair_table){
+    TT <- nrow(Y)
+    out <- pair_table
+    out$corr <- NA_real_
+    for(l in seq_len(nrow(pair_table))){
+        target <- pair_table$target[l]
+        source <- pair_table$source[l]
+        out$corr[l] <- suppressWarnings(cor(Y[seq_len(TT - 1), source], Y[2:TT, target]))
+    }
+    return(out)
+}
+
+#' Summarize shrinkage scales by edge pair.
+sandnm_shrinkage_pair_summary <- function(fit_shrinkage, true_pair_table = NULL, threshold = 0.03){
+    if(fit_shrinkage$type != "shrinkage-block") stop("fit_shrinkage must have type 'shrinkage-block'.")
+    pair_blocks <- attr(fit_shrinkage$X_blocks, "pair_blocks")
+    B <- sandnm_baseline_dim(fit_shrinkage$harmonics)
+    E <- length(pair_blocks)
+    out_list <- vector("list", E)
+    for(e in seq_len(E)){
+        pt_e <- pair_blocks[[e]]
+        q_e <- nrow(pt_e)
+        if(q_e == 0) next
+        lam_e <- fit_shrinkage$lambda_save[[e]][, B + seq_len(q_e), drop = FALSE]
+        betaT_e <- fit_shrinkage$betaT_save[[e]][, B + seq_len(q_e), drop = FALSE]
+        thetaT_e <- lam_e * betaT_e
+        tmp <- pt_e
+        tmp$lambda_mean <- colMeans(lam_e, na.rm = TRUE)
+        tmp$lambda_median <- apply(lam_e, 2, median, na.rm = TRUE)
+        tmp$lambda_q025 <- apply(lam_e, 2, quantile, probs = 0.025, na.rm = TRUE)
+        tmp$lambda_q975 <- apply(lam_e, 2, quantile, probs = 0.975, na.rm = TRUE)
+        tmp$abs_thetaT_mean <- colMeans(abs(thetaT_e), na.rm = TRUE)
+        tmp$selected_lambda <- tmp$lambda_mean > threshold
+        out_list[[e]] <- tmp
+    }
+    out <- do.call(rbind, out_list)
+    rownames(out) <- NULL
+    if(!is.null(true_pair_table)){
+        key_true <- paste(true_pair_table$target, true_pair_table$source, sep = "_")
+        key_out <- paste(out$target, out$source, sep = "_")
+        idx <- match(key_out, key_true)
+        out$true_active <- ifelse(is.na(idx), FALSE, true_pair_table$true_active[idx])
+        out$selection_type <- ifelse(out$selected_lambda & out$true_active, "TP",
+                                     ifelse(out$selected_lambda & !out$true_active, "FP",
+                                            ifelse(!out$selected_lambda & out$true_active, "FN", "TN")))
+    }
+    return(out)
+}
+
+#' MCMC diagnostic for one scalar trace.
+sandnm_mcmc_diag_one <- function(x, name = "parameter"){
+    x <- as.numeric(x)
+    x <- x[is.finite(x)]
+    if(length(x) < 10){
+        return(data.frame(parameter = name, n_draws = length(x), mean = NA_real_, sd = NA_real_,
+                          ESS = NA_real_, MCSE = NA_real_, MCSE_over_sd = NA_real_,
+                          acf_lag1 = NA_real_, acf_lag10 = NA_real_, acf_lag30 = NA_real_))
+    }
+    if(requireNamespace("coda", quietly = TRUE)){
+        ess <- as.numeric(coda::effectiveSize(x))
+    } else {
+        ess <- length(x)
+    }
+    sx <- sd(x)
+    mcse <- sx / sqrt(ess)
+    ac <- stats::acf(x, plot = FALSE, lag.max = 30)$acf[, 1, 1]
+    return(data.frame(parameter = name, n_draws = length(x), mean = mean(x), sd = sx,
+                      ESS = ess, MCSE = mcse, MCSE_over_sd = mcse / sx,
+                      acf_lag1 = ac[2], acf_lag10 = ac[11], acf_lag30 = ac[31]))
+}
+```
+
 

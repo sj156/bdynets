@@ -1,0 +1,958 @@
+# SANDNM simulations
+
+This file contains only the simulation-generation functions for the spatially adaptive neighborhood dynamic network model (SANDNM). Core algorithmic helpers, including `sandnm_season_features()` and `sandnm_baseline_dim()`, are defined in the SANDNM helper block.
+
+```{r sandnm-simulations, send_to = 'R/all-simulations.R'}
+#' Construct a directed rectangular grid network for SANDNM simulations.
+#'
+#' @param nx Number of columns in the rectangular grid.
+#' @param ny Number of rows in the rectangular grid.
+#'
+#' @return A list with node and directed-edge data frames.
+sandnm_make_grid_network <- function(nx = 4, ny = 4){
+    nodes <- expand.grid(x = seq_len(nx), y = seq_len(ny))
+    nodes$node_id <- seq_len(nrow(nodes))
+
+    node_id <- function(x, y){
+        return((y - 1) * nx + x)
+    }
+
+    edges <- data.frame(from = integer(0), to = integer(0))
+
+    for(y in seq_len(ny)){
+        for(x in seq_len(nx)){
+            id <- node_id(x, y)
+
+            if(x < nx){
+                id2 <- node_id(x + 1, y)
+                edges <- rbind(
+                    edges,
+                    data.frame(from = id, to = id2),
+                    data.frame(from = id2, to = id)
+                )
+            }
+
+            if(y < ny){
+                id2 <- node_id(x, y + 1)
+                edges <- rbind(
+                    edges,
+                    data.frame(from = id, to = id2),
+                    data.frame(from = id2, to = id)
+                )
+            }
+        }
+    }
+
+    edges$edge_id <- seq_len(nrow(edges))
+
+    return(list(nodes = nodes, edges = edges))
+}
+
+#' Compute node-to-node Manhattan distances on a rectangular grid.
+#'
+#' @param nodes Node data frame returned by `sandnm_make_grid_network()`.
+#'
+#' @return A square distance matrix indexed by node id.
+sandnm_make_node_distance <- function(nodes){
+    n <- nrow(nodes)
+    D <- matrix(0, n, n)
+
+    for(i in seq_len(n)){
+        for(j in seq_len(n)){
+            D[i, j] <- abs(nodes$x[i] - nodes$x[j]) +
+                abs(nodes$y[i] - nodes$y[j])
+        }
+    }
+
+    return(D)
+}
+
+#' Find directed edges incident to a node.
+#'
+#' @param edges Directed-edge data frame.
+#' @param v Node id.
+#'
+#' @return Integer indices of incident directed edges.
+sandnm_incident_edges <- function(edges, v){
+    return(which(edges$from == v | edges$to == v))
+}
+
+#' Construct edge-wise neighborhood lists.
+#'
+#' @param edges Directed-edge data frame.
+#' @param nodes Node data frame.
+#' @param rule Neighborhood rule. Options are `"origin"` and `"two_endpoint"`.
+#'
+#' @return A list of integer vectors. The `e`th element gives the source edges allowed
+#'   to enter the design row for target edge `e`.
+sandnm_make_neighbor_list <- function(edges, nodes,
+                                      rule = c("origin", "two_endpoint")){
+    rule <- match.arg(rule)
+    E <- nrow(edges)
+    nb <- vector("list", E)
+
+    for(e in seq_len(E)){
+        i <- edges$from[e]
+        j <- edges$to[e]
+
+        if(rule == "origin"){
+            nb_e <- sandnm_incident_edges(edges, i)
+        } else {
+            nb_e <- union(
+                sandnm_incident_edges(edges, i),
+                sandnm_incident_edges(edges, j)
+            )
+        }
+
+        nb[[e]] <- sort(unique(c(e, nb_e)))
+    }
+
+    return(nb)
+}
+
+#' Construct a target-source edge-pair table from neighborhood lists.
+#'
+#' @param edges Directed-edge data frame.
+#' @param nodes Node data frame.
+#' @param nb_list Edge-wise neighborhood list.
+#' @param label Prefix used for pair names.
+#'
+#' @return A data frame containing target edge, source edge, relation type, distance,
+#'   and a unique pair name.
+sandnm_make_pair_table <- function(edges, nodes, nb_list, label = "M"){
+    node_D <- sandnm_make_node_distance(nodes)
+    out <- vector("list", length(nb_list))
+    kk <- 0
+
+    for(e in seq_along(nb_list)){
+        target_from <- edges$from[e]
+        target_to <- edges$to[e]
+        srcs <- nb_list[[e]]
+
+        for(u in srcs){
+            kk <- kk + 1
+            source_from <- edges$from[u]
+            source_to <- edges$to[u]
+
+            relation <- if(u == e){
+                "self"
+            } else if(source_from == target_from || source_to == target_from){
+                "origin"
+            } else if(source_from == target_to || source_to == target_to){
+                "destination"
+            } else {
+                "nearby"
+            }
+
+            d1 <- node_D[target_from, source_from]
+            d2 <- node_D[target_from, source_to]
+            d3 <- node_D[target_to, source_from]
+            d4 <- node_D[target_to, source_to]
+            dist_eu <- min(d1, d2, d3, d4)
+
+            out[[kk]] <- data.frame(
+                target = e,
+                source = u,
+                relation = relation,
+                distance = dist_eu,
+                pair_name = paste0(label, "_e", e, "_lag", u),
+                stringsAsFactors = FALSE
+            )
+        }
+    }
+
+    ret <- do.call(rbind, out)
+    rownames(ret) <- NULL
+
+    return(ret)
+}
+
+#' Simulate SANDNM count data on a directed network.
+#'
+#' The default data-generating process uses an origin-centered local propagation
+#' structure with daily Fourier seasonality.
+#'
+#' @param net Network list returned by `sandnm_make_grid_network()`.
+#' @param nb_true True neighborhood list used in the data-generating process.
+#' @param T_full Total number of time points.
+#' @param steps_day Number of time points per day.
+#' @param harmonics Number of Fourier harmonics.
+#' @param center Centering constant for transformed lagged counts.
+#' @param scale_x Scaling constant for transformed lagged counts.
+#' @param base_intercept Baseline log-intensity.
+#' @param seasonal_coef Named vector of Fourier coefficients.
+#' @param theta_sd Innovation standard deviation for active propagation coefficients.
+#' @param seed Optional random seed.
+#'
+#' @return A list containing simulated counts, true intensities, true states, and
+#'   the true edge-pair table.
+sandnm_simulate_adaptive_counts <- function(net, nb_true, T_full = 14 * 48,
+                                            steps_day = 48, harmonics = 2,
+                                            center = log(8), scale_x = 1.5,
+                                            base_intercept = log(6.5),
+                                            seasonal_coef = c(sin1 = -0.26,
+                                                              cos1 = -0.30,
+                                                              sin2 = -0.18,
+                                                              cos2 = -0.28),
+                                            theta_sd = 0.0015,
+                                            seed = NULL){
+    if(!is.null(seed)) set.seed(seed)
+
+    edges <- net$edges
+    nodes <- net$nodes
+    E <- nrow(edges)
+
+    pair_true <- sandnm_make_pair_table(edges, nodes, nb_true, label = "true")
+    P <- nrow(pair_true)
+
+    theta0_pairs <- numeric(P)
+    true_active <- logical(P)
+
+    for(l in seq_len(P)){
+        rel <- pair_true$relation[l]
+        d <- pair_true$distance[l]
+
+        if(rel == "self"){
+            theta0_pairs[l] <- rnorm(1, mean = 0.48, sd = 0.05)
+            true_active[l] <- TRUE
+        } else if(rel == "origin"){
+            theta0_pairs[l] <- rnorm(1, mean = 0.20, sd = 0.04) *
+                exp(-0.15 * (d - 1))
+            true_active[l] <- TRUE
+        } else {
+            theta0_pairs[l] <- 0
+            true_active[l] <- FALSE
+        }
+    }
+
+    pair_true$true_active <- true_active
+
+    B <- sandnm_baseline_dim(harmonics)
+    season_names <- names(sandnm_season_features(1, steps_day, harmonics))
+    theta_true <- matrix(0, nrow = T_full, ncol = B + P)
+    colnames(theta_true) <- c("intercept", season_names, pair_true$pair_name)
+
+    theta_true[1, 1] <- base_intercept
+
+    if(B > 1){
+        sname <- colnames(theta_true)[2:B]
+        season_init <- seasonal_coef[sname]
+        season_init[is.na(season_init)] <- 0
+        theta_true[1, 2:B] <- season_init
+    }
+
+    theta_true[1, B + seq_len(P)] <- theta0_pairs
+
+    state_sd <- c(0.0015, rep(0.0005, B - 1), rep(theta_sd, P))
+
+    for(tt in 2:T_full){
+        theta_true[tt, ] <- theta_true[tt - 1, ] + rnorm(B + P, 0, state_sd)
+        theta_true[tt, B + which(!true_active)] <- 0
+    }
+
+    Y <- matrix(0, nrow = T_full, ncol = E)
+    Lambda <- matrix(NA_real_, nrow = T_full, ncol = E)
+    y0 <- rpois(E, lambda = exp(base_intercept))
+
+    for(tt in seq_len(T_full)){
+        y_lag <- if(tt == 1) y0 else Y[tt - 1, ]
+        sfeat <- sandnm_season_features(tt, steps_day, harmonics)
+        x_lag <- (log1p(y_lag) - center) / scale_x
+
+        eta <- rep(theta_true[tt, 1], E)
+
+        if(B > 1){
+            eta <- eta + sum(theta_true[tt, 2:B] * sfeat)
+        }
+
+        for(l in seq_len(P)){
+            eta[pair_true$target[l]] <- eta[pair_true$target[l]] +
+                theta_true[tt, B + l] * x_lag[pair_true$source[l]]
+        }
+
+        eta <- pmin(pmax(eta, -8), 8)
+        Lambda[tt, ] <- exp(eta)
+        Y[tt, ] <- rpois(E, Lambda[tt, ])
+    }
+
+    colnames(Y) <- paste0("e", seq_len(E))
+    colnames(Lambda) <- paste0("e", seq_len(E))
+
+    return(list(
+        Y = Y,
+        y0 = y0,
+        Lambda_true = Lambda,
+        theta_true = theta_true,
+        pair_table_true = pair_true,
+        edges = edges,
+        nodes = nodes
+    ))
+}
+
+#' Expand true active/inactive labels to a broader candidate pair table.
+#'
+#' Pairs not included in the true data-generating neighborhood are marked inactive.
+#'
+#' @param pair_broad Broad candidate pair table.
+#' @param pair_true True pair table returned by `sandnm_simulate_adaptive_counts()`.
+#'
+#' @return A copy of `pair_broad` with a logical `true_active` column.
+sandnm_make_true_pair_broad <- function(pair_broad, pair_true){
+    key_true <- paste(pair_true$target, pair_true$source, sep = "_")
+    key_broad <- paste(pair_broad$target, pair_broad$source, sep = "_")
+    idx <- match(key_broad, key_true)
+
+    out <- pair_broad
+    out$true_active <- ifelse(is.na(idx), FALSE, pair_true$true_active[idx])
+
+    return(out)
+}
+
+#' Prepare a complete SANDNM simulation object.
+#'
+#' This convenience wrapper generates a grid network, origin-centered and two-endpoint
+#' neighborhood rules, simulated counts, train/test splits, and a broad-neighborhood
+#' truth table for evaluating shrinkage.
+#'
+#' @param nx Number of grid columns.
+#' @param ny Number of grid rows.
+#' @param steps_day Number of time points per day.
+#' @param n_days Number of simulated days.
+#' @param n_train_days Number of training days.
+#' @param harmonics Number of Fourier harmonics.
+#' @param seed Random seed.
+#'
+#' @return A list containing the simulated data, network objects, candidate pair
+#'   tables, train/test splits, and common PG dispersion value.
+sandnm_prepare_simulation <- function(nx = 4, ny = 4, steps_day = 48,
+                                      n_days = 14, n_train_days = 10,
+                                      harmonics = 2, seed = 20260509){
+    net <- sandnm_make_grid_network(nx, ny)
+
+    nb_origin <- sandnm_make_neighbor_list(net$edges, net$nodes, rule = "origin")
+    nb_two <- sandnm_make_neighbor_list(net$edges, net$nodes, rule = "two_endpoint")
+
+    pair_origin <- sandnm_make_pair_table(net$edges, net$nodes, nb_origin,
+                                          label = "origin")
+    pair_two <- sandnm_make_pair_table(net$edges, net$nodes, nb_two,
+                                       label = "two")
+    pair_broad <- sandnm_make_pair_table(net$edges, net$nodes, nb_two,
+                                         label = "broad")
+
+    T_full <- n_days * steps_day
+    T_train <- n_train_days * steps_day
+
+    sim <- sandnm_simulate_adaptive_counts(
+        net = net,
+        nb_true = nb_origin,
+        T_full = T_full,
+        steps_day = steps_day,
+        harmonics = harmonics,
+        seed = seed
+    )
+
+    true_pair_broad <- sandnm_make_true_pair_broad(pair_broad,
+                                                   sim$pair_table_true)
+
+    Y <- sim$Y
+    Lambda <- sim$Lambda_true
+    Y_train <- Y[seq_len(T_train), , drop = FALSE]
+    Lambda_train <- Lambda[seq_len(T_train), , drop = FALSE]
+    Y_test <- Y[(T_train + 1):T_full, , drop = FALSE]
+    Lambda_test <- Lambda[(T_train + 1):T_full, , drop = FALSE]
+    max_train_count <- max(Y_train)
+
+    return(list(
+        net = net,
+        sim = sim,
+        nb_origin = nb_origin,
+        nb_two = nb_two,
+        pair_origin = pair_origin,
+        pair_two = pair_two,
+        pair_broad = pair_broad,
+        true_pair_broad = true_pair_broad,
+        steps_day = steps_day,
+        harmonics = harmonics,
+        T_full = T_full,
+        T_train = T_train,
+        H_test = T_full - T_train,
+        Y_train = Y_train,
+        Y_test = Y_test,
+        Lambda_train = Lambda_train,
+        Lambda_test = Lambda_test,
+        y_last_train = Y[T_train, ],
+        r_pg_common = ceiling((max_train_count + 2 * sqrt(max_train_count)) * 50)
+    ))
+}
+```
+
+# SANDNM visualization helpers
+
+These functions provide lightweight plotting utilities for SANDNM simulation studies. They are optional diagnostics and depend on `ggplot2`.
+
+```{r sandnm-visualizations, send_to = 'R/all-simulations.R'}
+#' Convert simulated SANDNM counts into a total-flow time-series data frame.
+#'
+#' @param Y Count matrix with rows as time points and columns as directed edges.
+#' @param Lambda_true Optional true intensity matrix with the same dimension as `Y`.
+#' @param T_train Optional training-period length. If supplied, a `split` column is added.
+#' @param steps_day Number of time points per day.
+#'
+#' @return A data frame with total counts and, if supplied, total intensities.
+sandnm_total_flow_df <- function(Y, Lambda_true = NULL, T_train = NULL,
+                                 steps_day = 48){
+    T_full <- nrow(Y)
+
+    out <- data.frame(
+        t = seq_len(T_full),
+        day = (seq_len(T_full) - 1) / steps_day,
+        hour = ((seq_len(T_full) - 1) %% steps_day) / 2,
+        total_flow = rowSums(Y),
+        stringsAsFactors = FALSE
+    )
+
+    if(!is.null(Lambda_true)){
+        out$total_lambda <- rowSums(Lambda_true)
+    }
+
+    if(!is.null(T_train)){
+        out$split <- ifelse(out$t <= T_train, "training", "test")
+    }
+
+    return(out)
+}
+
+#' Plot total network flow for a SANDNM simulation.
+#'
+#' @param Y Count matrix.
+#' @param Lambda_true Optional true intensity matrix.
+#' @param T_train Optional training-period length.
+#' @param steps_day Number of time points per day.
+#' @param title Optional plot title.
+#'
+#' @return A ggplot object.
+sandnm_plot_total_flow <- function(Y, Lambda_true = NULL, T_train = NULL,
+                                   steps_day = 48,
+                                   title = "Simulated total network flow"){
+    df <- sandnm_total_flow_df(Y, Lambda_true, T_train, steps_day)
+
+    p <- ggplot2::ggplot(df, ggplot2::aes(x = day)) +
+        ggplot2::geom_line(
+            ggplot2::aes(y = total_flow),
+            colour = "#2166AC",
+            linewidth = 0.45,
+            alpha = 0.75
+        ) +
+        ggplot2::labs(
+            x = "Day",
+            y = "Total network flow",
+            title = title
+        ) +
+        ggplot2::theme_bw() +
+        ggplot2::theme(
+            panel.grid.minor = ggplot2::element_blank(),
+            plot.title = ggplot2::element_text(face = "bold")
+        )
+
+    if(!is.null(Lambda_true)){
+        p <- p + ggplot2::geom_line(
+            ggplot2::aes(y = total_lambda),
+            colour = "#E66101",
+            linetype = "dashed",
+            linewidth = 0.75
+        )
+    }
+
+    if(!is.null(T_train)){
+        p <- p + ggplot2::geom_vline(
+            xintercept = T_train / steps_day,
+            colour = "grey35",
+            linetype = "dotted",
+            linewidth = 0.65
+        )
+    }
+
+    return(p)
+}
+
+#' Plot average daily total-flow profiles for a SANDNM simulation.
+#'
+#' @param Y Count matrix.
+#' @param Lambda_true Optional true intensity matrix.
+#' @param T_train Optional training-period length. If supplied, training and test profiles are faceted.
+#' @param steps_day Number of time points per day.
+#' @param title Optional plot title.
+#'
+#' @return A ggplot object.
+sandnm_plot_daily_profile <- function(Y, Lambda_true = NULL, T_train = NULL,
+                                      steps_day = 48,
+                                      title = "Average daily profile"){
+    df <- sandnm_total_flow_df(Y, Lambda_true, T_train, steps_day)
+
+    if(is.null(T_train)){
+        df$split <- "all"
+    }
+
+    sp <- split(df, list(df$split, df$hour), drop = TRUE)
+    daily <- do.call(rbind, lapply(sp, function(z){
+        data.frame(
+            split = z$split[1],
+            hour = z$hour[1],
+            mean_total = mean(z$total_flow),
+            p10 = stats::quantile(z$total_flow, 0.10),
+            p90 = stats::quantile(z$total_flow, 0.90),
+            mean_lambda = if("total_lambda" %in% names(z)) mean(z$total_lambda) else NA_real_,
+            stringsAsFactors = FALSE
+        )
+    }))
+    rownames(daily) <- NULL
+
+    p <- ggplot2::ggplot(daily, ggplot2::aes(x = hour)) +
+        ggplot2::geom_ribbon(
+            ggplot2::aes(ymin = p10, ymax = p90),
+            fill = "#BFD3E6",
+            alpha = 0.40
+        ) +
+        ggplot2::geom_line(
+            ggplot2::aes(y = mean_total),
+            colour = "#2166AC",
+            linewidth = 0.95
+        ) +
+        ggplot2::labs(
+            x = "Hour of day",
+            y = "Average total flow",
+            title = title
+        ) +
+        ggplot2::theme_bw() +
+        ggplot2::theme(
+            panel.grid.minor = ggplot2::element_blank(),
+            plot.title = ggplot2::element_text(face = "bold"),
+            strip.background = ggplot2::element_rect(fill = "grey92", colour = "grey70"),
+            strip.text = ggplot2::element_text(face = "bold")
+        )
+
+    if(!all(is.na(daily$mean_lambda))){
+        p <- p + ggplot2::geom_line(
+            ggplot2::aes(y = mean_lambda),
+            colour = "#E66101",
+            linetype = "dashed",
+            linewidth = 0.75
+        )
+    }
+
+    if(length(unique(daily$split)) > 1){
+        p <- p + ggplot2::facet_wrap(~ split)
+    }
+
+    return(p)
+}
+
+#' Plot an edge-level count heatmap.
+#'
+#' @param Y Count matrix.
+#' @param steps_day Number of time points per day.
+#' @param first_days Number of initial days to plot. If `NULL`, all days are plotted.
+#' @param title Optional plot title.
+#'
+#' @return A ggplot object.
+sandnm_plot_edge_heatmap <- function(Y, steps_day = 48, first_days = 5,
+                                     title = "Edge-level count heatmap"){
+    T_full <- nrow(Y)
+    E <- ncol(Y)
+    keep <- seq_len(T_full)
+
+    if(!is.null(first_days)){
+        keep <- keep[(keep - 1) / steps_day < first_days]
+    }
+
+    mat <- Y[keep, , drop = FALSE]
+    colnames(mat) <- paste0("e", seq_len(E))
+    df <- as.data.frame(as.table(mat), stringsAsFactors = FALSE)
+    names(df) <- c("time_id", "edge", "count")
+    df$t <- as.integer(df$time_id)
+    df$day <- (keep[df$t] - 1) / steps_day
+    df$edge_id <- as.integer(sub("e", "", df$edge))
+    df$edge_label <- factor(df$edge_id, levels = rev(seq_len(E)))
+
+    p <- ggplot2::ggplot(df, ggplot2::aes(x = day, y = edge_label, fill = count)) +
+        ggplot2::geom_tile() +
+        ggplot2::scale_fill_gradientn(
+            colours = c("#2166AC", "#67A9CF", "#F7F7F7", "#FDB863", "#E66101"),
+            trans = "sqrt",
+            name = "Count"
+        ) +
+        ggplot2::labs(
+            x = "Day",
+            y = "Directed edge index",
+            title = title
+        ) +
+        ggplot2::theme_bw() +
+        ggplot2::theme(
+            panel.grid = ggplot2::element_blank(),
+            plot.title = ggplot2::element_text(face = "bold"),
+            legend.position = "right",
+            axis.text.y = ggplot2::element_text(size = 5)
+        )
+
+    return(p)
+}
+
+#' Construct edge-plot coordinates for network snapshots.
+#'
+#' @param edges Directed-edge data frame.
+#' @param nodes Node data frame.
+#' @param value Numeric vector of edge values.
+#'
+#' @return A data frame used by `sandnm_plot_network_snapshot()`.
+sandnm_make_edge_plot_data <- function(edges, nodes, value){
+    edge_df <- edges
+    edge_df$value <- as.numeric(value)
+    edge_df$x0 <- nodes$x[edge_df$from]
+    edge_df$y0 <- nodes$y[edge_df$from]
+    edge_df$x1 <- nodes$x[edge_df$to]
+    edge_df$y1 <- nodes$y[edge_df$to]
+
+    dx <- edge_df$x1 - edge_df$x0
+    dy <- edge_df$y1 - edge_df$y0
+    len <- sqrt(dx^2 + dy^2)
+    len[len == 0] <- 1
+
+    offset <- 0.06
+    edge_df$x0 <- edge_df$x0 + offset * (-dy / len)
+    edge_df$y0 <- edge_df$y0 + offset * ( dx / len)
+    edge_df$x1 <- edge_df$x1 + offset * (-dy / len)
+    edge_df$y1 <- edge_df$y1 + offset * ( dx / len)
+    edge_df$edge_lab_x <- (edge_df$x0 + edge_df$x1) / 2
+    edge_df$edge_lab_y <- (edge_df$y0 + edge_df$y1) / 2
+
+    return(edge_df)
+}
+
+#' Plot a network snapshot for generated edge counts or intensities.
+#'
+#' @param value Numeric vector of edge values.
+#' @param edges Directed-edge data frame.
+#' @param nodes Node data frame.
+#' @param title Optional plot title. Use `NULL` to suppress title.
+#' @param value_name Legend title.
+#' @param show_edge_id Whether to display edge ids.
+#' @param limits Optional common limits for color and line width scales.
+#'
+#' @return A ggplot object.
+sandnm_plot_network_snapshot <- function(value, edges, nodes, title = NULL,
+                                         value_name = "Count",
+                                         show_edge_id = FALSE,
+                                         limits = NULL){
+    edge_df <- sandnm_make_edge_plot_data(edges, nodes, value)
+
+    p <- ggplot2::ggplot() +
+        ggplot2::geom_segment(
+            data = edge_df,
+            ggplot2::aes(x = x0, y = y0, xend = x1, yend = y1,
+                         linewidth = value, colour = value),
+            alpha = 0.95,
+            lineend = "round",
+            arrow = grid::arrow(length = grid::unit(0.10, "inches"), type = "closed")
+        ) +
+        ggplot2::geom_point(data = nodes, ggplot2::aes(x = x, y = y),
+                            size = 3, colour = "black") +
+        ggplot2::geom_text(data = nodes, ggplot2::aes(x = x, y = y, label = node_id),
+                           vjust = -1.0, size = 3.2) +
+        ggplot2::scale_linewidth_continuous(
+            name = value_name,
+            range = c(0.45, 2.8),
+            limits = limits
+        ) +
+        ggplot2::scale_colour_gradientn(
+            colours = c("#2166AC", "#4393C3", "#92C5DE", "#FDD49E", "#FDB863", "#E66101"),
+            trans = "sqrt",
+            limits = limits,
+            name = value_name
+        ) +
+        ggplot2::coord_equal() +
+        ggplot2::labs(title = title, x = NULL, y = NULL) +
+        ggplot2::theme_bw() +
+        ggplot2::theme(
+            axis.text = ggplot2::element_blank(),
+            axis.ticks = ggplot2::element_blank(),
+            panel.grid = ggplot2::element_blank(),
+            panel.background = ggplot2::element_rect(fill = "grey96", colour = NA),
+            plot.title = ggplot2::element_text(face = "bold"),
+            legend.position = "right"
+        )
+
+    if(show_edge_id){
+        p <- p + ggplot2::geom_text(
+            data = edge_df,
+            ggplot2::aes(x = edge_lab_x, y = edge_lab_y, label = edge_id),
+            size = 2.4,
+            colour = "black",
+            check_overlap = TRUE
+        )
+    }
+
+    return(p)
+}
+
+#' Make a data frame for held-out total-flow forecasts.
+#'
+#' @param fc Forecast object returned by `sandnm_forecast_recursive_blocks()`.
+#' @param Y_test Held-out count matrix.
+#' @param Lambda_test Held-out true intensity matrix.
+#' @param T_train Training-period length.
+#' @param steps_day Number of time points per day.
+#'
+#' @return A data frame for plotting.
+sandnm_forecast_total_df <- function(fc, Y_test, Lambda_test, T_train,
+                                     steps_day = 48){
+    H <- nrow(fc$lambda_mean)
+
+    return(data.frame(
+        h = seq_len(H),
+        day = (T_train + seq_len(H)) / steps_day,
+        forecast_day = seq_len(H) / steps_day,
+        method = fc$label,
+        observed = as.numeric(rowSums(Y_test[seq_len(H), , drop = FALSE])),
+        truth = as.numeric(rowSums(Lambda_test[seq_len(H), , drop = FALSE])),
+        predicted = as.numeric(rowSums(fc$lambda_mean)),
+        lower = as.numeric(rowSums(fc$lambda_lower)),
+        upper = as.numeric(rowSums(fc$lambda_upper)),
+        stringsAsFactors = FALSE
+    ))
+}
+
+#' Plot held-out recursive forecasts of total network flow.
+#'
+#' @param fc_list A list of forecast objects.
+#' @param Y_test Held-out count matrix.
+#' @param Lambda_test Held-out true intensity matrix.
+#' @param T_train Training-period length.
+#' @param steps_day Number of time points per day.
+#' @param title Optional plot title.
+#'
+#' @return A ggplot object.
+sandnm_plot_forecast_total <- function(fc_list, Y_test, Lambda_test, T_train,
+                                       steps_day = 48,
+                                       title = "Held-out recursive forecast of total network flow"){
+    if(!is.list(fc_list) || is.null(fc_list[[1]]$lambda_mean)){
+        fc_list <- list(fc_list)
+    }
+
+    df <- do.call(rbind, lapply(fc_list, sandnm_forecast_total_df,
+                                Y_test = Y_test,
+                                Lambda_test = Lambda_test,
+                                T_train = T_train,
+                                steps_day = steps_day))
+
+    p <- ggplot2::ggplot(df, ggplot2::aes(x = forecast_day)) +
+        ggplot2::geom_ribbon(
+            ggplot2::aes(ymin = lower, ymax = upper),
+            fill = "#BFD3E6",
+            alpha = 0.35
+        ) +
+        ggplot2::geom_line(
+            ggplot2::aes(y = observed),
+            colour = "#2166AC",
+            linewidth = 0.45,
+            alpha = 0.75
+        ) +
+        ggplot2::geom_line(
+            ggplot2::aes(y = predicted),
+            colour = "#E66101",
+            linewidth = 0.85
+        ) +
+        ggplot2::geom_line(
+            ggplot2::aes(y = truth),
+            colour = "grey25",
+            linetype = "dashed",
+            linewidth = 0.65
+        ) +
+        ggplot2::facet_wrap(~ method, ncol = 1) +
+        ggplot2::labs(x = "Forecast day", y = "Total network flow", title = title) +
+        ggplot2::theme_bw() +
+        ggplot2::theme(
+            panel.grid.minor = ggplot2::element_blank(),
+            plot.title = ggplot2::element_text(face = "bold"),
+            strip.background = ggplot2::element_rect(fill = "grey92", colour = "grey70"),
+            strip.text = ggplot2::element_text(face = "bold")
+        )
+
+    return(p)
+}
+
+#' Plot held-out recursive forecasts for one directed edge.
+#'
+#' @param fc_list A list of forecast objects.
+#' @param edge_id Directed edge id.
+#' @param Y_test Held-out count matrix.
+#' @param Lambda_test Held-out true intensity matrix.
+#' @param T_train Training-period length.
+#' @param steps_day Number of time points per day.
+#'
+#' @return A ggplot object.
+sandnm_plot_forecast_edge <- function(fc_list, edge_id, Y_test, Lambda_test,
+                                      T_train, steps_day = 48){
+    if(!is.list(fc_list) || is.null(fc_list[[1]]$lambda_mean)){
+        fc_list <- list(fc_list)
+    }
+
+    one_df <- function(fc){
+        H <- nrow(fc$lambda_mean)
+        data.frame(
+            h = seq_len(H),
+            forecast_day = seq_len(H) / steps_day,
+            method = fc$label,
+            observed = Y_test[seq_len(H), edge_id],
+            truth = Lambda_test[seq_len(H), edge_id],
+            mean = fc$lambda_mean[, edge_id],
+            lower = fc$lambda_lower[, edge_id],
+            upper = fc$lambda_upper[, edge_id],
+            stringsAsFactors = FALSE
+        )
+    }
+
+    df <- do.call(rbind, lapply(fc_list, one_df))
+
+    p <- ggplot2::ggplot(df, ggplot2::aes(x = forecast_day)) +
+        ggplot2::geom_ribbon(
+            ggplot2::aes(ymin = lower, ymax = upper),
+            fill = "#BFD3E6",
+            alpha = 0.40
+        ) +
+        ggplot2::geom_line(
+            ggplot2::aes(y = mean),
+            colour = "#E66101",
+            linewidth = 0.90
+        ) +
+        ggplot2::geom_point(
+            ggplot2::aes(y = observed),
+            colour = "#2166AC",
+            size = 0.75,
+            alpha = 0.55
+        ) +
+        ggplot2::geom_line(
+            ggplot2::aes(y = truth),
+            colour = "grey25",
+            linetype = "dashed",
+            linewidth = 0.65
+        ) +
+        ggplot2::facet_wrap(~ method, ncol = 1) +
+        ggplot2::labs(
+            x = "Forecast day",
+            y = paste0("Flow on edge ", edge_id),
+            title = paste0("Held-out recursive forecast for directed Edge ", edge_id)
+        ) +
+        ggplot2::theme_bw() +
+        ggplot2::theme(
+            panel.grid.minor = ggplot2::element_blank(),
+            plot.title = ggplot2::element_text(face = "bold"),
+            strip.background = ggplot2::element_rect(fill = "grey92", colour = "grey70"),
+            strip.text = ggplot2::element_text(face = "bold")
+        )
+
+    return(p)
+}
+
+#' Plot test-period edge-level intensity forecast error heatmaps.
+#'
+#' @param fc_list A list of forecast objects.
+#' @param Lambda_test Held-out true intensity matrix.
+#' @param steps_day Number of time points per day.
+#'
+#' @return A ggplot object.
+sandnm_plot_forecast_error_heatmap <- function(fc_list, Lambda_test,
+                                               steps_day = 48){
+    if(!is.list(fc_list) || is.null(fc_list[[1]]$lambda_mean)){
+        fc_list <- list(fc_list)
+    }
+
+    one_df <- function(fc){
+        H <- nrow(fc$lambda_mean)
+        E <- ncol(fc$lambda_mean)
+        err_mat <- abs(fc$lambda_mean - Lambda_test[seq_len(H), , drop = FALSE])
+        colnames(err_mat) <- paste0("e", seq_len(E))
+        df <- as.data.frame(as.table(err_mat), stringsAsFactors = FALSE)
+        names(df) <- c("time_id", "edge", "abs_error")
+        df$h <- as.integer(df$time_id)
+        df$forecast_day <- (df$h - 1) / steps_day
+        df$edge_id <- as.integer(sub("e", "", df$edge))
+        df$edge_label <- factor(df$edge_id, levels = rev(seq_len(E)))
+        df$method <- fc$label
+        return(df)
+    }
+
+    df <- do.call(rbind, lapply(fc_list, one_df))
+
+    p <- ggplot2::ggplot(df, ggplot2::aes(x = forecast_day, y = edge_label,
+                                          fill = abs_error)) +
+        ggplot2::geom_tile() +
+        ggplot2::facet_wrap(~ method, ncol = 1) +
+        ggplot2::scale_fill_gradientn(
+            colours = c("#2166AC", "#67A9CF", "#F7F7F7", "#FDB863", "#E66101"),
+            trans = "sqrt",
+            name = "Abs. error"
+        ) +
+        ggplot2::labs(
+            x = "Forecast day",
+            y = "Directed edge index",
+            title = "Test-period edge-level forecast error heatmap"
+        ) +
+        ggplot2::theme_bw() +
+        ggplot2::theme(
+            panel.grid = ggplot2::element_blank(),
+            plot.title = ggplot2::element_text(face = "bold"),
+            strip.background = ggplot2::element_rect(fill = "grey92", colour = "grey70"),
+            strip.text = ggplot2::element_text(face = "bold"),
+            axis.text.y = ggplot2::element_text(size = 5)
+        )
+
+    return(p)
+}
+
+#' Plot shrinkage-scale summaries by relation and edge-pair distance.
+#'
+#' @param shrink_sum Output of `sandnm_shrinkage_pair_summary_blocks()`.
+#' @param threshold Optional selection threshold shown as a dashed horizontal line.
+#'
+#' @return A ggplot object.
+sandnm_plot_shrinkage_summary <- function(shrink_sum, threshold = 0.03){
+    relation_cols <- c(
+        self = "#2166AC",
+        origin = "#FDB863",
+        destination = "#BFD3E6",
+        nearby = "grey60"
+    )
+
+    p <- ggplot2::ggplot(shrink_sum,
+                         ggplot2::aes(x = distance, y = lambda_mean,
+                                      colour = relation)) +
+        ggplot2::geom_point(ggplot2::aes(shape = true_active),
+                            alpha = 0.75, size = 1.8) +
+        ggplot2::scale_colour_manual(values = relation_cols, drop = FALSE) +
+        ggplot2::scale_shape_manual(values = c(`FALSE` = 1, `TRUE` = 16),
+                                    labels = c("Inactive", "Active")) +
+        ggplot2::labs(
+            x = "Edge-pair distance",
+            y = expression(posterior~mean~lambda[e,u]),
+            colour = "Relation",
+            shape = "True status",
+            title = "Distance-regularized shrinkage scales"
+        ) +
+        ggplot2::theme_bw() +
+        ggplot2::theme(
+            panel.grid.minor = ggplot2::element_blank(),
+            plot.title = ggplot2::element_text(face = "bold")
+        )
+
+    if(!is.null(threshold)){
+        p <- p + ggplot2::geom_hline(
+            yintercept = threshold,
+            colour = "grey35",
+            linetype = "dashed",
+            linewidth = 0.55
+        )
+    }
+
+    return(p)
+}
+```
