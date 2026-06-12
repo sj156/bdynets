@@ -1,0 +1,8 @@
+dataset_id,recognized_pattern,expected_compression,notes
+station_5min,d11_text_station_5min_YYYY_MM_DD.txt.gz,gzip,Daily files for District 11 station 5-minute data.
+station_hour,d11_text_station_hour_YYYY_MM.txt.gz,gzip,Monthly files for District 11 station hour data.
+station_day,d11_text_station_day_YYYY_MM.txt.gz,gzip,Monthly files for District 11 station day data.
+station_aadt,d11_text_station_aadt_month_hours_*.txt.gz or zip containing that file,gzip or zip,Station AADT downloads may arrive as ZIP; SANDAG loader extracts only month_hours file.
+census_vclass_hour,all_text_tmg_vclass_hour_*.txt.gz,gzip,All-district Census V-Class Hour files; loader trims 112 trailing empty fields.
+station_metadata,d11_text_meta_YYYY_MM_DD.txt or .txt.gz,text or gzip,Metadata files are released irregularly; wiki used the last file within each year.
+holiday,pems_holiday_insert_*.txt,text,SANDAG-created holiday insert files are already in source/PeMS-Datasets/holiday_table/.

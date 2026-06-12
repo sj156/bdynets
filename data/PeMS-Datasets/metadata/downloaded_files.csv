@@ -1,0 +1,17 @@
+file,dataset_id,year,month,day,bytes,rows
+data/raw/d11_text_station_hour_2020_01.txt,station_hour,2020,01,,135339134,1107072
+data/raw/d11_text_station_hour_2020_02.txt,station_hour,2020,02,,126676810,1035648
+data/raw/d11_text_station_hour_2020_03.txt,station_hour,2020,03,,134433335,1108046
+data/raw/d11_text_station_hour_2020_04.txt,station_hour,2020,04,,130245145,1083600
+data/raw/d11_text_station_hour_2020_05.txt,station_hour,2020,05,,135064323,1119864
+data/raw/d11_text_station_hour_2020_06.txt,station_hour,2020,06,,131225510,1085040
+data/raw/d11_text_station_hour_2020_07.txt,station_hour,2020,07,,135602428,1121208
+data/raw/d11_text_station_hour_2020_08.txt,station_hour,2020,08,,135845767,1121208
+data/raw/d11_text_station_hour_2020_09.txt,station_hour,2020,09,,130935253,1085040
+data/raw/d11_text_station_hour_2020_10.txt,station_hour,2020,10,,124190673,1025375
+data/raw/d11_text_station_hour_2020_11.txt,station_hour,2020,11,,120224571,992160
+data/raw/d11_text_station_hour_2020_12.txt,station_hour,2020,12,,124016239,1025232
+data/raw/d11_text_meta_2020_03_26.txt,station_metadata,2020,03,26,138836,1506
+data/raw/d11_text_meta_2020_05_29.txt,station_metadata,2020,05,29,139012,1508
+data/raw/d11_text_meta_2020_10_01.txt,station_metadata,2020,10,01,121775,1379
+data/raw/d11_text_meta_2020_10_02.txt,station_metadata,2020,10,02,121775,1379
