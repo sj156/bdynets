@@ -1,0 +1,371 @@
+---
+title: "PeMS District 11 2020 数据整理与 OSM 可视化说明"
+author: "整理文件包"
+date: "2026-06-12"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# 技术概要
+
+本文件说明本交付包中使用的 PeMS District 11 数据、处理方法、代码文件和最终输出。当前已经形成三个可直接打开的 OSM HTML 可视化：
+
+- `outputs/maps/station_hour_2020_osm_map.html`：基于 2020 年 Station Hour 数据的 station 与 OSM 路段可视化。
+- `outputs/maps/station_day_2020_osm_map.html`：基于 2020 年 Station Day 数据的 station 与 OSM 路段可视化。
+- `outputs/maps/station_5min_2020_10_week_osm_map.html`：基于 2020-10-05 到 2020-10-11 一周 Station 5-Minute 数据的日内 5 分钟变化可视化。
+
+AADT 数据目前只检查到 2020 年 01、04、06 三个月有效，07、09、12 尚未补齐，因此没有纳入最终可视化。02、03、05 对应的 22 bytes 文件基本可判断为无有效数据。
+
+# 文件夹结构
+
+本交付包的核心结构如下：
+
+```text
+PeMS_2020_OSM_deliverable/
+├── PeMS_2020_OSM_processing_report.Rmd
+├── code/
+│   ├── check_raw_files.py
+│   ├── process_station_hour_2020.py
+│   ├── process_station_day_2020.py
+│   ├── process_station_5min_week.py
+│   ├── build_osm_station_hour_map.py
+│   └── build_osm_station_day_and_5min_maps.py
+├── inputs/
+│   ├── osm/d11_highways_overpass.json
+│   └── raw_inventory/raw_file_inventory.csv
+├── outputs/
+│   ├── maps/
+│   └── processed/
+├── docs/
+└── metadata/
+```
+
+说明：原始 PeMS raw 文件约 1.8GB，没有重复复制到本交付包中；`inputs/raw_inventory/raw_file_inventory.csv` 保留了原始文件名和大小清单。处理后的 CSV、HTML 地图、脚本和说明文档已经复制在本交付包内。
+
+# 使用的数据
+
+## PeMS Station Metadata
+
+Metadata 提供 station 的空间位置和基础属性，是把交通流量数据放到地图上的关键表。2020 年 District 11 使用了 4 个 metadata 快照：
+
+- `d11_text_meta_2020_03_26.txt`
+- `d11_text_meta_2020_05_29.txt`
+- `d11_text_meta_2020_10_01.txt`
+- `d11_text_meta_2020_10_02.txt`
+
+处理后的主要输出是：
+
+- `outputs/processed/station_metadata_2020_snapshots.csv`：保留全部 metadata 快照。
+- `outputs/processed/station_metadata_2020_latest_by_station.csv`：按 station 取 2020 年内最后一次可用 metadata。
+- `outputs/processed/station_metadata_2020.csv`：当前可视化默认使用的 station metadata。
+
+主要字段含义：
+
+| 字段 | 含义 |
+|---|---|
+| `station` | PeMS station 唯一编号，用于和 Hour/Day/5-Minute 数据连接。 |
+| `freeway` | freeway 编号，例如 5、15、805。 |
+| `direction` | 行驶方向，例如 N、S、E、W。 |
+| `latitude`, `longitude` | station 经纬度，用于地图定位。 |
+| `type` | station 类型，例如 ML、HV、FR、FF、CD、CH、OR。 |
+| `lanes` | station 对应车道数。 |
+| `length` | station 覆盖路段长度。 |
+
+## PeMS Station Hour
+
+Station Hour 是每个 station 每小时汇总一次的交通数据。本项目使用 District 11 2020 年 12 个月数据。
+
+处理后的主要输出：
+
+- `outputs/processed/station_hour_2020_monthly_summary.csv`：每个月文件的行数、大小、时间范围检查。
+- `outputs/processed/station_hour_2020_station_month_basic_summary.csv`：每个 station 每个月的小时数据汇总。
+- `outputs/processed/station_hour_2020_metadata_coverage.csv`：station 与 metadata 的匹配覆盖率。
+- `outputs/maps/station_hour_2020_osm_map.html`：Station Hour 的 OSM HTML 可视化。
+
+主要字段含义：
+
+| 字段 | 含义 |
+|---|---|
+| `station` | PeMS station 编号。 |
+| `month` | 数据月份。 |
+| `records` | 该 station 在该月参与汇总的小时记录数。 |
+| `samples_sum` | 样本数合计，用于加权。 |
+| `total_flow_mean` | 小时总流量的普通平均值。 |
+| `total_flow_weighted_by_samples` | 按样本数加权后的小时平均流量。 |
+| `average_speed_mean` | 平均速度的普通平均值。 |
+| `average_speed_weighted_by_samples` | 按样本数加权后的平均速度。 |
+
+这里的“加权”不是原始网页直接给出的最终指标，而是本次处理中为了减少低样本小时对平均值的影响，使用 `samples` 作为权重计算出的汇总指标。
+
+## PeMS Station Day
+
+Station Day 是每个 station 每天汇总一次的交通数据。本项目使用 District 11 2020 年 12 个月数据。
+
+处理后的主要输出：
+
+- `outputs/processed/station_day_2020_daily_flow.csv`：每天每个 station 的日流量表。
+- `outputs/processed/station_day_2020_monthly_file_summary.csv`：每个月文件的行数、大小、时间范围检查。
+- `outputs/processed/station_day_2020_metadata_coverage.csv`：station 与 metadata 的匹配覆盖率。
+- `outputs/maps/station_day_2020_osm_map.html`：Station Day 的 OSM HTML 可视化。
+
+主要字段含义：
+
+| 字段 | 含义 |
+|---|---|
+| `date` | 日期。 |
+| `month` | 月份。 |
+| `station` | PeMS station 编号。 |
+| `route` | route/freeway 编号。 |
+| `direction_of_travel` | 行驶方向。 |
+| `lane_type` | station 类型。 |
+| `samples` | 样本数。 |
+| `percentage_observed` | 观测完整度百分比。 |
+| `total_flow` | 当天该 station 的总流量。 |
+
+## PeMS Station 5-Minute
+
+Station 5-Minute 是最细的时间粒度数据，每个 station 每 5 分钟一条记录。本项目暂时使用一周数据：
+
+- 2020-10-05
+- 2020-10-06
+- 2020-10-07
+- 2020-10-08
+- 2020-10-09
+- 2020-10-10
+- 2020-10-11
+
+处理后的主要输出：
+
+- `outputs/processed/station_5min_2020_10_05_10_11_file_summary.csv`：每日文件检查。
+- `outputs/processed/station_5min_2020_10_05_10_11_time_of_day_summary.csv`：按 station + 一天内 5 分钟时间点汇总的一周典型日表。
+- `outputs/processed/station_5min_2020_10_05_10_11_metadata_coverage.csv`：station 与 metadata 的匹配覆盖率。
+- `outputs/maps/station_5min_2020_10_week_osm_map.html`：Station 5-Minute 的 OSM HTML 可视化。
+
+主要字段含义：
+
+| 字段 | 含义 |
+|---|---|
+| `station` | PeMS station 编号。 |
+| `time` | 一天内的 5 分钟时间点，例如 08:00:00。 |
+| `records` | 参与汇总的记录数。 |
+| `days` | 该 station 和时间点覆盖了几天。 |
+| `samples_sum` | 样本数合计。 |
+| `total_flow_weighted_by_samples` | 按样本数加权后的典型 5 分钟流量。 |
+| `average_speed_weighted_by_samples` | 按样本数加权后的典型 5 分钟平均速度。 |
+
+## OSM 路段数据
+
+地图中的道路路段来自 Overpass/OSM highway 数据：
+
+- `inputs/osm/d11_highways_overpass.json`
+
+处理逻辑不是只显示 station 圆点，而是进一步把 station 附近的 OSM 道路线段找出来，并把对应路段也按流量指标着色。因此最终地图同时包含：
+
+- station 圆点：表示 PeMS station。
+- OSM 路段颜色：表示该 station 附近道路段的流量强弱。
+
+# 处理方法
+
+## 1. 原始文件完整性检查
+
+使用脚本：
+
+```bash
+python3 code/check_raw_files.py data/raw
+```
+
+检查内容包括：
+
+- 文件名是否能识别出数据类型、年份、月份和日期。
+- 是否存在空文件。
+- 是否存在重复文件名。
+- Station Hour、Station Day、Station 5-Minute、Metadata 和 AADT 文件是否符合预期格式。
+
+本次检查结果：50 个 raw 文件均可识别，没有发现未知文件、空文件或重复文件。AADT 只确认 01、04、06 三个月有效，其余有效月份仍需补齐。
+
+## 2. Metadata 与 Station Hour 处理
+
+使用脚本：
+
+```bash
+python3 code/process_station_hour_2020.py
+```
+
+主要步骤：
+
+1. 读取 2020 年 4 个 metadata 快照。
+2. 按 station 选取最后一次可用 metadata 作为地图定位和属性表。
+3. 读取 2020 年 12 个月 Station Hour 文件。
+4. 按 station + month 汇总小时流量和速度。
+5. 使用 `station` 字段把 Hour 数据和 Metadata 连接。
+6. 输出处理后的 CSV 和 metadata 覆盖检查结果。
+
+覆盖检查结果：
+
+| 指标 | 数值 |
+|---|---:|
+| Station Hour 中的 station 数 | 1535 |
+| Metadata 中的 station 数 | 1521 |
+| 成功匹配 metadata 的 Hour station 数 | 1521 |
+| 缺 metadata 的 Hour station 数 | 14 |
+
+这 14 个缺 metadata 的 station 主要出现在 2020 年早期，可能需要更早的 metadata 快照才能完全覆盖。
+
+## 3. Station Day 处理
+
+使用脚本：
+
+```bash
+python3 code/process_station_day_2020.py
+```
+
+主要步骤：
+
+1. 读取 2020 年 12 个月 Station Day 文件。
+2. 提取每天每个 station 的 `total_flow`、`samples`、`percentage_observed` 等字段。
+3. 与 station metadata 按 `station` 连接。
+4. 输出日流量 CSV、月度文件检查表和 metadata 覆盖检查表。
+
+覆盖检查结果：
+
+| 指标 | 数值 |
+|---|---:|
+| Station Day 中的 station 数 | 1535 |
+| Metadata 中的 station 数 | 1521 |
+| 成功匹配 metadata 的 Day station 数 | 1521 |
+| 缺 metadata 的 Day station 数 | 14 |
+
+## 4. Station 5-Minute 处理
+
+使用脚本：
+
+```bash
+python3 code/process_station_5min_week.py
+```
+
+主要步骤：
+
+1. 读取 2020-10-05 到 2020-10-11 的 7 个 Station 5-Minute 文件。
+2. 将 timestamp 拆成日期和一天内时间。
+3. 按 station + time 汇总，形成一周典型日内 5 分钟变化。
+4. 对流量和速度使用 `samples` 加权，降低样本不足记录的影响。
+5. 与 station metadata 按 `station` 连接。
+
+覆盖检查结果：
+
+| 指标 | 数值 |
+|---|---:|
+| Station 5-Minute 中的 station 数 | 1378 |
+| Metadata 中的 station 数 | 1521 |
+| 成功匹配 metadata 的 5-Minute station 数 | 1378 |
+| 缺 metadata 的 5-Minute station 数 | 0 |
+
+## 5. OSM 地图生成
+
+使用脚本：
+
+```bash
+python3 code/build_osm_station_hour_map.py
+python3 code/build_osm_station_day_and_5min_maps.py
+```
+
+主要步骤：
+
+1. 读取处理后的 station CSV。
+2. 读取 OSM highway 路段数据。
+3. 根据 station 经纬度寻找附近 OSM 路段。
+4. 给 station 圆点和附近 OSM 路段绑定流量指标。
+5. 生成可直接在浏览器打开的 HTML 地图。
+
+地图中可以筛选或切换的内容包括：
+
+- Station Hour 地图：按月或全年加权均值切换。
+- Station Day 地图：按日期或全年切换。
+- Station 5-Minute 地图：按一天内 5 分钟时间点切换。
+- station 类型过滤。
+- freeway 编号过滤。
+- station ID 搜索。
+- OSM 路段显示/隐藏。
+
+# 输出文件说明
+
+## HTML 地图
+
+| 文件 | 说明 |
+|---|---|
+| `outputs/maps/station_hour_2020_osm_map.html` | 2020 年 Station Hour 的 OSM 交互地图。 |
+| `outputs/maps/station_day_2020_osm_map.html` | 2020 年 Station Day 的 OSM 交互地图。 |
+| `outputs/maps/station_5min_2020_10_week_osm_map.html` | 2020-10-05 到 2020-10-11 Station 5-Minute 一周典型日内变化地图。 |
+
+HTML 文件已经嵌入 station 数据和 OSM 路段数据。打开时仍需要联网加载 OSM 底图瓦片；如果底图加载慢，先等待几秒或刷新浏览器。
+
+## 处理后的 CSV
+
+| 文件 | 说明 |
+|---|---|
+| `outputs/processed/station_metadata_2020.csv` | 当前地图使用的 station metadata。 |
+| `outputs/processed/station_metadata_2020_snapshots.csv` | 2020 年全部 metadata 快照。 |
+| `outputs/processed/station_metadata_2020_latest_by_station.csv` | 每个 station 最后一次可用 metadata。 |
+| `outputs/processed/station_hour_2020_station_month_basic_summary.csv` | Station Hour 按 station + month 汇总。 |
+| `outputs/processed/station_hour_2020_monthly_summary.csv` | Station Hour 每月文件检查摘要。 |
+| `outputs/processed/station_day_2020_daily_flow.csv` | Station Day 每天每个 station 的日流量。 |
+| `outputs/processed/station_day_2020_monthly_file_summary.csv` | Station Day 每月文件检查摘要。 |
+| `outputs/processed/station_5min_2020_10_05_10_11_time_of_day_summary.csv` | Station 5-Minute 按 station + 5 分钟时间点汇总的一周典型日表。 |
+| `outputs/processed/station_5min_2020_10_05_10_11_file_summary.csv` | Station 5-Minute 每日文件检查摘要。 |
+| `outputs/processed/*metadata_coverage.csv` | 各数据集与 metadata 的 station 匹配情况。 |
+| `outputs/processed/*missing_metadata*.txt` | 缺少 metadata 的 station 清单。 |
+
+# 快速读取示例
+
+以下 R 代码可以读取交付包中的处理结果：
+
+```{r read-examples, eval=FALSE}
+library(readr)
+library(dplyr)
+
+station_hour <- read_csv("outputs/processed/station_hour_2020_station_month_basic_summary.csv")
+station_day <- read_csv("outputs/processed/station_day_2020_daily_flow.csv")
+station_5min <- read_csv("outputs/processed/station_5min_2020_10_05_10_11_time_of_day_summary.csv")
+metadata <- read_csv("outputs/processed/station_metadata_2020.csv")
+
+glimpse(station_hour)
+glimpse(station_day)
+glimpse(station_5min)
+glimpse(metadata)
+```
+
+也可以直接列出交付包文件：
+
+```{r file-list, eval=FALSE}
+list.files(".", recursive = TRUE)
+```
+
+# 当前限制
+
+1. AADT 尚未形成完整年份结果。当前有效 AADT 只有 2020 年 01、04、06 三个月，因此没有做最终地图。
+2. Station Hour 和 Station Day 各有 14 个 station 在 2020 metadata 中没有匹配到，比例较小；如果需要 100% 匹配，需要继续寻找 2020-03-26 之前或 2019 年末的 metadata。
+3. Station 5-Minute 目前只处理了一周数据，适合展示典型日内变化，不代表完整全年。
+4. HTML 地图使用 OSM 在线底图，打开时需要网络加载地图瓦片。
+
+# 复现顺序
+
+如果在原始项目目录中重新复现，建议顺序如下：
+
+```bash
+python3 scripts/check_raw_files.py data/raw
+python3 scripts/process_station_hour_2020.py
+python3 scripts/process_station_day_2020.py
+python3 scripts/process_station_5min_week.py
+python3 scripts/build_osm_station_hour_map.py
+python3 scripts/build_osm_station_day_and_5min_maps.py
+```
+
+注意：本交付包中的 `code/` 是脚本副本；这些脚本原本基于原始项目目录中的 `data/raw/`、`data/osm/`、`data/processed/` 和 `outputs/maps/` 路径运行。如果要在交付包内部重新运行，需要先补齐同样的目录结构和原始 raw 文件。
+

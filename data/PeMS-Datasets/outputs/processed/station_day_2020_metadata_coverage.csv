@@ -1,0 +1,5 @@
+metric,value
+day_stations,1535
+metadata_stations,1521
+day_matched_metadata,1521
+day_missing_metadata,14
