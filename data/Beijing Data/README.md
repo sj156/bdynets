@@ -1,12 +1,12 @@
-# Dynamic Visualization Handoff
+# Traffic Dynamic Visualization Pipeline
 
-This folder contains only the code and handoff notes needed to reproduce the current dynamic traffic visualization from the initial data. It does not include raw input data or generated output data.
+This folder contains the code and run guide for reproducing the dynamic traffic visualization from the official initial data. It does not include raw input data or generated output data.
 
 ## Folder Contents
 
 ```text
-handoff_dynamic_visualization/
-  README_HANDOFF.md
+traffic_dynamic_visualization/
+  README.md
   requirements.txt
   code/
     process_real_traffic_data.py
@@ -16,48 +16,55 @@ handoff_dynamic_visualization/
     visualize_real_network.py
 ```
 
-## Initial Data Required
+## Official Initial Data
 
-Put the following initial files in the same folder as the Python scripts before running the pipeline:
+The official initial data files, according to `个体轨迹数据拥堵溯源分析项目及数据说明.docx`, are:
 
 ```text
 input_node.csv
-input_node_WGS84.csv
+input_link.csv
+input_zone.csv
+input_node_control_type.csv
+output_agent.csv
+output_LinkTDMOE.csv
+```
+
+Only these official initial files are required by the current dynamic relative-load map:
+
+```text
+input_node.csv
 input_link.csv
 output_agent.csv
 ```
 
-`input_node_WGS84.csv` is required for map visualization. It provides the WGS84 longitude/latitude columns `x_84` and `y_84`. Without it, `processed_real_network/nodes_clean.csv` will not contain `x_84/y_84`, and `visualize_real_network.py` will fail when drawing the Leaflet/OpenStreetMap map.
-
-The following initial files are not required for the current dynamic relative-load map:
-
-```text
-input_zone.csv
-input_node_control_type.csv
-output_LinkTDMOE.csv
-```
-
+`input_zone.csv` and `input_node_control_type.csv` are part of the official initial data package, but they are not used by the current map pipeline. 
 `output_LinkTDMOE.csv` is only used by the optional MOE branch in `process_real_traffic_data.py`; the current script has `USE_MOE_FEATURES = False`.
+
+## Built-In Coordinate Conversion
+
+The official `input_node.csv` stores local projected `x/y` coordinates. Leaflet/OpenStreetMap needs WGS84 longitude/latitude, so the preprocessing script now includes a built-in conversion from the local node coordinates to `x_84/y_84`.
+
+The conversion is calibrated for this Beijing network. By default, `process_real_traffic_data.py` derives `x_84/y_84` directly from `input_node.csv` and writes them into `processed_real_network/nodes_clean.csv`. No additional coordinate CSV is required.
 
 ## Important Run Location Note
 
-The Python scripts use their own file location as `BASE_DIR`. For the simplest handoff run, use one of these two methods:
+The Python scripts use their own file location as `BASE_DIR`. For the simplest run, use one of these two methods:
 
-1. Copy the five files from `code/` into the folder that already contains the initial CSV files, then run the commands there.
-2. Or copy the initial CSV files into `handoff_dynamic_visualization/code/`, then run the commands inside `code/`.
+1. Copy the five files from `code/` into the folder that already contains the official initial CSV files, then run the commands there.
+2. Or copy the required official CSV files into `traffic_dynamic_visualization/code/`, then run the commands inside `code/`.
 
 Do not run the scripts from a separate directory while leaving the initial data elsewhere, unless you also edit `BASE_DIR` in the scripts.
 
 ## Pipeline
 
-Run these commands in order from the folder that contains both the Python scripts and the initial data:
+Run these commands in order from the folder that contains both the Python scripts and the required official initial data:
 
 ```bash
 python process_real_traffic_data.py
 python estimate_xijt_capacity.py
 python match_osm_geometry.py
 python route_osm_geometry.py
-python visualize_real_network.py --tile osm --metric saturation --geometry-source osm-matched --osm-geometry-file processed_real_network/osm_routed_edge_geometry.csv --unmatched-geometry hide --dynamic-html --skip-animation --out-dir processed_real_network/visualizations/runs/osm_xijt_relative_load_dynamic_only
+python visualize_real_network.py --tile osm --metric saturation --geometry-source osm-matched --osm-geometry-file processed_real_network/osm_routed_edge_geometry.csv --unmatched-geometry hide --dynamic-html --skip-animation --out-dir processed_real_network/visualizations/runs/initial_data_dynamic_visualization
 ```
 
 ## What Each Step Does
@@ -68,10 +75,11 @@ Reads:
 
 ```text
 input_node.csv
-input_node_WGS84.csv
 input_link.csv
 output_agent.csv
 ```
+
+`x_84/y_84` are generated from `input_node.csv` by the built-in coordinate conversion.
 
 Creates the core processed network and dynamic traffic tables:
 
@@ -171,7 +179,7 @@ processed_real_network/osm_routed_edge_geometry.csv
 Creates the current dynamic-only visualization:
 
 ```text
-processed_real_network/visualizations/runs/osm_xijt_relative_load_dynamic_only/saturation_dynamic_leaflet_osm_osmgeom.html
+processed_real_network/visualizations/runs/initial_data_dynamic_visualization/saturation_dynamic_leaflet_osm_osmgeom.html
 ```
 
 The page focuses on dynamic relative load. It does not create or require the old single-time-bin 107 static map.
@@ -180,7 +188,7 @@ The page focuses on dynamic relative load. It does not create or require the old
 
 ### `KeyError: "None of [Index(['x_84', 'y_84'], ...)] are in the [columns]"`
 
-`input_node_WGS84.csv` was missing when `process_real_traffic_data.py` was run. Put `input_node_WGS84.csv` beside the scripts and raw data, then rerun `process_real_traffic_data.py`.
+Rerun the updated `process_real_traffic_data.py`. This version creates `x_84/y_84` in `processed_real_network/nodes_clean.csv` from the official `input_node.csv`.
 
 ### `FileNotFoundError` for `osm_highway_ways.json`
 
@@ -194,18 +202,17 @@ Make sure the final visualization command uses:
 --geometry-source osm-matched --osm-geometry-file processed_real_network/osm_routed_edge_geometry.csv
 ```
 
-## Initial Data Integrity Note
+## Data Integrity Note
 
-The initial data files were not copied into this handoff folder. In the working project folder, their current file modification times are still from July 2025, not from the recent visualization work:
+The data files were not copied into this folder. In the working project folder, the official initial CSV files still have July 2025 modification times, not recent visualization-work timestamps:
 
 ```text
 input_link.csv                  Jul  1 07:00:00 2025
 input_node.csv                  Jul  1 07:00:00 2025
-input_node_WGS84.csv            Jul  1 07:10:00 2025
 input_node_control_type.csv     Jul  1 07:00:00 2025
 input_zone.csv                  Jul  1 07:00:00 2025
 output_LinkTDMOE.csv            Jul  1 07:01:00 2025
 output_agent.csv                Jul  1 07:00:00 2025
 ```
 
-This confirms that the current handoff work did not rewrite the initial CSV files. A stronger byte-level comparison would require original checksums from the data provider.
+This confirms that the current visualization work did not rewrite the initial CSV files. A stronger byte-level comparison would require original checksums from the data provider.

@@ -47,6 +47,34 @@ OUTPUT_DIR = "processed_real_network"
 
 EPS = 1e-9
 
+# Keep False for reproducible public runs: coordinates are derived from the
+# official input_node.csv instead of an auxiliary coordinate CSV.
+USE_AUXILIARY_WGS84_FILE = False
+
+# The official node file stores local projected x/y coordinates and does not
+# include CRS metadata. These coefficients convert that local coordinate system
+# to WGS84 for this Beijing network, so the visualization pipeline can be
+# reproduced from the official initial data only.
+LOCAL_TO_WGS84_X_CENTER = 514717.3157977706
+LOCAL_TO_WGS84_Y_CENTER = 291482.63714945794
+LOCAL_TO_WGS84_SCALE = 10000.0
+LOCAL_TO_WGS84_LON_COEFF = np.array([
+    116.52269041899139,
+    0.11674355596300813,
+    0.0002240372945873046,
+    -6.601902629810713e-07,
+    0.00015207751767337745,
+    5.792739454636199e-07,
+])
+LOCAL_TO_WGS84_LAT_COEFF = np.array([
+    39.78920600957576,
+    -0.00017282817403346755,
+    0.09006307780008098,
+    -5.8705286307285146e-05,
+    -7.273031568614425e-07,
+    -6.919121057481031e-07,
+])
+
 
 # ============================================================
 # IO helpers
@@ -94,6 +122,23 @@ def read_csv_auto(path):
 
 def to_num(s):
     return pd.to_numeric(s, errors="coerce")
+
+
+def estimate_wgs84_from_local_xy(x_values, y_values):
+    x = pd.to_numeric(x_values, errors="coerce").to_numpy(dtype=float)
+    y = pd.to_numeric(y_values, errors="coerce").to_numpy(dtype=float)
+    valid = np.isfinite(x) & np.isfinite(y)
+
+    lon = np.full(len(x), np.nan, dtype=float)
+    lat = np.full(len(x), np.nan, dtype=float)
+    if valid.any():
+        u = (x[valid] - LOCAL_TO_WGS84_X_CENTER) / LOCAL_TO_WGS84_SCALE
+        v = (y[valid] - LOCAL_TO_WGS84_Y_CENTER) / LOCAL_TO_WGS84_SCALE
+        features = np.column_stack([np.ones(len(u)), u, v, u * u, u * v, v * v])
+        lon[valid] = features @ LOCAL_TO_WGS84_LON_COEFF
+        lat[valid] = features @ LOCAL_TO_WGS84_LAT_COEFF
+
+    return pd.Series(lon, index=getattr(x_values, "index", None)), pd.Series(lat, index=getattr(y_values, "index", None))
 
 
 def clean_colnames(df):
@@ -159,7 +204,11 @@ def get_attr(row, col):
 
 def build_nodes(base_dir, out_dir):
     node_path = find_file(base_dir, ["input_node.csv"])
-    node_wgs_path = find_file(base_dir, ["input_node_WGS84.csv", "input_node_wgs84.csv"])
+    node_wgs_path = (
+        find_file(base_dir, ["input_node_WGS84.csv", "input_node_wgs84.csv"])
+        if USE_AUXILIARY_WGS84_FILE
+        else None
+    )
 
     if node_path is None:
         raise FileNotFoundError("Missing input_node.csv")
@@ -206,6 +255,17 @@ def build_nodes(base_dir, out_dir):
                 wgs = wgs[extra_cols].dropna(subset=["node_id"])
                 wgs["node_id"] = wgs["node_id"].astype(int)
                 nodes = nodes.merge(wgs.drop_duplicates("node_id"), on="node_id", how="left")
+
+    estimated_lon, estimated_lat = estimate_wgs84_from_local_xy(nodes["x"], nodes["y"])
+    if "x_84" not in nodes.columns:
+        nodes["x_84"] = estimated_lon
+    if "y_84" not in nodes.columns:
+        nodes["y_84"] = estimated_lat
+
+    missing_wgs = nodes["x_84"].isna() | nodes["y_84"].isna()
+    if missing_wgs.any():
+        nodes.loc[missing_wgs, "x_84"] = estimated_lon.loc[missing_wgs]
+        nodes.loc[missing_wgs, "y_84"] = estimated_lat.loc[missing_wgs]
 
     nodes.to_csv(out_dir / "nodes_clean.csv", index=False)
     return nodes
