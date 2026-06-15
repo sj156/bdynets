@@ -1,8 +1,0 @@
-dataset_id,pems_type,pems_file_or_mode,district,sql_table,main_metrics,wiki_loaded_range,aggregators,raw_file_hint
-station_5min,Station 5-Minute,station_5min,11,pems.station_five_minute,"total_flow; average_speed; average_occupancy; lane-level values","All available 2016, 2018-2020, 2022 Jan-Mar","pems.sp_agg_station_five_minute_flow; pems.sp_agg_station_five_minute_speed",d11_text_station_5min_YYYY_MM_DD.txt.gz
-station_hour,Station Hour,station_hour,11,pems.station_hour,"total_flow; average_speed; average_occupancy; delay; lane-level values","All available 2009-2020, 2022 Jan-Mar","pems.sp_agg_station_hour_flow; pems.sp_agg_station_hour_speed",d11_text_station_hour_YYYY_MM.txt.gz
-station_day,Station Day,station_day,11,pems.station_day,"total_flow; delay","All available 2014-2020, 2022 Jan-Mar",pems.fn_agg_station_day,d11_text_station_day_YYYY_MM.txt.gz
-station_aadt,Station AADT,Station AADT Month Hour,11,pems.station_aadt,"mahw; number_of_days","All available 2015-2019",pems.sp_agg_station_aadt,"zip containing d11_text_station_aadt_month_hours_..."
-census_vclass_hour,Census V-Class Hour,Census V-Class Hour,All Districts,pems.census_vclass_hour,"flow; samples; flow_vehicle_class_0..14","All available 2008-2010, 2012-2014, 2016",,all_text_tmg_vclass_hour_*.txt.gz
-station_metadata,Station Metadata,Station Metadata,11,pems.station_metadata,"station location; freeway; direction; type; lanes","Last file within each year from 2008-2020",matching/matchStations.py,d11_text_meta_YYYY_MM_DD.txt
-holiday,Holiday,SANDAG-created holiday table,California,pems.holiday,"date; holiday; type","2000-2025 via SQL and insert files",used by aggregation procedures,pems_holiday_insert_YYYY.txt

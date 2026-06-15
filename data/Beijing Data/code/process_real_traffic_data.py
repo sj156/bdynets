@@ -47,14 +47,9 @@ OUTPUT_DIR = "processed_real_network"
 
 EPS = 1e-9
 
-# Keep False for reproducible public runs: coordinates are derived from the
-# official input_node.csv instead of an auxiliary coordinate CSV.
-USE_AUXILIARY_WGS84_FILE = False
-
 # The official node file stores local projected x/y coordinates and does not
 # include CRS metadata. These coefficients convert that local coordinate system
-# to WGS84 for this Beijing network, so the visualization pipeline can be
-# reproduced from the official initial data only.
+# to WGS84 for this Beijing network.
 LOCAL_TO_WGS84_X_CENTER = 514717.3157977706
 LOCAL_TO_WGS84_Y_CENTER = 291482.63714945794
 LOCAL_TO_WGS84_SCALE = 10000.0
@@ -204,11 +199,6 @@ def get_attr(row, col):
 
 def build_nodes(base_dir, out_dir):
     node_path = find_file(base_dir, ["input_node.csv"])
-    node_wgs_path = (
-        find_file(base_dir, ["input_node_WGS84.csv", "input_node_wgs84.csv"])
-        if USE_AUXILIARY_WGS84_FILE
-        else None
-    )
 
     if node_path is None:
         raise FileNotFoundError("Missing input_node.csv")
@@ -243,29 +233,9 @@ def build_nodes(base_dir, out_dir):
     nodes["node_id"] = nodes["node_id"].astype(int)
     nodes = nodes.drop_duplicates("node_id")
 
-    if node_wgs_path is not None:
-        wgs = read_csv_auto(node_wgs_path)
-        wgs = clean_colnames(wgs)
-
-        if "node_id" in wgs.columns:
-            wgs["node_id"] = to_num(wgs["node_id"]).astype("Int64")
-            extra_cols = [c for c in ["node_id", "x_84", "y_84"] if c in wgs.columns]
-
-            if "x_84" in extra_cols and "y_84" in extra_cols:
-                wgs = wgs[extra_cols].dropna(subset=["node_id"])
-                wgs["node_id"] = wgs["node_id"].astype(int)
-                nodes = nodes.merge(wgs.drop_duplicates("node_id"), on="node_id", how="left")
-
     estimated_lon, estimated_lat = estimate_wgs84_from_local_xy(nodes["x"], nodes["y"])
-    if "x_84" not in nodes.columns:
-        nodes["x_84"] = estimated_lon
-    if "y_84" not in nodes.columns:
-        nodes["y_84"] = estimated_lat
-
-    missing_wgs = nodes["x_84"].isna() | nodes["y_84"].isna()
-    if missing_wgs.any():
-        nodes.loc[missing_wgs, "x_84"] = estimated_lon.loc[missing_wgs]
-        nodes.loc[missing_wgs, "y_84"] = estimated_lat.loc[missing_wgs]
+    nodes["x_84"] = estimated_lon
+    nodes["y_84"] = estimated_lat
 
     nodes.to_csv(out_dir / "nodes_clean.csv", index=False)
     return nodes

@@ -26,19 +26,8 @@ input_node <- read.csv("input_node.csv", nrows = 10, check.names = FALSE)
 input_node
 ```
 
-### 1.2 *input_node_WGS84.csv*: Provides WGS84 longitude/latitude coordinates for map visualization.
-This file is required when generating Leaflet/OpenStreetMap visualizations. The original `input_node.csv` stores projected `x/y` coordinates, while the map page needs WGS84 longitude/latitude columns named `x_84` and `y_84`. During preprocessing, these columns are merged into `processed_real_network/nodes_clean.csv`.
-
-If this file is missing, the preprocessing code can still generate the main flow tables, but `visualize_real_network.py` cannot draw the map because `nodes_clean.csv` will not contain `x_84` and `y_84`.
-
-```{r}
-if (file.exists("input_node_WGS84.csv")) {
-  input_node_wgs84 <- read.csv("input_node_WGS84.csv", nrows = 10, check.names = FALSE)
-  input_node_wgs84
-} else {
-  message("input_node_WGS84.csv is required for Leaflet/OpenStreetMap visualization.")
-}
-```
+### 1.2 Map coordinate preparation
+The original `input_node.csv` stores local projected `x/y` coordinates. During preprocessing, the Python script converts these coordinates into map-ready longitude/latitude columns named `x_84` and `y_84`, then writes them into `processed_real_network/nodes_clean.csv` for Leaflet/OpenStreetMap visualization.
 
 ### 1.3 *input_link.csv*: Represents the specific road segments connecting the nodes.
 * **name**: The street or road name.
@@ -129,7 +118,7 @@ This code is a comprehensive data preprocessing and spatiotemporal feature extra
 
 The Python chunk below is included as source code documentation (`eval=FALSE`), so knitting this Rmd does not automatically execute the preprocessing pipeline. To generate or refresh the files under `processed_real_network/`, run the corresponding Python scripts from the project folder.
 
-For map visualization, make sure `input_node_WGS84.csv` is present before running preprocessing. Otherwise `nodes_clean.csv` will be created without `x_84/y_84`, and `visualize_real_network.py` will fail when it tries to draw the road network on Leaflet/OpenStreetMap.
+For map visualization, the preprocessing step writes `x_84/y_84` into `processed_real_network/nodes_clean.csv` from the node coordinates in `input_node.csv`.
 
 ```{python eval=FALSE}
 import math
@@ -181,6 +170,29 @@ OUTPUT_DIR = "processed_real_network"
 
 EPS = 1e-9
 
+# The official node file stores local projected x/y coordinates and does not
+# include CRS metadata. These coefficients convert that local coordinate system
+# to WGS84 for this Beijing network.
+LOCAL_TO_WGS84_X_CENTER = 514717.3157977706
+LOCAL_TO_WGS84_Y_CENTER = 291482.63714945794
+LOCAL_TO_WGS84_SCALE = 10000.0
+LOCAL_TO_WGS84_LON_COEFF = np.array([
+    116.52269041899139,
+    0.11674355596300813,
+    0.0002240372945873046,
+    -6.601902629810713e-07,
+    0.00015207751767337745,
+    5.792739454636199e-07,
+])
+LOCAL_TO_WGS84_LAT_COEFF = np.array([
+    39.78920600957576,
+    -0.00017282817403346755,
+    0.09006307780008098,
+    -5.8705286307285146e-05,
+    -7.273031568614425e-07,
+    -6.919121057481031e-07,
+])
+
 
 # ============================================================
 # IO helpers
@@ -228,6 +240,23 @@ def read_csv_auto(path):
 
 def to_num(s):
     return pd.to_numeric(s, errors="coerce")
+
+
+def estimate_wgs84_from_local_xy(x_values, y_values):
+    x = pd.to_numeric(x_values, errors="coerce").to_numpy(dtype=float)
+    y = pd.to_numeric(y_values, errors="coerce").to_numpy(dtype=float)
+    valid = np.isfinite(x) & np.isfinite(y)
+
+    lon = np.full(len(x), np.nan, dtype=float)
+    lat = np.full(len(x), np.nan, dtype=float)
+    if valid.any():
+        u = (x[valid] - LOCAL_TO_WGS84_X_CENTER) / LOCAL_TO_WGS84_SCALE
+        v = (y[valid] - LOCAL_TO_WGS84_Y_CENTER) / LOCAL_TO_WGS84_SCALE
+        features = np.column_stack([np.ones(len(u)), u, v, u * u, u * v, v * v])
+        lon[valid] = features @ LOCAL_TO_WGS84_LON_COEFF
+        lat[valid] = features @ LOCAL_TO_WGS84_LAT_COEFF
+
+    return pd.Series(lon, index=getattr(x_values, "index", None)), pd.Series(lat, index=getattr(y_values, "index", None))
 
 
 def clean_colnames(df):
@@ -293,7 +322,6 @@ def get_attr(row, col):
 
 def build_nodes(base_dir, out_dir):
     node_path = find_file(base_dir, ["input_node.csv"])
-    node_wgs_path = find_file(base_dir, ["input_node_WGS84.csv", "input_node_wgs84.csv"])
 
     if node_path is None:
         raise FileNotFoundError("Missing input_node.csv")
@@ -328,18 +356,9 @@ def build_nodes(base_dir, out_dir):
     nodes["node_id"] = nodes["node_id"].astype(int)
     nodes = nodes.drop_duplicates("node_id")
 
-    if node_wgs_path is not None:
-        wgs = read_csv_auto(node_wgs_path)
-        wgs = clean_colnames(wgs)
-
-        if "node_id" in wgs.columns:
-            wgs["node_id"] = to_num(wgs["node_id"]).astype("Int64")
-            extra_cols = [c for c in ["node_id", "x_84", "y_84"] if c in wgs.columns]
-
-            if "x_84" in extra_cols and "y_84" in extra_cols:
-                wgs = wgs[extra_cols].dropna(subset=["node_id"])
-                wgs["node_id"] = wgs["node_id"].astype(int)
-                nodes = nodes.merge(wgs.drop_duplicates("node_id"), on="node_id", how="left")
+    estimated_lon, estimated_lat = estimate_wgs84_from_local_xy(nodes["x"], nodes["y"])
+    nodes["x_84"] = estimated_lon
+    nodes["y_84"] = estimated_lat
 
     nodes.to_csv(out_dir / "nodes_clean.csv", index=False)
     return nodes
@@ -1376,11 +1395,12 @@ Before opening the visualization output, generate the required processed files i
 ```{bash eval=FALSE}
 python process_real_traffic_data.py
 python estimate_xijt_capacity.py
+python match_osm_geometry.py
 python route_osm_geometry.py
-python visualize_real_network.py --tile osm --metric saturation --geometry-source osm-matched --osm-geometry-file processed_real_network/osm_routed_edge_geometry.csv --unmatched-geometry hide --dynamic-html --skip-animation --out-dir processed_real_network/visualizations/runs/osm_xijt_relative_load_dynamic_only
+python visualize_real_network.py --tile osm --metric saturation --geometry-source osm-matched --osm-geometry-file processed_real_network/osm_routed_edge_geometry.csv --unmatched-geometry hide --dynamic-html --skip-animation --out-dir processed_real_network/visualizations/runs/dynamic_visualization
 ```
 
-The first command creates the core flow and network tables. The second command creates the empirical `x_ijt` capacity table used by the current relative-load visualization. The third command creates OSM-shaped road geometry for a cleaner map. The final command creates the dynamic HTML map.
+The first command creates the core flow and network tables. The second command creates the empirical `x_ijt` capacity table used by the current relative-load visualization. The third command matches model links to OpenStreetMap geometry. The fourth command routes each model link along the matched OSM network for a cleaner map. The final command creates the dynamic HTML map.
 
 ### 3.1 Graph Topology
 
@@ -1551,4 +1571,4 @@ This map integrates flow data across all time bins, designed to demonstrate the 
 
 * **Interaction Guide**: Drag the time slider to quickly jump to any specific time bin, or click the "Play" button to automatically animate the chronological evolution of the traffic flow. Road colors become red from 80% relative load and above.
 
-* 👉 **[Click here to view](processed_real_network/visualizations/runs/osm_xijt_relative_load_dynamic_only/saturation_dynamic_leaflet_osm_osmgeom.html)**
+* 👉 **[Click here to view](processed_real_network/visualizations/runs/dynamic_visualization/saturation_dynamic_leaflet_osm_osmgeom.html)**
