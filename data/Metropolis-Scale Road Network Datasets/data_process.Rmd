@@ -1,0 +1,407 @@
+---
+title: "city_traffic_data_process"
+output: html_document
+---
+
+## 1. Initial Data
+
+This document summarizes the data and code used for the current City Traffic Benchmarks visualization work. The final interactive map is built from the Kaggle dataset `mightyneghbor/city-traffic-benchmarks`, version 4, with a focus on `city-traffic-M`.
+
+The raw dataset is much larger than the subset used here. The full dataset contains two city scales (`city-traffic-M` and `city-traffic-L`) and dynamic traffic speed/volume files. For the current visualization, we only downloaded the small static/topology files and the `city-traffic-M` volume file locally. The large `city-traffic-M` speed file is not fully downloaded; the script reads only selected byte ranges for the sampled road segments.
+
+*variables used in the current visualization are in blue*
+
+### 1.1 `city-traffic-M-raw-static-features.parquet`
+
+This file stores static attributes for each directed road segment in `city-traffic-M`.
+
+Local path:
+
+`data/city-traffic-benchmarks/city-traffic-M-raw-static-features.parquet`
+
+Observed shape: 53,530 rows and 26 columns.
+
+* **category**: Numeric road category code.
+
+* **edge_type**: Numeric edge type code.
+
+* **speed_mode**: Encoded speed mode.
+
+* <span style="color: blue;">**speed_limit**</span>: Encoded speed limit. In the visualization it is converted to labels such as `50 km/h`; `0` is treated as unknown.
+
+* <span style="color: blue;">**region_id**</span>: Region identifier used in hover tooltips.
+
+* **can_bind_to_reverse_edge**: Whether the segment can be matched with a reverse edge.
+
+* **dismount_bike**, **has_masstransit_lane**, **ends_with_crosswalk**, **ends_with_toll_post**: Static road flags.
+
+* **is_in_poor_condition**, **is_paved**, **is_restricted_for_trucks**, **is_toll**: Static road condition/access flags.
+
+* **access_0** to **access_5**: Encoded access flags.
+
+* <span style="color: blue;">**length**</span>: Road segment length in meters; used in hover tooltips.
+
+* **num_segments**: Number of geometric subsegments.
+
+* <span style="color: blue;">**x_coordinate_start, y_coordinate_start**</span>: Segment start longitude/latitude.
+
+* <span style="color: blue;">**x_coordinate_end, y_coordinate_end**</span>: Segment end longitude/latitude.
+
+```{r eval=FALSE}
+library(arrow)
+
+static_m <- read_parquet("data/city-traffic-benchmarks/city-traffic-M-raw-static-features.parquet")
+head(static_m, 10)
+names(static_m)
+```
+
+### 1.2 `city-traffic-M-raw-edges.parquet`
+
+This file stores the directed road graph topology for `city-traffic-M`.
+
+Local path:
+
+`data/city-traffic-benchmarks/city-traffic-M-raw-edges.parquet`
+
+Observed shape: 121,236 rows and 2 columns.
+
+* **source**: Source road-segment node id in the directed graph.
+
+* **target**: Target road-segment node id in the directed graph.
+
+This file is useful for graph-based modeling or adjacency analysis. The current Leaflet/OSM visualization does not require it because the static features file already contains each road segment's start/end coordinates.
+
+```{r eval=FALSE}
+library(arrow)
+
+edges_m <- read_parquet("data/city-traffic-benchmarks/city-traffic-M-raw-edges.parquet")
+head(edges_m, 10)
+```
+
+### 1.3 `city-traffic-M-raw-volume.parquet`
+
+This file stores dynamic traffic volume values for `city-traffic-M`.
+
+Local path:
+
+`data/city-traffic-benchmarks/city-traffic-M-raw-volume.parquet`
+
+Observed shape: 35,449 rows and 53,531 columns. The native temporal resolution is 5 minutes. The table contains one `timestamp` field and one dynamic column per road segment, named as `node_0`, `node_1`, ..., `node_53529`.
+
+* <span style="color: blue;">**timestamp**</span>: Time index. The local file covers observations from 2024-07-01 to 2024-11-01 02:00.
+
+* <span style="color: blue;">**node_* columns**</span>: Traffic volume for each road segment at each timestamp. For visualization, only 720 sampled road-segment columns are read.
+
+The current visualization aggregates the native 5-minute values into 15-minute mean frames. The sample day is selected automatically as the busiest complete day among the sampled road segments; the current output uses 2024-10-18.
+
+```{r eval=FALSE}
+library(arrow)
+
+volume_schema <- open_dataset("data/city-traffic-benchmarks/city-traffic-M-raw-volume.parquet")
+volume_schema
+
+# Example: read timestamp and a small number of columns only.
+volume_preview <- read_parquet(
+  "data/city-traffic-benchmarks/city-traffic-M-raw-volume.parquet",
+  col_select = c(timestamp, node_0, node_1, node_2)
+)
+head(volume_preview, 10)
+```
+
+### 1.4 `city-traffic-M-raw-speed.parquet`
+
+This file stores dynamic speed values for `city-traffic-M`.
+
+Local status:
+
+* The full speed file is not stored locally because it is approximately 11 GB.
+* Only the Parquet footer is cached at `data/city-traffic-benchmarks/_cache/city-traffic-M-raw-speed.footer.bin`.
+* The OSM congestion script obtains a temporary signed Kaggle URL, fetches only the selected column byte ranges, writes a sparse temporary Parquet file, and reads the sampled road segments from that file.
+
+* <span style="color: blue;">**timestamp**</span>: Time index matching the dynamic volume table.
+
+* <span style="color: blue;">**node_* columns**</span>: Traffic speed for each road segment at each timestamp. The current script reads the same 720 sampled `node_*` columns selected from the volume file.
+
+The speed data is used to estimate each segment's empirical free-flow speed as the 90th percentile of observed nonzero speed. The current congestion score then compares each frame's speed to this segment-level baseline.
+
+### 1.5 `city-traffic-L` files
+
+The following larger-city static/topology files are downloaded locally for inspection but are not used in the current visualization:
+
+* `data/city-traffic-benchmarks/city-traffic-L-raw-static-features.parquet`: 94,009 rows and 26 columns.
+* `data/city-traffic-benchmarks/city-traffic-L-raw-edges.parquet`: 164,424 rows and 2 columns.
+
+The current dynamic HTML focuses on `city-traffic-M` because its full volume file is locally available and the resulting browser payload is manageable.
+
+## 2. Code Inventory
+
+### 2.1 `scripts/build_city_traffic_dynamic_sample.py`
+
+Path:
+
+`scripts/build_city_traffic_dynamic_sample.py`
+
+Purpose:
+
+This is the first lightweight dynamic visualization script. It reads `city-traffic-M-raw-static-features.parquet` and `city-traffic-M-raw-volume.parquet`, selects 720 road segments with nonzero/high traffic volume using grid-based spatial thinning, aggregates one sample day to 15-minute frames, and writes a custom canvas HTML visualization without an OSM basemap.
+
+Main outputs:
+
+* `visualizations/city_traffic_M_volume_dynamic_sample.html`
+* `visualizations/city_traffic_M_volume_sample.json`
+* `visualizations/city_traffic_M_volume_sample.js`
+* `visualizations/city_traffic_M_volume_dynamic_sample.png`
+
+Main functions:
+
+* `load_static_features()`: reads static road features and computes midpoint coordinates.
+* `load_volume_column_stats()`: uses Parquet column statistics to identify road segments with nonzero volume.
+* `select_dynamic_segments()`: chooses 720 high-activity but spatially distributed segments.
+* `read_volume_timeseries()`: reads only selected volume columns and `timestamp`.
+* `choose_sample_day()`: chooses the busiest complete day in the sampled data.
+* `make_frames()`: aggregates native 5-minute records into 15-minute mean frames.
+* `build_payload()`: creates browser-ready metadata, segment geometry, and frame values.
+* `write_payload()` and `write_html()`: write JSON, JS, and HTML artifacts.
+
+Run manually:
+
+```{bash eval=FALSE}
+PYTHONPATH=/tmp/codex_pyarrow python3 scripts/build_city_traffic_dynamic_sample.py
+```
+
+### 2.2 `scripts/build_city_traffic_osm_congestion_sample.py`
+
+Path:
+
+`scripts/build_city_traffic_osm_congestion_sample.py`
+
+Purpose:
+
+This is the current main script. It creates the Chinese OSM/Leaflet traffic map with two display modes: congestion and volume. It uses local static features and volume data, and range-fetches only the needed speed columns from the remote Kaggle speed Parquet file.
+
+Main outputs:
+
+* `visualizations/city_traffic_M_osm_congestion_sample.html`
+* `visualizations/city_traffic_M_osm_congestion_sample.json`
+* `visualizations/city_traffic_M_osm_congestion_sample.js`
+* `visualizations/city_traffic_M_osm_congestion_sample.png`
+
+Main functions:
+
+* `load_static_features()`: reads static road features and keeps road geometry.
+* `load_volume_column_stats()`: reads volume Parquet metadata/statistics without scanning the whole table.
+* `select_dynamic_segments()`: selects 720 sampled road segments by high volume and spatial thinning.
+* `read_volume_timeseries()`: reads selected volume columns.
+* `choose_sample_day()` and `frame_timeseries()`: choose 2024-10-18 and aggregate to 15-minute frames.
+* `get_signed_speed_url()`: requests a temporary Kaggle download URL for the large speed file.
+* `download_speed_footer()`: caches only the Parquet footer locally.
+* `needed_column_ranges()`, `merge_ranges()`, and `write_ranges_to_sparse_file()`: identify and download only the byte ranges needed for selected speed columns.
+* `read_speed_subset()`: reads the sparse temporary speed Parquet file.
+* `build_payload()`: computes free-flow speed, congestion score, map bounds, segment records, and per-frame values.
+* `write_outputs()`: writes JSON, JS, and HTML artifacts.
+
+Run manually:
+
+```{bash eval=FALSE}
+PYTHONPATH=/tmp/codex_pyarrow python3 scripts/build_city_traffic_osm_congestion_sample.py
+```
+
+## 3. Processing Pipeline
+
+### 3.1 Segment selection
+
+The dynamic map does not render all 53,530 road segments. Instead, it selects 720 active segments for browser performance:
+
+1. Read all static segment geometries from `city-traffic-M-raw-static-features.parquet`.
+2. Read Parquet column statistics from `city-traffic-M-raw-volume.parquet`.
+3. Keep only `node_*` columns whose maximum volume is greater than zero.
+4. Sort candidate segments by maximum observed volume.
+5. Apply grid-based spatial thinning so the sample is not only concentrated in the city center.
+6. Fill any remaining sample slots with the next highest-volume segments.
+
+This means the current visualization is a high-activity sample, not a full-city rendering.
+
+### 3.2 Temporal aggregation
+
+The original dynamic data uses 5-minute intervals. The browser visualization displays 15-minute frames:
+
+```{python eval=FALSE}
+frames = day.resample("15min").mean().interpolate(limit_direction="both")
+```
+
+Current sample metadata:
+
+* Sample day: 2024-10-18
+* Frame count: 96
+* Native time step: 5 minutes
+* Display frame interval: 15 minutes
+* Current OSM peak congestion frame: 2024-10-18 13:30
+
+### 3.3 Congestion metric
+
+The default visualization mode is congestion rather than raw traffic volume.
+
+For each selected segment, the script estimates:
+
+```text
+free_flow_speed = p90(nonzero observed speed for that segment)
+```
+
+For each segment and frame:
+
+```text
+slowdown = max(0, 1 - current_speed / free_flow_speed)
+volume_weight = clipped log1p(current_volume) / log1p(global_volume_p95)
+congestion = slowdown * volume_weight
+```
+
+This metric highlights roads that are both slow and active. A road that is slow but nearly empty is de-emphasized.
+
+### 3.4 OSM usage
+
+OpenStreetMap is used only as the visual basemap:
+
+* map tiles;
+* road/place labels;
+* geographic context and orientation.
+
+OSM is not used to calculate congestion or flow. The congestion calculation uses only the dataset's static geometry, dynamic volume, and dynamic speed values.
+
+The HTML uses Leaflet 1.9.4 and the OSM tile endpoint:
+
+```{javascript eval=FALSE}
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19,
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+}).addTo(map);
+```
+
+## 4. Visualization Outputs
+
+### 4.1 Current main output
+
+Open:
+
+`visualizations/city_traffic_M_osm_congestion_sample.html`
+
+The page is a Chinese interactive map. It has:
+
+* OSM basemap;
+* `拥堵` and `流量` display modes;
+* play/pause animation;
+* frame slider;
+* top KPI cards;
+* current time window details;
+* hover tooltip for each displayed road segment;
+* trend chart for the selected metric.
+
+### 4.2 Color encoding
+
+In `拥堵` mode:
+
+* Green means smoother traffic.
+* Yellow means slower traffic.
+* Red means more severe congestion.
+* Wider line means higher metric value.
+
+In `流量` mode:
+
+* Green means low traffic volume.
+* Yellow means medium traffic volume.
+* Red means high traffic volume.
+* Wider line means higher volume.
+
+The traffic lines also have a dark halo stroke and the OSM tile layer is slightly desaturated so the traffic colors are more visible against the basemap.
+
+### 4.3 Browser-ready data files
+
+The OSM HTML loads:
+
+* `visualizations/city_traffic_M_osm_congestion_sample.js`
+
+This JS file defines:
+
+```{javascript eval=FALSE}
+window.CITY_TRAFFIC_OSM_SAMPLE = { ... }
+```
+
+The same payload is also stored in:
+
+* `visualizations/city_traffic_M_osm_congestion_sample.json`
+
+Important payload sections:
+
+* `metadata`: source files, sample day, frame count, segment count, metric definitions.
+* `bounds`: map bounds for fitting the initial Leaflet view.
+* `segments`: static segment geometry and tooltip attributes.
+* `frames`: per-frame congestion, volume, speed, and summary metrics.
+
+## 5. Main Code
+
+The Python chunks below are included as source-code documentation (`eval=FALSE`). Knitting this Rmd will not automatically run the preprocessing pipeline.
+
+### 5.1 Current OSM congestion visualization script
+
+```{python eval=FALSE}
+# File:
+# scripts/build_city_traffic_osm_congestion_sample.py
+
+# Key command:
+# PYTHONPATH=/tmp/codex_pyarrow python3 scripts/build_city_traffic_osm_congestion_sample.py
+
+# High-level flow:
+# 1. Read static road geometry from city-traffic-M-raw-static-features.parquet.
+# 2. Read volume Parquet column statistics and select 720 active road segments.
+# 3. Read selected volume columns and choose the busiest complete sample day.
+# 4. Fetch only selected speed columns from the remote city-traffic-M speed file.
+# 5. Aggregate both volume and speed to 15-minute frames.
+# 6. Compute segment p90 speed as the free-flow baseline.
+# 7. Compute congestion = relative slowdown * clipped log-volume weight.
+# 8. Write the Leaflet/OSM HTML, JSON, and JS files.
+```
+
+To inspect the full script inside R:
+
+```{r eval=FALSE}
+cat(readLines("scripts/build_city_traffic_osm_congestion_sample.py"), sep = "\n")
+```
+
+### 5.2 Earlier volume-only visualization script
+
+```{python eval=FALSE}
+# File:
+# scripts/build_city_traffic_dynamic_sample.py
+
+# Key command:
+# PYTHONPATH=/tmp/codex_pyarrow python3 scripts/build_city_traffic_dynamic_sample.py
+
+# High-level flow:
+# 1. Read static road geometry.
+# 2. Read volume column statistics.
+# 3. Select 720 dynamic road segments and 6,400 background road segments.
+# 4. Read selected volume columns.
+# 5. Choose the busiest complete sample day.
+# 6. Aggregate native 5-minute volume to 15-minute frames.
+# 7. Write a non-OSM custom canvas HTML visualization.
+```
+
+To inspect the full script inside R:
+
+```{r eval=FALSE}
+cat(readLines("scripts/build_city_traffic_dynamic_sample.py"), sep = "\n")
+```
+
+## 6. Reproducibility Notes
+
+The current project directory is not a Git repository, so code history is not available from `git status` or `git diff` here.
+
+The current OSM visualization was browser-tested with Chrome/Playwright after generation. The verified state included:
+
+* 96 frames;
+* 720 road segments;
+* loaded OSM tiles;
+* working default `拥堵` mode;
+* working switch to `流量` mode;
+* no browser page errors.
+
+If the OSM page is opened offline, the local overlay data will still exist, but the OSM basemap tiles may not load.

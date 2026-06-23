@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>city-traffic-M OSM 动态拥堵样本</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="city_traffic_M_osm_congestion_sample.js"></script>
+  <style>
+    :root {
+      --ink: #20252b;
+      --muted: #64717a;
+      --line: #d8dedb;
+      --panel: #ffffff;
+      --paper: #f7f8f5;
+      --green: #00a651;
+      --amber: #ffb000;
+      --red: #e02424;
+      --blue: #326b91;
+      --shadow: 0 12px 30px rgba(32, 37, 43, 0.14);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body, .app {
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      background: var(--paper);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+
+    .app {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    header {
+      z-index: 5;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      align-items: end;
+      padding: 16px 18px 12px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.96);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 21px;
+      line-height: 1.2;
+      font-weight: 760;
+    }
+
+    .subtitle {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(86px, 1fr));
+      gap: 9px;
+      min-width: 500px;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 9px;
+      background: #fff;
+    }
+
+    .metric span {
+      display: block;
+    }
+
+    .label {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.15;
+      white-space: normal;
+    }
+
+    .value {
+      margin-top: 4px;
+      font-variant-numeric: tabular-nums;
+      font-size: 17px;
+      line-height: 1.1;
+      font-weight: 740;
+    }
+
+    main {
+      position: relative;
+      min-height: 0;
+    }
+
+    #map {
+      height: 100%;
+      min-height: 600px;
+    }
+
+    #map .leaflet-tile-pane {
+      filter: saturate(0.62) contrast(0.9) brightness(1.08);
+    }
+
+    .control-panel {
+      position: absolute;
+      z-index: 600;
+      left: 16px;
+      right: 16px;
+      bottom: 16px;
+      display: grid;
+      grid-template-columns: auto auto minmax(220px, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      max-width: 920px;
+      padding: 11px;
+      border: 1px solid rgba(216, 222, 219, 0.9);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.94);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+
+    button, select {
+      height: 36px;
+      border: 1px solid #c7d0cd;
+      border-radius: 8px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      font-size: 13px;
+    }
+
+    button {
+      min-width: 72px;
+      padding: 0 12px;
+      font-weight: 720;
+      cursor: pointer;
+    }
+
+    select {
+      min-width: 124px;
+      padding: 0 10px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--blue);
+    }
+
+    .time {
+      min-width: 138px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-size: 13px;
+      font-weight: 720;
+    }
+
+    .side-panel {
+      position: absolute;
+      z-index: 550;
+      top: 16px;
+      right: 16px;
+      display: grid;
+      gap: 12px;
+      width: 320px;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.95);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(8px);
+    }
+
+    .panel h2 {
+      margin: 0 0 10px;
+      font-size: 13px;
+      line-height: 1.2;
+      font-weight: 760;
+    }
+
+    .ramp {
+      height: 12px;
+      border: 1px solid #cfd6d3;
+      border-radius: 8px;
+      background: linear-gradient(90deg, var(--green), var(--amber), var(--red));
+    }
+
+    .legend-row {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.25;
+    }
+
+    .detail-grid {
+      display: grid;
+      gap: 8px;
+    }
+
+    .detail-row {
+      display: grid;
+      grid-template-columns: 78px minmax(0, 1fr);
+      gap: 10px;
+      align-items: baseline;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .detail-row span {
+      color: var(--muted);
+    }
+
+    .detail-row strong {
+      min-width: 0;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      overflow-wrap: anywhere;
+    }
+
+    #trendCanvas {
+      display: block;
+      width: 100%;
+      height: 142px;
+    }
+
+    .note {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .leaflet-tooltip.traffic-tooltip {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      color: var(--ink);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .mono { font-variant-numeric: tabular-nums; }
+
+    @media (max-width: 900px) {
+      header {
+        grid-template-columns: 1fr;
+      }
+
+      .metrics {
+        min-width: 0;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .side-panel {
+        left: 12px;
+        right: 12px;
+        width: auto;
+      }
+
+      .control-panel {
+        grid-template-columns: 1fr;
+      }
+
+      .time {
+        text-align: left;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <h1>city-traffic-M OSM 动态拥堵样本</h1>
+        <div class="subtitle" id="subtitle"></div>
+      </div>
+      <div class="metrics">
+        <div class="metric"><span class="label" id="m1Label">拥堵均值</span><span class="value" id="m1Value">0</span></div>
+        <div class="metric"><span class="label" id="m2Label">拥堵 95 分位</span><span class="value" id="m2Value">0</span></div>
+        <div class="metric"><span class="label">平均速度 km/h</span><span class="value" id="speedValue">0</span></div>
+        <div class="metric"><span class="label">有流量道路</span><span class="value" id="activeValue">0</span></div>
+      </div>
+    </header>
+
+    <main>
+      <div id="map"></div>
+      <section class="side-panel">
+        <div class="panel">
+          <h2 id="legendTitle">拥堵颜色刻度</h2>
+          <div class="ramp"></div>
+          <div class="legend-row" id="legendLabels">
+            <span>通畅</span><span>变慢</span><span>严重</span>
+          </div>
+        </div>
+        <div class="panel">
+          <h2 id="trendTitle">拥堵趋势</h2>
+          <canvas id="trendCanvas" width="580" height="260"></canvas>
+        </div>
+        <div class="panel">
+          <h2>当前时段</h2>
+          <div class="detail-grid">
+            <div class="detail-row"><span>时间窗口</span><strong id="windowValue"></strong></div>
+            <div class="detail-row"><span>帧序号</span><strong id="frameValue"></strong></div>
+            <div class="detail-row"><span>原始粒度</span><strong id="grainValue"></strong></div>
+            <div class="detail-row"><span>突出路段</span><strong id="hotSegmentValue"></strong></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>指标说明</h2>
+          <div class="note" id="metricNote"></div>
+        </div>
+        <div class="panel">
+          <h2>数据来源</h2>
+          <div class="note" id="sourceNote"></div>
+        </div>
+      </section>
+      <section class="control-panel">
+        <button type="button" id="playButton">播放</button>
+        <select id="metricSelect">
+          <option value="congestion">拥堵</option>
+          <option value="volume">流量</option>
+        </select>
+        <input id="frameSlider" type="range" min="0" max="0" value="0">
+        <div class="time" id="timeReadout"></div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const data = window.CITY_TRAFFIC_OSM_SAMPLE;
+    const meta = data.metadata;
+    const slider = document.getElementById("frameSlider");
+    const playButton = document.getElementById("playButton");
+    const metricSelect = document.getElementById("metricSelect");
+    const timeReadout = document.getElementById("timeReadout");
+    const subtitle = document.getElementById("subtitle");
+    const m1Label = document.getElementById("m1Label");
+    const m2Label = document.getElementById("m2Label");
+    const m1Value = document.getElementById("m1Value");
+    const m2Value = document.getElementById("m2Value");
+    const speedValue = document.getElementById("speedValue");
+    const activeValue = document.getElementById("activeValue");
+    const legendTitle = document.getElementById("legendTitle");
+    const legendLabels = document.getElementById("legendLabels");
+    const trendTitle = document.getElementById("trendTitle");
+    const metricNote = document.getElementById("metricNote");
+    const sourceNote = document.getElementById("sourceNote");
+    const windowValue = document.getElementById("windowValue");
+    const frameValue = document.getElementById("frameValue");
+    const grainValue = document.getElementById("grainValue");
+    const hotSegmentValue = document.getElementById("hotSegmentValue");
+    const trendCanvas = document.getElementById("trendCanvas");
+    const trendCtx = trendCanvas.getContext("2d");
+
+    let frameIndex = meta.peakFrameIndex || 0;
+    let metric = "congestion";
+    let playing = false;
+    let lastStep = 0;
+    const layers = [];
+    const haloLayers = [];
+    const volumeScale = Math.max(1, meta.volumeP95);
+
+    slider.max = String(data.frames.length - 1);
+    subtitle.textContent = `${meta.sampleDay} 样本日 | ${meta.frameCount} 个 15 分钟时间帧 | ${meta.dynamicSegmentCount} 条抽样道路 | 底图来自 OpenStreetMap`;
+    sourceNote.innerHTML = `静态几何：<span class="mono">${meta.staticFile}</span><br>
+      动态流量：<span class="mono">${meta.dynamicFiles[0]}</span><br>
+      动态速度：<span class="mono">${meta.dynamicFiles[1]}</span>（只按需读取抽样路段列）<br>
+      OSM：仅用作地图瓦片、道路/地名标签和空间参照。`;
+
+    const map = L.map("map", { preferCanvas: true, zoomControl: true });
+    map.createPane("trafficHalo");
+    map.getPane("trafficHalo").style.zIndex = 430;
+    map.getPane("trafficHalo").style.pointerEvents = "none";
+    map.createPane("trafficLines");
+    map.getPane("trafficLines").style.zIndex = 440;
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+
+    const bounds = L.latLngBounds(
+      [data.bounds.latMin, data.bounds.lonMin],
+      [data.bounds.latMax, data.bounds.lonMax]
+    );
+    map.fitBounds(bounds, { padding: [24, 24] });
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function colorRamp(t) {
+      t = clamp(t, 0, 1);
+      const green = [0, 166, 81];
+      const amber = [255, 176, 0];
+      const red = [224, 36, 36];
+      const left = t < 0.52;
+      const local = left ? t / 0.52 : (t - 0.52) / 0.48;
+      const a = left ? green : amber;
+      const b = left ? amber : red;
+      const rgb = a.map((v, i) => Math.round(v + (b[i] - v) * local));
+      return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+    }
+
+    function metricValue(frame, index) {
+      if (metric === "volume") return frame.volume[index] / volumeScale;
+      return frame.congestion[index];
+    }
+
+    function rawValue(frame, index) {
+      return metric === "volume" ? frame.volume[index] : frame.congestion[index];
+    }
+
+    function styleFor(frame, index) {
+      const value = metricValue(frame, index);
+      const intensity = clamp(value, 0, 1);
+      const lineWeight = metric === "volume" ? 2.2 + intensity * 6.2 : 2.6 + intensity * 7.4;
+      return {
+        line: {
+          color: colorRamp(intensity),
+          weight: lineWeight,
+          opacity: 0.74 + intensity * 0.24,
+          lineCap: "round",
+          lineJoin: "round",
+        },
+        halo: {
+          color: "#151a1f",
+          weight: lineWeight + 4,
+          opacity: 0.34 + intensity * 0.3,
+          lineCap: "round",
+          lineJoin: "round",
+        },
+      };
+    }
+
+    function tooltipText(segment, frame, index) {
+      const speedLimitText = segment.speedLimit === "unknown" ? "未知" : segment.speedLimit;
+      return `<strong>道路段 #${segment.id}</strong><br>
+        拥堵指数：<span class="mono">${frame.congestion[index].toFixed(3)}</span><br>
+        流量值：<span class="mono">${frame.volume[index].toFixed(2)}</span><br>
+        当前速度：<span class="mono">${frame.speed[index].toFixed(1)} km/h</span><br>
+        自由流速度：<span class="mono">${segment.freeFlowSpeed} km/h</span><br>
+        静态限速：${speedLimitText}，区域 ${segment.region}<br>
+        长度：<span class="mono">${segment.length} m</span>`;
+    }
+
+    function pad2(value) {
+      return String(value).padStart(2, "0");
+    }
+
+    function parseFrameDate(timeText) {
+      const [datePart, clockPart] = timeText.split(" ");
+      const [year, month, day] = datePart.split("-").map(Number);
+      const [hour, minute] = clockPart.split(":").map(Number);
+      return new Date(year, month - 1, day, hour, minute);
+    }
+
+    function formatClock(date) {
+      return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+    }
+
+    function formatZhDateTime(date) {
+      return `${date.getFullYear()}年${pad2(date.getMonth() + 1)}月${pad2(date.getDate())}日 ${formatClock(date)}`;
+    }
+
+    function formatWindow(timeText) {
+      const start = parseFrameDate(timeText);
+      const end = new Date(start.getTime() + meta.frameIntervalMinutes * 60 * 1000);
+      const sameDay = start.toDateString() === end.toDateString();
+      return `${formatZhDateTime(start)}-${sameDay ? formatClock(end) : formatZhDateTime(end)}`;
+    }
+
+    function hottestSegment(frame) {
+      let bestIndex = 0;
+      let bestValue = -Infinity;
+      for (let i = 0; i < data.segments.length; i++) {
+        const value = rawValue(frame, i);
+        if (value > bestValue) {
+          bestValue = value;
+          bestIndex = i;
+        }
+      }
+      const segment = data.segments[bestIndex];
+      if (metric === "volume") {
+        return `#${segment.id}，流量 ${frame.volume[bestIndex].toFixed(2)}，速度 ${frame.speed[bestIndex].toFixed(1)} km/h`;
+      }
+      return `#${segment.id}，拥堵 ${frame.congestion[bestIndex].toFixed(3)}，速度 ${frame.speed[bestIndex].toFixed(1)} km/h`;
+    }
+
+    for (let i = 0; i < data.segments.length; i++) {
+      const segment = data.segments[i];
+      const styles = styleFor(data.frames[frameIndex], i);
+      const halo = L.polyline(
+        [[segment.lat1, segment.lon1], [segment.lat2, segment.lon2]],
+        { ...styles.halo, pane: "trafficHalo", interactive: false }
+      ).addTo(map);
+      const polyline = L.polyline(
+        [[segment.lat1, segment.lon1], [segment.lat2, segment.lon2]],
+        { ...styles.line, pane: "trafficLines" }
+      ).addTo(map);
+      polyline.bindTooltip("", { className: "traffic-tooltip", sticky: true });
+      polyline.on("mouseover", () => {
+        polyline.setTooltipContent(tooltipText(segment, data.frames[frameIndex], i));
+      });
+      haloLayers.push(halo);
+      layers.push(polyline);
+    }
+
+    function drawTrend() {
+      const rect = trendCanvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      trendCanvas.width = Math.max(1, Math.round(rect.width * dpr));
+      trendCanvas.height = Math.max(1, Math.round(rect.height * dpr));
+      trendCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const values = data.frames.map((frame) => metric === "volume" ? frame.meanVolume : frame.congestionMean);
+      const maxValue = Math.max(...values, 0.001);
+      const pad = { left: 34, right: 14, top: 16, bottom: 26 };
+      const w = rect.width - pad.left - pad.right;
+      const h = rect.height - pad.top - pad.bottom;
+
+      trendCtx.clearRect(0, 0, rect.width, rect.height);
+      trendCtx.fillStyle = "#ffffff";
+      trendCtx.fillRect(0, 0, rect.width, rect.height);
+      trendCtx.strokeStyle = "#e2e7e4";
+      trendCtx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = pad.top + h * i / 4;
+        trendCtx.beginPath();
+        trendCtx.moveTo(pad.left, y);
+        trendCtx.lineTo(pad.left + w, y);
+        trendCtx.stroke();
+      }
+
+      trendCtx.strokeStyle = metric === "volume" ? "#0057b8" : "#e02424";
+      trendCtx.lineWidth = 2;
+      trendCtx.beginPath();
+      values.forEach((value, i) => {
+        const x = pad.left + w * i / (values.length - 1);
+        const y = pad.top + h * (1 - value / maxValue);
+        if (i === 0) trendCtx.moveTo(x, y);
+        else trendCtx.lineTo(x, y);
+      });
+      trendCtx.stroke();
+
+      const cursorX = pad.left + w * frameIndex / (values.length - 1);
+      trendCtx.strokeStyle = "#20252b";
+      trendCtx.lineWidth = 1.4;
+      trendCtx.beginPath();
+      trendCtx.moveTo(cursorX, pad.top);
+      trendCtx.lineTo(cursorX, pad.top + h);
+      trendCtx.stroke();
+
+      trendCtx.fillStyle = "#64717a";
+      trendCtx.font = "12px ui-sans-serif, system-ui, sans-serif";
+      trendCtx.fillText("00:00", pad.left, rect.height - 8);
+      trendCtx.fillText("24:00", rect.width - pad.right - 40, rect.height - 8);
+    }
+
+    function updateFrame() {
+      const frame = data.frames[frameIndex];
+      for (let i = 0; i < layers.length; i++) {
+        const styles = styleFor(frame, i);
+        haloLayers[i].setStyle(styles.halo);
+        layers[i].setStyle(styles.line);
+      }
+
+      timeReadout.textContent = formatWindow(frame.time);
+      windowValue.textContent = formatWindow(frame.time);
+      frameValue.textContent = `${frameIndex + 1} / ${data.frames.length}`;
+      grainValue.textContent = `原始 ${meta.nativeTimeStepMinutes} 分钟，显示为 ${meta.frameIntervalMinutes} 分钟均值`;
+      hotSegmentValue.textContent = hottestSegment(frame);
+      slider.value = String(frameIndex);
+      speedValue.textContent = frame.meanSpeed.toFixed(1);
+      activeValue.textContent = String(frame.active);
+
+      if (metric === "volume") {
+        m1Label.textContent = "平均流量";
+        m2Label.textContent = "流量 95 分位";
+        m1Value.textContent = frame.meanVolume.toFixed(2);
+        m2Value.textContent = meta.volumeP95.toFixed(2);
+        legendTitle.textContent = "流量颜色刻度";
+        legendLabels.innerHTML = "<span>低流量</span><span>中等</span><span>高流量</span>";
+        trendTitle.textContent = "流量趋势";
+        metricNote.textContent = "流量模式直接使用数据集中的 volume 值。颜色从绿色到红色表示从低流量到高流量，线越粗代表该时间段流量越高。";
+      } else {
+        m1Label.textContent = "拥堵均值";
+        m2Label.textContent = "拥堵 95 分位";
+        m1Value.textContent = frame.congestionMean.toFixed(3);
+        m2Value.textContent = frame.congestionP95.toFixed(3);
+        legendTitle.textContent = "拥堵颜色刻度";
+        legendLabels.innerHTML = "<span>通畅</span><span>变慢</span><span>严重</span>";
+        trendTitle.textContent = "拥堵趋势";
+        metricNote.textContent = "拥堵指数 = 相对该路段 p90 速度的降速程度 × 对数流量权重。这样能突出“车多且变慢”的道路，降低低速但几乎没车的道路影响。";
+      }
+      drawTrend();
+    }
+
+    function step(timestamp) {
+      if (!playing) return;
+      if (!lastStep || timestamp - lastStep > 260) {
+        frameIndex = (frameIndex + 1) % data.frames.length;
+        lastStep = timestamp;
+        updateFrame();
+      }
+      requestAnimationFrame(step);
+    }
+
+    playButton.addEventListener("click", () => {
+      playing = !playing;
+      playButton.textContent = playing ? "暂停" : "播放";
+      if (playing) requestAnimationFrame(step);
+    });
+
+    slider.addEventListener("input", () => {
+      frameIndex = Number(slider.value);
+      updateFrame();
+    });
+
+    metricSelect.addEventListener("change", () => {
+      metric = metricSelect.value;
+      updateFrame();
+    });
+
+    window.addEventListener("resize", drawTrend);
+    updateFrame();
+  </script>
+</body>
+</html>
