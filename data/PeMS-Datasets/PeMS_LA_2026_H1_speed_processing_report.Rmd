@@ -1,0 +1,313 @@
+---
+title: "data_process"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+## 1.Initial Data
+*variables used in the map are in blue*
+
+This folder uses PeMS Station Hour data for the Los Angeles area. The files cover District 7, District 8, and District 12 from January to June 2026. Station metadata is used to attach each station to its location, freeway, direction, and postmile.
+
+```text
+PeMS_LA_2026_H1_speed/
+├── code/
+├── data/
+│   └── raw/
+├── map/
+├── processed/
+└── PeMS_LA_2026_H1_speed_processing_report.Rmd
+```
+
+```{r}
+list.files(".", recursive = TRUE)
+```
+
+### 1.1 *Station Metadata*: Station locations and road attributes.
+
+Metadata is needed because the Station Hour files only give the PeMS station ID. The coordinates and road information come from the metadata files.
+
+The metadata files used here are:
+
+```{r}
+metadata_files <- list.files("data/raw", pattern = "text_meta", full.names = TRUE)
+basename(metadata_files)
+```
+
+The downloaded metadata dates are not the same for all three districts. District 8 has a 2026 metadata file. District 7 and District 12 use the latest metadata files that were available in the downloaded data folder.
+
+* <span style="color: blue;">**station**</span>: PeMS station ID. This is the join key between metadata and Station Hour.
+
+* <span style="color: blue;">**latitude**</span>: Station latitude.
+
+* <span style="color: blue;">**longitude**</span>: Station longitude.
+
+* <span style="color: blue;">**freeway**</span>: Freeway or route number.
+
+* <span style="color: blue;">**direction**</span>: Travel direction, such as N, S, E, or W.
+
+* <span style="color: blue;">**abs_pm**</span>: Absolute postmile. It is used to order stations along the same freeway and direction.
+
+* <span style="color: blue;">**type**</span>: Station type. The map keeps `ML`, which means mainline.
+
+* **lanes**: Number of lanes recorded for the station.
+
+* **name**: Station name or nearby road name.
+
+```{r}
+if (length(metadata_files) > 0) {
+  metadata_preview <- read.delim(
+    metadata_files[1],
+    nrows = 10,
+    check.names = FALSE
+  )
+  metadata_preview
+}
+```
+
+### 1.2 *Station Hour*: Hourly traffic measurements.
+
+Station Hour contains one row per station and hour. This is the only traffic measurement table used in the current map.
+
+The raw Station Hour files used here are:
+
+```{r}
+hour_files <- list.files("data/raw", pattern = "text_station_hour_2026", full.names = TRUE)
+basename(hour_files)
+```
+
+The map uses these fields:
+
+* <span style="color: blue;">**timestamp**</span>: Beginning time of the hourly interval.
+
+* <span style="color: blue;">**station**</span>: PeMS station ID.
+
+* <span style="color: blue;">**district**</span>: Caltrans district number.
+
+* <span style="color: blue;">**route**</span>: Freeway or route number in the Station Hour file.
+
+* <span style="color: blue;">**direction**</span>: Travel direction.
+
+* <span style="color: blue;">**lane_type**</span>: Station category. The script keeps `ML`.
+
+* <span style="color: blue;">**samples**</span>: Number of valid observations in the hour.
+
+* <span style="color: blue;">**average_speed**</span>: Average speed for the station and hour, in mph.
+
+Other Station Hour columns, such as total flow, occupancy, and lane-level values, are present in the raw files but are not used in this speed map.
+
+```{r}
+hour_columns <- c(
+  "timestamp", "station", "district", "route", "direction", "lane_type",
+  "station_length", "samples", "percentage_observed", "total_flow",
+  "average_occupancy", "average_speed", "delay_35", "delay_40",
+  "delay_45", "delay_50", "delay_55", "delay_60"
+)
+
+for (lane in 1:8) {
+  hour_columns <- c(
+    hour_columns,
+    paste0("lane", lane, "_flow"),
+    paste0("lane", lane, "_average_occupancy"),
+    paste0("lane", lane, "_average_speed")
+  )
+}
+
+if (length(hour_files) > 0) {
+  station_hour_preview <- read.csv(
+    hour_files[1],
+    nrows = 10,
+    header = FALSE,
+    col.names = hour_columns,
+    check.names = FALSE
+  )
+  station_hour_preview[, c(
+    "timestamp", "station", "district", "route", "direction",
+    "lane_type", "samples", "average_speed"
+  )]
+}
+```
+
+## 2.Main Code
+
+From raw files to the HTML map, the current folder uses one Python script:
+
+```text
+code/build_la_2026_h1_speed_map.py
+```
+
+Run it from this folder:
+
+```{python eval=FALSE}
+python3 code/build_la_2026_h1_speed_map.py
+```
+
+The script does the following work:
+
+1. Reads metadata files from `data/raw/`.
+2. Keeps mainline stations (`ML`) and normalizes station IDs.
+3. Reads the 2026 Station Hour files for D7, D8, and D12.
+4. Keeps rows with valid samples and speed values between 1 and 100 mph.
+5. Builds an hourly time index from `2026-01-01 00:00` to `2026-06-30 23:00`.
+6. Groups stations by district, freeway, and direction.
+7. Sorts each group by absolute postmile.
+8. Connects neighboring stations when the distance and postmile gap are small enough.
+9. Calculates each road segment speed as the mean speed of its two endpoint stations for each hour.
+10. Writes the processed tables and the Leaflet HTML map.
+
+OpenStreetMap is used as the basemap. The colored road segments are built from PeMS station locations rather than from a separate downloaded OSM road network.
+
+The script can be displayed below:
+
+```{r show-python-script, echo=FALSE, results='asis'}
+script_path <- "code/build_la_2026_h1_speed_map.py"
+
+if (file.exists(script_path)) {
+  cat("```python\n")
+  cat(readLines(script_path, warn = FALSE), sep = "\n")
+  cat("\n```\n")
+} else {
+  cat("`code/build_la_2026_h1_speed_map.py` is missing.\n")
+}
+```
+
+## 3.Processed Outputs
+
+The script writes three CSV files and one JSON file to `processed/`.
+
+```{r}
+processed_files <- list.files("processed", full.names = TRUE)
+file.info(processed_files)[, c("size", "mtime")]
+```
+
+### 3.1 *la_area_stations_2026_h1.csv*
+
+This file contains the PeMS stations used in the map.
+
+* <span style="color: blue;">**station**</span>: PeMS station ID.
+
+* <span style="color: blue;">**lat**</span>: Latitude used for the map.
+
+* <span style="color: blue;">**lng**</span>: Longitude used for the map.
+
+* <span style="color: blue;">**district**</span>: District 07, 08, or 12.
+
+* <span style="color: blue;">**freeway**</span>: Freeway or route number.
+
+* <span style="color: blue;">**direction**</span>: Travel direction.
+
+* **name**: Station name.
+
+```{r}
+stations_path <- "processed/la_area_stations_2026_h1.csv"
+
+if (file.exists(stations_path)) {
+  stations <- read.csv(stations_path)
+  head(stations, 10)
+}
+```
+
+### 3.2 *la_area_speed_links_2026_h1.csv*
+
+This file contains the station-to-station links used as road segments.
+
+* <span style="color: blue;">**id**</span>: Segment ID.
+
+* <span style="color: blue;">**district**</span>: District number.
+
+* <span style="color: blue;">**freeway**</span>: Freeway or route number.
+
+* <span style="color: blue;">**direction**</span>: Travel direction.
+
+* <span style="color: blue;">**from_station**</span>: First station on the segment.
+
+* <span style="color: blue;">**to_station**</span>: Second station on the segment.
+
+* <span style="color: blue;">**from_abs_pm**</span>: Absolute postmile of the first station.
+
+* <span style="color: blue;">**to_abs_pm**</span>: Absolute postmile of the second station.
+
+```{r}
+links_path <- "processed/la_area_speed_links_2026_h1.csv"
+
+if (file.exists(links_path)) {
+  links <- read.csv(links_path)
+  head(links, 10)
+}
+```
+
+### 3.3 *la_area_freeway_speeds_2026_h1_summary.csv*
+
+This file stores one row per hour. It records how many segments have speed values and the mean and median speed for that hour.
+
+* <span style="color: blue;">**time**</span>: Hourly timestamp.
+
+* <span style="color: blue;">**segments_with_speed**</span>: Number of segments with available speed in that hour.
+
+* <span style="color: blue;">**average_speed**</span>: Mean segment speed in mph.
+
+* <span style="color: blue;">**median_speed**</span>: Median segment speed in mph.
+
+```{r}
+summary_path <- "processed/la_area_freeway_speeds_2026_h1_summary.csv"
+
+if (file.exists(summary_path)) {
+  speed_summary <- read.csv(summary_path)
+  head(speed_summary, 10)
+  tail(speed_summary, 10)
+}
+```
+
+### 3.4 *la_area_freeway_speeds_2026_h1.json*
+
+The JSON file is embedded into the HTML map. It contains the time labels, station markers, road segment coordinates, and hourly speed values.
+
+```{r}
+json_path <- "processed/la_area_freeway_speeds_2026_h1.json"
+
+if (file.exists(json_path)) {
+  file.info(json_path)[, c("size", "mtime")]
+}
+```
+
+## 4.Output Map
+
+The final HTML file is:
+
+```{r}
+map_files <- list.files("map", pattern = "\\.html$", full.names = TRUE)
+map_files
+```
+
+The map opens in a browser. It has:
+
+* an hourly time slider for January to June 2026;
+* play and reset controls;
+* colored freeway segments using speed bins;
+* optional station points;
+* optional road casing;
+* a speed legend with numeric labels;
+* current time, average speed, and segment count in the lower-left box.
+
+Speed colors:
+
+```text
+60+    green
+55-59  light green
+50-54  yellow
+45-49  yellow-orange
+40-44  orange
+35-39  dark orange
+<=35   red
+```
+
+## 5.Notes
+
+Only Station Hour and Station Metadata are used in this version. Station Day, Station 5-Minute, AADT, and separate OSM road geometry files are not part of this folder.
+
+The map uses three downloaded metadata files. Since D7 and D12 use earlier metadata snapshots, a small number of station changes may not be captured exactly. The script keeps stations that have both usable metadata and usable Station Hour speed records.
+
+The HTML file stores the processed speed data inside the file. It still needs internet access for the OpenStreetMap basemap tiles.
