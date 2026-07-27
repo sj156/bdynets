@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import base64
 import json
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -13,41 +12,22 @@ import pandas as pd
 
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-
-from code_5min.build_la_2026_april_5min_speed_map import (  # noqa: E402
-    APRIL,
-    INITIAL_TIME,
-    RAW,
-    build_links,
-    build_speed_matrix,
-    build_station_markers,
-    read_metadata,
-)
-from download_noaa_weather import OUTPUT as WEATHER_SOURCE  # noqa: E402
-from download_noaa_weather import download_weather  # noqa: E402
-from traffic_context import (  # noqa: E402
-    assign_links_to_weather_stations,
-    build_incident_buckets,
-    compute_weekslot_baseline,
-    match_incidents_to_links,
-    read_incidents,
-)
+from traffic_context import build_incident_buckets
 
 
 START = pd.Timestamp("2026-04-01 00:00:00")
 END = pd.Timestamp("2026-04-30 23:55:00")
 TIME_INDEX = pd.date_range(START, END, freq="5min")
 
-BASE_JSON = ROOT / "processed" / "la_area_freeway_speeds_2026_04_5min.json"
-INCIDENT_ROOT = APRIL / "incident"
+CLEAN_DIR = ROOT / "clean_data"
+TRAFFIC_CLEAN = CLEAN_DIR / "traffic_clean.json"
+INCIDENTS_CLEAN = CLEAN_DIR / "incidents_clean.csv"
+WEATHER_CLEAN = CLEAN_DIR / "weather_clean.csv"
 PROCESSED = ROOT / "processed_incident_weather"
 MAP_DIR = ROOT / "map"
 
 OUTPUT_HTML = MAP_DIR / "la_area_freeway_speeds_incidents_weather_2026_04.html"
 OUTPUT_JSON = PROCESSED / "la_link_context_2026_04.json"
-OUTPUT_INCIDENTS = PROCESSED / "la_incidents_2026_04.csv"
-OUTPUT_WEATHER = PROCESSED / "la_weather_2026_04.csv"
 
 
 def _encode_uint8(values: np.ndarray) -> str:
@@ -62,40 +42,10 @@ def _quantize(values: np.ndarray, scale: float = 1.0, offset: float = 0.0) -> np
     return result
 
 
-def load_base_payload() -> dict:
-    if BASE_JSON.exists():
-        return json.loads(BASE_JSON.read_text(encoding="utf-8"))
-
-    meta = read_metadata()
-    station_ids, speed_matrix = build_speed_matrix(meta)
-    links, _ = build_links(meta, station_ids, speed_matrix)
-    stations = build_station_markers(meta, station_ids, speed_matrix)
-    labels = [timestamp.strftime("%Y-%m-%d %H:%M") for timestamp in TIME_INDEX]
-    return {
-        "source": "PeMS Station 5-Minute",
-        "timeLabels": labels,
-        "initialIndex": int((INITIAL_TIME - START) / pd.Timedelta(minutes=5)),
-        "center": [34.03, -117.82],
-        "zoom": 9.4,
-        "summary": {"stations": len(stations), "links": len(links), "timeSteps": len(labels)},
-        "links": links,
-        "stations": stations,
-    }
-
-
-def attach_baselines(links: list[dict]) -> None:
-    speed_bytes = np.empty((len(TIME_INDEX), len(links)), dtype=np.uint8)
-    for column, link in enumerate(links):
-        values = np.frombuffer(base64.b64decode(link["values"]), dtype=np.uint8)
-        if len(values) != len(TIME_INDEX):
-            raise ValueError(f"Link {link['id']} has {len(values)} speed values, expected {len(TIME_INDEX)}")
-        speed_bytes[:, column] = values
-
-    speed_values = speed_bytes.astype(np.float32)
-    speed_values[speed_bytes == 255] = np.nan
-    baseline = compute_weekslot_baseline(speed_values, TIME_INDEX)
-    for column, link in enumerate(links):
-        link["baseline"] = _encode_uint8(_quantize(baseline[:, column]))
+def load_clean_traffic() -> dict:
+    if not TRAFFIC_CLEAN.exists():
+        raise FileNotFoundError(f"Run prepare_clean_data.py first: {TRAFFIC_CLEAN}")
+    return json.loads(TRAFFIC_CLEAN.read_text(encoding="utf-8"))
 
 
 def prepare_weather_payload(weather: pd.DataFrame) -> tuple[list[dict], pd.DataFrame]:
@@ -107,26 +57,7 @@ def prepare_weather_payload(weather: pd.DataFrame) -> tuple[list[dict], pd.DataF
     payload: list[dict] = []
     for station in stations.itertuples(index=False):
         group = frame[frame["station"] == station.station].copy()
-        group["bucket"] = group["time"].dt.ceil("5min")
-        numeric = ["temperature_c", "wind_speed_ms", "visibility_km"]
-        regular = group.groupby("bucket")[numeric].last().reindex(TIME_INDEX)
-        regular[numeric] = regular[numeric].ffill(limit=18)
-
-        five_min = (
-            group[group["precipitation_period"] == "5min"]
-            .groupby("bucket")["precipitation_mm"]
-            .last()
-            .reindex(TIME_INDEX)
-        )
-        reported = (
-            group[group["precipitation_period"] == "reported"]
-            .groupby("bucket")["precipitation_mm"]
-            .last()
-            .reindex(TIME_INDEX)
-        )
-        recent_count = five_min.notna().astype(int).rolling(12, min_periods=1).sum()
-        rain_last_hour = five_min.fillna(0).rolling(12, min_periods=1).sum()
-        rain_last_hour = rain_last_hour.where(recent_count > 0, reported.ffill(limit=12))
+        regular = group.set_index("time").reindex(TIME_INDEX)
 
         payload.append(
             {
@@ -137,16 +68,34 @@ def prepare_weather_payload(weather: pd.DataFrame) -> tuple[list[dict], pd.DataF
                 "temperature": _encode_uint8(_quantize(regular["temperature_c"].to_numpy(), 2, 30)),
                 "wind": _encode_uint8(_quantize(regular["wind_speed_ms"].to_numpy(), 10)),
                 "visibility": _encode_uint8(_quantize(regular["visibility_km"].to_numpy(), 10)),
-                "rainHour": _encode_uint8(_quantize(rain_last_hour.to_numpy(), 10)),
+                "rainHour": _encode_uint8(_quantize(regular["rain_hour_mm"].to_numpy(), 10)),
             }
         )
     return payload, stations
 
 
+def _number_or_none(value: object) -> float | None:
+    number = pd.to_numeric(pd.Series([value]), errors="coerce").iloc[0]
+    return round(float(number), 1) if pd.notna(number) else None
+
+
+def _notes_from_csv(value: object) -> list[str]:
+    try:
+        parsed = json.loads(str(value))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+    return [str(note) for note in parsed if str(note).strip()] if isinstance(parsed, list) else []
+
+
+def _as_bool(value: object) -> bool:
+    return str(value).strip().lower() in {"1", "true", "yes"}
+
+
 def prepare_incident_payload(incidents: pd.DataFrame) -> tuple[list[dict], list[list[int]]]:
-    matched = incidents[incidents["link_id"].notna()].copy().reset_index(drop=True)
+    clean = incidents.copy().reset_index(drop=True)
     records: list[dict] = []
-    for idx, row in matched.iterrows():
+    for idx, row in clean.iterrows():
+        has_link = pd.notna(row["link_id"])
         records.append(
             {
                 "id": idx,
@@ -163,16 +112,29 @@ def prepare_incident_payload(incidents: pd.DataFrame) -> tuple[list[dict], list[
                 "freeway": str(row["freeway"]),
                 "direction": str(row["direction"]),
                 "duration": round(float(row["duration_min"]), 1) if pd.notna(row["duration_min"]) else None,
-                "linkId": int(row["link_id"]),
+                "durationDefault": _as_bool(row.get("duration_default", False)),
+                "chpNotes": _notes_from_csv(row.get("chp_notes")),
+                "detailMessageCount": int(row.get("detail_message_count", 0)),
+                "speedBefore": _number_or_none(row.get("speed_before_mph")),
+                "speedDuring": _number_or_none(row.get("speed_during_mph")),
+                "speedAfter": _number_or_none(row.get("speed_after_mph")),
+                "speedDrop": _number_or_none(row.get("speed_drop_mph")),
+                "speedDropPct": _number_or_none(row.get("speed_drop_pct")),
+                "normalDuring": _number_or_none(row.get("normal_during_mph")),
+                "deficitVsNormal": _number_or_none(row.get("deficit_vs_normal_mph")),
+                "samplesBefore": int(row.get("samples_before", 0)),
+                "samplesDuring": int(row.get("samples_during", 0)),
+                "samplesAfter": int(row.get("samples_after", 0)),
+                "linkId": int(row["link_id"]) if has_link else None,
                 "matchMethod": str(row["match_method"]),
                 "postmileGap": round(float(row["postmile_gap"]), 2) if pd.notna(row["postmile_gap"]) else None,
                 "coordinateGapM": round(float(row["coordinate_gap_m"]), 1)
                 if pd.notna(row["coordinate_gap_m"])
                 else None,
-                "sourceIncomplete": bool(row["source_incomplete"]),
+                "sourceIncomplete": _as_bool(row["source_incomplete"]),
             }
         )
-    return records, build_incident_buckets(matched, TIME_INDEX)
+    return records, build_incident_buckets(clean, TIME_INDEX)
 
 
 HTML_TEMPLATE = r'''<!doctype html>
@@ -241,6 +203,9 @@ HTML_TEMPLATE = r'''<!doctype html>
     .incident-diamond span { transform: rotate(-45deg); color: #fff; font-size: 11px; font-weight: 900; line-height: 1; }
     .popup { font-size: 13px; line-height: 1.4; min-width: 210px; }
     .popup-grid { display: grid; grid-template-columns: auto auto; gap: 2px 12px; margin-top: 6px; }
+    .incident-notes { margin-top: 7px; padding-top: 6px; border-top: 1px solid #d8dee8; }
+    .incident-notes ul { margin: 4px 0 0; padding-left: 18px; }
+    .association-note { margin-top: 7px; color: #64748b; font-size: 11px; }
     .leaflet-container { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     @media (max-width: 900px) {
       .page { grid-template-columns: 1fr; grid-template-rows: 68vh 32vh; }
@@ -312,7 +277,8 @@ HTML_TEMPLATE = r'''<!doctype html>
       <p>Road speed uses PeMS Station 5-Minute records from D7, D8, and D12. Only mainline stations are included.</p>
       <p>Normal speed is the median for the same link, weekday, and five-minute time across April. The ranking uses normal speed minus current speed and excludes missing or zero values.</p>
       <p>CHP incidents are matched by district, freeway, direction, and postmile. Coordinates are used when postmile matching is unavailable. CHP does not identify the exact lane.</p>
-      <p>Weather comes from seven NOAA GHCNh airport stations. Each road link uses its nearest station. Rain is the total of available five-minute reports during the previous hour.</p>
+      <p>Incident speed compares the matched link during the event with the 30 minutes before, the 30 minutes after, and the usual speed for the same weekday and time. These are observed associations, not causal estimates.</p>
+      <p>Weather comes from seven NOAA GHCNh airport stations. Each road link uses its nearest station. Rain is reported only when the previous-hour window is complete or NOAA supplies a separate reported total.</p>
       <p>The PeMS CHP archive contains only one statewide summary record on 2026-04-03. That date is treated as incomplete rather than incident-free.</p>
     </details>
   </aside>
@@ -355,6 +321,10 @@ function canonicalAxis(direction) { const dir = String(direction || "").toUpperC
 function styleForZoom() { const z = map.getZoom(); if (z < 8.8) return { offset: .4, flowWeight: 2, casingWeight: 0, opacity: .84, incidentSize: 13 }; if (z < 9.6) return { offset: 2.4, flowWeight: 2.8, casingWeight: 0, opacity: .88, incidentSize: 15 }; if (z < 10.6) return { offset: 4.8, flowWeight: 3.5, casingWeight: 4.8, opacity: .91, incidentSize: 17 }; if (z < 11.6) return { offset: 6.2, flowWeight: 4.3, casingWeight: 5.8, opacity: .94, incidentSize: 18 }; return { offset: 8, flowWeight: 5.2, casingWeight: 6.8, opacity: .95, incidentSize: 20 }; }
 function drawCoordsFor(link) { const style = styleForZoom(); if (!link.coords || link.coords.length < 2 || style.offset === 0) return link.coords; const start = map.latLngToLayerPoint(link.coords[0]); const end = map.latLngToLayerPoint(link.coords[link.coords.length - 1]); let dx = end.x - start.x; let dy = end.y - start.y; const len = Math.hypot(dx, dy); if (!len) return link.coords; let nx = -dy / len; let ny = dx / len; const axis = canonicalAxis(link.direction); if (dx * axis[0] + dy * axis[1] < 0) { nx *= -1; ny *= -1; } const offset = style.offset * directionSide(link.direction); return link.coords.map(coord => { const point = map.latLngToLayerPoint(coord); return map.layerPointToLatLng(L.point(point.x + nx * offset, point.y + ny * offset)); }); }
 function routeLabel(link) { return `${link.freeway} ${link.direction}`; }
+function escapeHtml(value) { return String(value ?? "").replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[character])); }
+function metric(value) { return value == null ? "NA" : `${Number(value).toFixed(1)} mph`; }
+function observedChange(incident) { if (incident.speedDrop == null) return "NA"; if (incident.speedDrop > 0) return `${incident.speedDrop.toFixed(1)} mph (${incident.speedDropPct == null ? "NA" : incident.speedDropPct.toFixed(1) + "%"})`; if (incident.speedDrop < 0) return `${Math.abs(incident.speedDrop).toFixed(1)} mph faster`; return "No change"; }
+function normalDifference(incident) { if (incident.deficitVsNormal == null) return "NA"; if (incident.deficitVsNormal > 0) return `${incident.deficitVsNormal.toFixed(1)} mph slower`; if (incident.deficitVsNormal < 0) return `${Math.abs(incident.deficitVsNormal).toFixed(1)} mph faster`; return "At normal speed"; }
 
 function linkPopup(link) { const speed = speedAt(link, activeTime); const normal = normalAt(link, activeTime); const deficit = speed != null && normal != null ? Math.max(0, normal - speed) : null; const weather = weatherAt(link, activeTime); const activeIds = data.incidentsByTime[activeTime] || []; const eventCount = activeIds.filter(id => data.incidents[id].linkId === link.id).length; return `<div class="popup"><b>${routeLabel(link)}</b><br>${link.from_station} → ${link.to_station}<br>${data.timeLabels[activeTime]}<div class="popup-grid"><span>Speed</span><b>${speed == null ? "NA" : speed + " mph"}</b><span>Normal</span><b>${normal == null ? "NA" : normal + " mph"}</b><span>Deficit</span><b>${deficit == null ? "NA" : deficit + " mph"}</b><span>Active incidents</span><b>${eventCount}</b><span>Nearest weather</span><b>${weather ? weather.station.name : "NA"}</b><span>Rain, previous hour</span><b>${weather && weather.rain != null ? weather.rain.toFixed(1) + " mm" : "NA"}</b></div></div>`; }
 
@@ -363,11 +333,20 @@ function drawStations() { stationLayer.clearLayers(); for (const station of data
 function weatherStationPopup(station) { const weather = weatherAtStation(station, activeTime); return `<div class="popup"><b>${station.name}</b><br>NOAA ${station.station}<br>${data.timeLabels[activeTime]}<div class="popup-grid"><span>Temperature</span><b>${weather.temperature == null ? "NA" : weather.temperature.toFixed(1) + " °C"}</b><span>Wind</span><b>${weather.wind == null ? "NA" : weather.wind.toFixed(1) + " m/s"}</b><span>Visibility</span><b>${weather.visibility == null ? "NA" : weather.visibility.toFixed(1) + " km"}</b><span>Rain, previous hour</span><b>${weather.rain == null ? "NA" : weather.rain.toFixed(1) + " mm"}</b></div></div>`; }
 function drawWeatherStations() { weatherStationLayer.clearLayers(); for (const station of data.weather) { const weather = weatherAtStation(station, activeTime); const rain = weather.rain; const raining = rain != null && rain > 0; L.circleMarker([station.lat, station.lng], { radius: raining ? 8 : 6, color: raining ? "#0754a6" : "#526075", weight: raining ? 2 : 1.5, fillColor: rain != null && rain > 0 ? colors.weatherRain : colors.weatherDry, fillOpacity: .96 }).bindTooltip(station.name, { direction: "top", offset: [0, -7], opacity: .94 }).bindPopup(() => weatherStationPopup(station)).addTo(weatherStationLayer); } }
 
-function incidentPopup(incident) { const link = linkById.get(incident.linkId); const speed = link ? speedAt(link, activeTime) : null; const normal = link ? normalAt(link, activeTime) : null; const weather = link ? weatherAt(link, activeTime) : null; const deficit = speed != null && normal != null ? Math.max(0, normal - speed) : null; return `<div class="popup"><b>${incident.category}</b><br>${incident.description}<br>${incident.location || incident.area}<div class="popup-grid"><span>Reported</span><b>${incident.timestamp}</b><span>Duration</span><b>${incident.duration == null ? "NA" : incident.duration + " min"}</b><span>Matched road</span><b>${incident.freeway} ${incident.direction}</b><span>Speed</span><b>${speed == null ? "NA" : speed + " mph"}</b><span>Speed deficit</span><b>${deficit == null ? "NA" : deficit + " mph"}</b><span>Rain, previous hour</span><b>${weather && weather.rain != null ? weather.rain.toFixed(1) + " mm" : "NA"}</b></div></div>`; }
+function incidentPopup(incident) {
+  const link = linkById.get(incident.linkId);
+  const weather = link ? weatherAt(link, activeTime) : null;
+  const roadMatch = link ? `${escapeHtml(incident.freeway)} ${escapeHtml(incident.direction)}` : "No reliable speed link";
+  const association = link ? "Observed association on the matched road link; it does not establish that the incident caused the speed change." : "No speed comparison is calculated because the event could not be matched to a nearby observed road link.";
+  const notes = incident.chpNotes && incident.chpNotes.length
+    ? `<div class="incident-notes"><b>CHP notes</b><ul>${incident.chpNotes.map(note => `<li>${escapeHtml(note)}</li>`).join("")}</ul></div>`
+    : "";
+  return `<div class="popup"><b>${escapeHtml(incident.category)}</b><br>${escapeHtml(incident.description)}<br>${escapeHtml(incident.location || incident.area)}${notes}<div class="popup-grid"><span>Reported</span><b>${incident.timestamp}</b><span>Ended</span><b>${incident.endTime}</b><span>Duration</span><b>${incident.duration == null ? "NA" : incident.duration + " min"}${incident.durationDefault ? " (default)" : ""}</b><span>Matched road</span><b>${roadMatch}</b><span>30 min before</span><b>${metric(incident.speedBefore)}</b><span>During incident</span><b>${metric(incident.speedDuring)}</b><span>30 min after</span><b>${metric(incident.speedAfter)}</b><span>Observed slowdown</span><b>${observedChange(incident)}</b><span>Normal at event time</span><b>${metric(incident.normalDuring)}</b><span>Compared with normal</span><b>${normalDifference(incident)}</b><span>Samples, before/during/after</span><b>${incident.samplesBefore}/${incident.samplesDuring}/${incident.samplesAfter}</b><span>Rain, previous hour</span><b>${weather && weather.rain != null ? weather.rain.toFixed(1) + " mm" : "NA"}</b></div><div class="association-note">${association}</div></div>`;
+}
 function drawIncidents() { incidentLayer.clearLayers(); incidentHighlightLayer.clearLayers(); markerByIncidentId.clear(); const enabled = document.getElementById("toggleIncidents").checked; const category = document.getElementById("incidentFilter").value; const activeIds = data.incidentsByTime[activeTime] || []; const visible = activeIds.map(id => data.incidents[id]).filter(event => category === "All" || event.category === category); if (enabled) { for (const incident of visible) { const link = linkById.get(incident.linkId); if (link) L.polyline(drawCoordsFor(link), { color: "#5b1621", weight: styleForZoom().flowWeight + 4, opacity: .72, dashArray: "3 7", interactive: false }).addTo(incidentHighlightLayer); if (incident.lat == null || incident.lng == null) continue; const size = styleForZoom().incidentSize; const icon = L.divIcon({ className: "", html: '<div class="incident-diamond"><span>!</span></div>', iconSize: [size, size], iconAnchor: [size / 2, size / 2] }); const marker = L.marker([incident.lat, incident.lng], { icon }).bindPopup(() => incidentPopup(incident)).addTo(incidentLayer); markerByIncidentId.set(incident.id, marker); } } renderEventList(visible); return visible; }
 function renderEventList(events) { const list = document.getElementById("eventList"); if (!events.length) { list.innerHTML = '<div class="event-row">No active incidents in the selected layer.</div>'; return; } list.innerHTML = events.slice(0, 20).map(event => `<div class="event-row" data-incident="${event.id}"><b>${event.freeway} ${event.direction} · ${event.category}</b>${event.location || event.area}</div>`).join(""); for (const row of list.querySelectorAll("[data-incident]")) row.addEventListener("click", () => { const marker = markerByIncidentId.get(Number(row.dataset.incident)); if (marker) { map.setView(marker.getLatLng(), Math.max(map.getZoom(), 12)); marker.openPopup(); } }); }
 
-function updateRanking() { const rows = []; for (const link of data.links) { const speed = speedAt(link, activeTime); const normal = normalAt(link, activeTime); if (speed == null || speed <= 0 || normal == null) continue; const deficit = Math.max(0, normal - speed); if (deficit < 3 || speed >= 60) continue; const weather = weatherAt(link, activeTime); const incident = (data.incidentsByTime[activeTime] || []).some(id => data.incidents[id].linkId === link.id); rows.push({ link, speed, normal, deficit, rain: weather && weather.rain != null ? weather.rain : 0, incident }); } rows.sort((a, b) => b.deficit - a.deficit || a.speed - b.speed || a.link.id - b.link.id); const top = rows.slice(0, 8); const list = document.getElementById("rankList"); if (!top.length) { list.innerHTML = '<div class="rank-row"><div class="rank-road">No material speed deficit</div></div>'; return; } list.innerHTML = top.map((row, i) => `<div class="rank-row" data-link="${row.link.id}"><div class="rank-num">${i + 1}</div><div class="rank-road"><b>${routeLabel(row.link)} · ${row.link.from_station}–${row.link.to_station}</b><span>${row.incident ? "incident · " : ""}${row.rain > 0 ? row.rain.toFixed(1) + " mm rain" : "dry report"}</span></div><div class="rank-value"><b>−${Math.round(row.deficit)} mph</b>${row.speed} mph now</div></div>`).join(""); for (const item of list.querySelectorAll("[data-link]")) item.addEventListener("click", () => { const line = lineById.get(Number(item.dataset.link)); if (line) { map.fitBounds(line.getBounds(), { maxZoom: 13, padding: [60, 60] }); line.openPopup(); } }); }
+function updateRanking() { const rows = []; for (const link of data.links) { const speed = speedAt(link, activeTime); const normal = normalAt(link, activeTime); if (speed == null || speed <= 0 || normal == null) continue; const deficit = Math.max(0, normal - speed); if (deficit < 3 || speed >= 60) continue; const weather = weatherAt(link, activeTime); const incident = (data.incidentsByTime[activeTime] || []).some(id => data.incidents[id].linkId === link.id); rows.push({ link, speed, normal, deficit, rain: weather ? weather.rain : null, incident }); } rows.sort((a, b) => b.deficit - a.deficit || a.speed - b.speed || a.link.id - b.link.id); const top = rows.slice(0, 8); const list = document.getElementById("rankList"); if (!top.length) { list.innerHTML = '<div class="rank-row"><div class="rank-road">No material speed deficit</div></div>'; return; } list.innerHTML = top.map((row, i) => `<div class="rank-row" data-link="${row.link.id}"><div class="rank-num">${i + 1}</div><div class="rank-road"><b>${routeLabel(row.link)} · ${row.link.from_station}–${row.link.to_station}</b><span>${row.incident ? "incident · " : ""}${row.rain == null ? "weather unavailable" : row.rain > 0 ? row.rain.toFixed(1) + " mm rain" : "dry report"}</span></div><div class="rank-value"><b>−${Math.round(row.deficit)} mph</b>${row.speed} mph now</div></div>`).join(""); for (const item of list.querySelectorAll("[data-link]")) item.addEventListener("click", () => { const line = lineById.get(Number(item.dataset.link)); if (line) { map.fitBounds(line.getBounds(), { maxZoom: 13, padding: [60, 60] }); line.openPopup(); } }); }
 
 function updateWeatherSummary() { const observations = data.weather.map(station => ({ station, temperature: weatherValue(station.temperature, activeTime, 2, 30), wind: weatherValue(station.wind, activeTime, 10), visibility: weatherValue(station.visibility, activeTime, 10), rain: weatherValue(station.rainHour, activeTime, 10) })); const validTemps = observations.filter(item => item.temperature != null).map(item => item.temperature); const validWinds = observations.filter(item => item.wind != null).map(item => item.wind); const validVisibility = observations.filter(item => item.visibility != null).map(item => item.visibility); const validRain = observations.filter(item => item.rain != null).map(item => item.rain); const rainCount = observations.filter(item => item.rain != null && item.rain > 0).length; const median = values => { if (!values.length) return null; const sorted = [...values].sort((a,b) => a-b); return sorted[Math.floor(sorted.length / 2)]; }; const temperature = median(validTemps); const wind = median(validWinds); const visibility = validVisibility.length ? Math.min(...validVisibility) : null; const rain = validRain.length ? Math.max(...validRain) : null; document.getElementById("rainStationCount").textContent = rainCount; document.getElementById("weatherSummary").innerHTML = `<b>${rainCount} of ${data.weather.length}</b> stations reporting rain<br>Temperature: <b>${temperature == null ? "NA" : temperature.toFixed(1) + " °C"}</b><br>Median wind: <b>${wind == null ? "NA" : wind.toFixed(1) + " m/s"}</b><br>Lowest visibility: <b>${visibility == null ? "NA" : visibility.toFixed(1) + " km"}</b><br>Highest 1h rain: <b>${rain == null ? "NA" : rain.toFixed(1) + " mm"}</b>`; document.getElementById("legendRain").textContent = rain == null ? "NA" : rain.toFixed(1) + " mm"; }
 
@@ -402,31 +381,27 @@ def build_html(payload: dict) -> str:
 def main() -> int:
     PROCESSED.mkdir(parents=True, exist_ok=True)
     MAP_DIR.mkdir(parents=True, exist_ok=True)
-    if not WEATHER_SOURCE.exists():
-        download_weather()
+    required = [TRAFFIC_CLEAN, INCIDENTS_CLEAN, WEATHER_CLEAN]
+    missing = [path for path in required if not path.exists()]
+    if missing:
+        raise FileNotFoundError(
+            "Run prepare_clean_data.py first. Missing: " + ", ".join(str(path) for path in missing)
+        )
 
-    print("Loading PeMS speed links")
-    payload = load_base_payload()
-    payload["timeLabels"] = [timestamp.strftime("%Y-%m-%d %H:%M") for timestamp in TIME_INDEX]
-    payload["initialIndex"] = int((INITIAL_TIME - START) / pd.Timedelta(minutes=5))
-    links = payload["links"]
+    print("Loading clean PeMS traffic data")
+    payload = load_clean_traffic()
 
-    print("Computing weekday/time normal speeds")
-    attach_baselines(links)
+    print("Loading clean CHP incident data")
+    incidents = pd.read_csv(INCIDENTS_CLEAN, dtype={"incident_id": "string", "district": "string"})
+    incidents["timestamp"] = pd.to_datetime(incidents["timestamp"], errors="coerce")
+    incidents["end_time"] = pd.to_datetime(incidents["end_time"], errors="coerce")
+    incident_payload, incident_buckets = prepare_incident_payload(incidents)
 
-    print("Reading and matching CHP incidents")
-    incidents = read_incidents(INCIDENT_ROOT)
-    matched_incidents = match_incidents_to_links(incidents, links)
-    incident_payload, incident_buckets = prepare_incident_payload(matched_incidents)
+    print("Loading clean NOAA weather data")
+    weather = pd.read_csv(WEATHER_CLEAN, dtype={"station": "string"})
+    weather_payload, _ = prepare_weather_payload(weather)
 
-    print("Preparing NOAA weather")
-    weather = pd.read_csv(WEATHER_SOURCE)
-    weather_payload, weather_stations = prepare_weather_payload(weather)
-    assignments = assign_links_to_weather_stations(links, weather_stations)
-    for link in links:
-        link["weatherStation"] = assignments.get(int(link["id"]))
-
-    matched_count = int(matched_incidents["link_id"].notna().sum())
+    matched_count = int(incidents["link_id"].notna().sum())
     payload["source"] = "PeMS Station 5-Minute, CHP Incidents, NOAA GHCNh"
     payload["incidents"] = incident_payload
     payload["incidentsByTime"] = incident_buckets
@@ -440,14 +415,12 @@ def main() -> int:
         }
     )
 
-    matched_incidents.to_csv(OUTPUT_INCIDENTS, index=False)
-    weather.to_csv(OUTPUT_WEATHER, index=False)
     OUTPUT_JSON.write_text(json.dumps(payload, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
     OUTPUT_HTML.write_text(build_html(payload), encoding="utf-8")
 
-    print(f"Speed links: {len(links):,}")
+    print(f"Speed links: {len(payload['links']):,}")
     print(f"CHP incidents in D7/D8/D12: {len(incidents):,}")
-    print(f"Matched incidents: {matched_count:,} ({matched_count / len(incidents):.1%})")
+    print(f"Matched incidents loaded: {matched_count:,}")
     print(f"NOAA weather stations: {len(weather_payload)}")
     print(f"Wrote {OUTPUT_HTML}")
     print(f"Wrote {OUTPUT_JSON}")

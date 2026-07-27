@@ -55,9 +55,9 @@ Station 5-Minute contains one row for each station and 5-minute interval.
 
 * **Station Length**: Road length represented by the station.
 
-* **Samples**: Number of detector samples received during the interval.
+* **Samples**: Number of detector samples received during the interval. It is checked as a data-quality indicator but does not remove a valid average-speed value.
 
-* **Percentage Observed**: Share of expected observations that were received.
+* **Percentage Observed**: Share of expected observations that were received. It is checked as a data-quality indicator but does not remove a valid average-speed value.
 
 * **Total Flow**: Total vehicles counted during the interval.
 
@@ -71,7 +71,7 @@ Stations are grouped by district, freeway, and direction, then ordered by absolu
 
 ### 1.3 *CHP Incident*
 
-The CHP data have two record types. The incident summary gives one row per event. The detail data contain timestamped CHP log messages for the same incident IDs. The current HTML uses the incident summary.
+The CHP data have two record types. The incident summary gives one row per event. The detail data contain timestamped CHP log messages for the same incident IDs. Both record types are used.
 
 The incident summary contains:
 
@@ -99,7 +99,9 @@ The incident summary contains:
 
 Descriptions are grouped into collision, disabled vehicle, traffic hazard, construction or closure, fire, and other events. An event is treated as active from its report time to the end of its duration. A missing or non-positive duration is replaced with 30 minutes.
 
-Incidents are matched to road links by district, freeway, direction, and absolute postmile. Coordinates are used when postmile matching is unavailable. CHP does not identify the exact affected lane.
+Incidents are matched to road links by district, freeway, direction, and absolute postmile. A postmile match is kept when the gap is no more than 1 mile. Coordinates are used when postmile matching is unavailable, with a maximum gap of 3 kilometres. CHP does not identify the exact affected lane.
+
+The detail messages are joined by incident ID. Dispatch status messages such as `Unit Assigned`, `Unit Enroute`, and `Unit At Scene` are removed. Repeated messages are removed, and up to three messages describing vehicles, blocked lanes, or road conditions are retained.
 
 The CHP source is incomplete on April 3, 2026. That date is marked as incomplete in the HTML instead of being treated as a day with almost no incidents. Traffic speed and weather remain available on that date.
 
@@ -127,15 +129,25 @@ The weather data come from seven NOAA airport stations in and around the study a
 
 * **Source URL**: NOAA source for the observation.
 
-Each road link uses the nearest NOAA station. Temperature, wind, and visibility are placed on the 5-minute time index and carried forward for no more than 90 minutes. Previous-hour rainfall is calculated from the available 5-minute precipitation reports. Other reported precipitation is used when 5-minute reports are unavailable.
+Each road link uses the nearest NOAA station. Temperature, wind, and visibility are placed on the 5-minute time index and carried forward for no more than 90 minutes. Previous-hour rainfall is calculated when the 5-minute reporting window is complete. A separate NOAA precipitation total is used when the 5-minute window is incomplete and that total is available.
 
 NOAA observations describe conditions near the weather station. They are not measurements taken directly on each road link.
 
-## 2. HTML
+## 2. Data Cleaning
+
+The traffic, incident, and weather records are cleaned before the HTML is built.
+
+For traffic speed, `ML` stations with valid coordinates and postmiles are retained. Average speeds from 1 to 100 mph are kept, including records whose `Samples` or `Percentage Observed` value is zero. Those two fields are counted as quality indicators and are not used to remove speeds from the map. Invalid speed formats, out-of-range values, invalid timestamps, and records outside April 2026 are treated as missing. Columns not needed for the map, including lane-level repetitions, are left out of the cleaned traffic file. Stations are ordered by freeway, direction, and absolute postmile. Adjacent stations are connected when the coordinate gap and postmile gap are within the road-link limits.
+
+CHP events outside D7, D8, and D12 are removed. The monthly archive is used when it is available; daily files are the fallback. Duplicate incident IDs are reduced to one record. Each remaining incident is matched to a road link, then its detail messages and speed comparison are added.
+
+Weather observations are placed on the same 5-minute time index as the traffic data. Temperature, wind speed, and visibility can be carried forward for up to 90 minutes. Rainfall is calculated for the previous hour only when the reporting window is complete or NOAA gives a separate total.
+
+## 3. HTML
 
 The HTML covers all 8,640 five-minute intervals in April 2026. OpenStreetMap provides the basemap.
 
-### 2.1 *Traffic Speed*
+### 3.1 *Traffic Speed*
 
 Road links are coloured by the current speed. The time slider changes the map in 5-minute steps, and the play control moves through the month automatically. Pause and reset controls are also included.
 
@@ -147,26 +159,40 @@ $$
 \text{speed deficit} = \max(0,\ \text{normal speed} - \text{current speed})
 $$
 
-### 2.2 *CHP Incidents*
+### 3.2 *CHP Incidents*
 
 An active incident is marked by a red diamond and its matched road link receives a dashed outline. Incident markers appear only during the interval in which the event is active.
 
-Incidents can be filtered by type. The incident panel lists the active events at the selected time. Selecting an event moves the map to its location and opens the event details, including its description, report time, duration, matched road, current speed, speed deficit, and previous-hour rainfall.
+Incidents can be filtered by type. The incident panel lists the active events at the selected time. Selecting an event moves the map to its location and opens its description, CHP detail messages, report and end times, matched road, and previous-hour rainfall.
+
+Events without a reliable road-link match remain visible at their CHP coordinates. Their popups do not report a speed effect.
+
+The event popup compares the median speed on the matched road link during four periods:
+
+* The 30 minutes before the event.
+
+* The active event interval.
+
+* The 30 minutes after the reported end time.
+
+* The normal speed for the same weekday and 5-minute time on other dates.
+
+At least two valid 5-minute observations are required for the before, during, and after values. The normal value excludes the event date and requires at least two other reference dates. The popup reports the change from the pre-event speed and the difference from normal speed. These comparisons describe the observed speed pattern on the matched link. They do not identify the incident as the cause of the change.
 
 A warning appears on April 3 because the CHP source for that date is incomplete.
 
-### 2.3 *Weather*
+### 3.3 *Weather*
 
 The weather panel gives the number of stations reporting rain, median temperature, median wind speed, lowest visibility, and highest previous-hour rainfall at the selected time.
 
 Weather values in road and incident popups come from the NOAA station nearest to the matched road link.
 
-### 2.4 *Congestion Ranking*
+### 3.4 *Congestion Ranking*
 
 The ranking lists up to eight road links with the largest current speed deficits. Missing and zero speeds are excluded. A link enters the ranking when its deficit is at least 3 mph and its current speed is below 60 mph.
 
 Each row gives the freeway and direction, endpoint station IDs, current speed, speed deficit, incident status, and rainfall. Selecting a row moves the map to that road link.
 
-### 2.5 *Current-Time Summary*
+### 3.5 *Current-Time Summary*
 
 The map also gives the selected time, average road-link speed, number of active incidents, highest previous-hour rainfall, number of road links with speed values, and number of weather stations reporting rain.
