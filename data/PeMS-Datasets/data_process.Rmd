@@ -1,0 +1,340 @@
+---
+title: "data_process"
+output: html_document
+---
+
+## 1. Initial Data
+
+The data cover Caltrans Districts 7, 8, and 12 from July 2024 to June 2026. These districts include Los Angeles, Ventura, Orange County, and parts of the Inland Empire. Four datasets are used: PeMS station metadata, PeMS Station 5-Minute traffic data, CHP incidents, and NOAA weather observations.
+
+### 1.1 PeMS station metadata
+
+Station metadata describes the location and road attributes of each detector station.
+
+* **ID**: PeMS station identifier.
+
+* **Fwy**: Freeway or state route number.
+
+* **Dir**: Traffic direction (`N`, `S`, `E`, or `W`).
+
+* **District**: Caltrans district number.
+
+* **County / City**: FIPS county and city codes.
+
+* **State_PM / Abs_PM**: State and absolute postmile positions.
+
+* **Latitude / Longitude**: Station coordinates.
+
+* **Length**: Road length represented by the station.
+
+* **Type**: Station type. `ML` means a mainline freeway station.
+
+* **Lanes**: Number of observed lanes.
+
+* **Name**: Station location name.
+
+### 1.2 PeMS Station 5-Minute
+
+Each row contains the measurements from one station during one five-minute interval. Station totals appear first, followed by lane-level measurements.
+
+* **Timestamp**: Beginning of the five-minute interval.
+
+* **Station**: Station ID used to match the observation with metadata.
+
+* **District / Freeway / Direction**: Road identifiers.
+
+* **Lane Type**: Detector location type. Mainline records use `ML`.
+
+* **Station Length**: Length represented by the station.
+
+* **Samples**: Number of samples received during the interval.
+
+* **Percentage Observed**: Share of expected lane observations received.
+
+* **Total Flow**: Vehicle count during the five-minute interval.
+
+* **Average Occupancy**: Average detector occupancy.
+
+* **Average Speed**: Station speed in miles per hour.
+
+* **Lane 1--8 fields**: Samples, flow, occupancy, speed, and observation status for each lane.
+
+### 1.3 CHP incidents
+
+The CHP data contain incident summaries and time-stamped incident messages.
+
+* **Incident ID**: Identifier shared by the summary and detail records.
+
+* **Timestamp**: Reported incident time.
+
+* **Description**: CHP incident description.
+
+* **Location / Area**: Text location and CHP area.
+
+* **Latitude / Longitude**: Incident coordinates.
+
+* **District / Freeway / Direction / Abs PM**: Road information used to match an incident with a freeway link.
+
+* **Severity**: Severity value when reported.
+
+* **Duration**: Reported incident duration in minutes.
+
+The detail records may contain collision descriptions, lane conditions, vehicle information, dispatch messages, and later status updates.
+
+### 1.4 NOAA weather
+
+Hourly observations come from seven weather stations around Los Angeles, Orange County, and the Inland Empire.
+
+* **Station / Station Name**: NOAA station identifier and name.
+
+* **Time**: Observation time in UTC.
+
+* **Latitude / Longitude**: Weather station coordinates.
+
+* **Temperature**: Air temperature.
+
+* **Wind Speed**: Wind speed.
+
+* **Visibility**: Reported visibility distance.
+
+* **Hourly Precipitation**: Rainfall during the previous hour.
+
+## 2. Cleaned Data
+
+The cleaned data consist of station records, directional road links, monthly link-speed tables, incident records, and weather records. The station and road-link tables describe the fixed network. The other three table types contain observations over time.
+
+### 2.1 Stations
+
+The station table has one row for each retained `ML` detector station. It contains 4,146 stations. If a station appears in more than one metadata file, the most recent record is used.
+
+| Field | Information contained | Unit or format |
+|:--|:--|:--|
+| `station` | PeMS station identifier. This is the station key used in the traffic data. | Integer ID |
+| `district` | Caltrans district containing the station. | `07`, `08`, or `12` |
+| `freeway` | Freeway or state route number. | Route number |
+| `direction` | Direction of travel measured by the station. | `N`, `S`, `E`, or `W` |
+| `abs_pm` | Absolute postmile position along the route. | Miles |
+| `latitude` | Station latitude. | Decimal degrees |
+| `longitude` | Station longitude. | Decimal degrees |
+| `length` | Road length represented by the station. | Miles |
+| `lanes` | Number of lanes represented by the station. | Lane count |
+| `name` | Road, interchange, or nearby location name reported in the metadata. | Text |
+| `county` | FIPS county code. | Code |
+| `city` | FIPS city code. | Code |
+| `metadata_date` | Date of the metadata record retained for the station. | `YYYY-MM-DD` |
+| `source_file` | Name of the metadata source used for the retained record. | Text |
+
+### 2.2 Directional road links
+
+The road-link table has one row for each connection between two consecutive mainline stations. It contains 3,934 directional links. Consecutive stations are joined only when they have the same district, freeway, and direction. Connections with a coordinate gap greater than 8.5 km or a postmile gap greater than 8 miles are excluded.
+
+| Field | Information contained | Unit or format |
+|:--|:--|:--|
+| `link_id` | Identifier of the directional road link. It matches the numbered speed column in the traffic table. | Integer from 0 to 3,933 |
+| `district` | Caltrans district of the link. | `07`, `08`, or `12` |
+| `freeway` | Freeway or state route number. | Route number |
+| `direction` | Direction of travel. Opposite directions are stored as separate links. | `N`, `S`, `E`, or `W` |
+| `from_station` | Station ID at the beginning of the link. | PeMS station ID |
+| `to_station` | Station ID at the end of the link. | PeMS station ID |
+| `from_abs_pm` | Absolute postmile of the beginning station. | Miles |
+| `to_abs_pm` | Absolute postmile of the ending station. | Miles |
+| `from_lat` | Latitude of the beginning station. | Decimal degrees |
+| `from_lon` | Longitude of the beginning station. | Decimal degrees |
+| `to_lat` | Latitude of the ending station. | Decimal degrees |
+| `to_lon` | Longitude of the ending station. | Decimal degrees |
+| `gap_m` | Straight-line distance between the two endpoint stations. | Metres |
+| `pm_gap` | Absolute difference between the two postmile values. | Miles |
+
+The link table is fixed across the full study period. A missing speed does not remove the corresponding road link.
+
+### 2.3 Monthly traffic speeds
+
+Each monthly traffic table is a wide time-series table. One row represents one five-minute interval. A 31-day month has 8,928 rows, a 30-day month has 8,640 rows, and a 28-day month has 8,064 rows.
+
+| Field | Information contained | Unit or format |
+|:--|:--|:--|
+| `time` | Beginning of the five-minute interval in Los Angeles local time. | `YYYY-MM-DD HH:MM:SS` |
+| `link_0` to `link_3933` | Average speed for the corresponding `link_id`. For example, `link_25` contains the speed of road link 25. | Miles per hour |
+
+The speed for each road link is calculated from its two endpoint stations. When both station speeds are present, the link value is their mean. When only one station has a speed, that station value is used. When neither station has a speed, the cell is empty.
+
+Nonnumeric values and speeds outside 1--100 mph are stored as missing. A valid speed is not removed only because `Samples` or `Percentage Observed` is zero. Every monthly table uses the same 3,934 link columns and includes every expected five-minute timestamp.
+
+### 2.4 Incidents
+
+The incident table has one row for each cleaned CHP incident. There are 408,014 available incident records. The table contains the original incident description and location, its assigned category, the matched road link, retained CHP notes, and the speed measurements around the incident. The original CHP wording is kept in the cleaned table so that incident codes and dispatch messages can still be checked against the source.
+
+| Field | Information contained | Unit or format |
+|:--|:--|:--|
+| `incident_id` | CHP incident identifier. | Integer ID |
+| `timestamp` | Time when the incident was first reported. | Los Angeles local time |
+| `end_time` | Reported end time, or the start time plus the default duration when no end time is available. | Los Angeles local time |
+| `description` | Original CHP incident description, including a CHP event code when one is present. | Text |
+| `category` | Common incident class used for filtering and counting. | Collision, Traffic hazard, Fire, Construction / closure, or Other |
+| `location` | CHP road-location text, such as a freeway, ramp, or cross street. | Text |
+| `area` | CHP dispatch area. | Text |
+| `latitude` | Incident latitude when reported. | Decimal degrees |
+| `longitude` | Incident longitude when reported. | Decimal degrees |
+| `district` | Caltrans district associated with the incident. | District number |
+| `county_fips` | FIPS county code. | Code |
+| `city_fips` | FIPS city code. | Code |
+| `freeway` | Parsed freeway or state route number. | Route number |
+| `direction` | Parsed travel direction. | `N`, `S`, `E`, or `W` |
+| `state_postmile` | State postmile reported in the CHP record. | Miles or postmile text |
+| `abs_pm` | Absolute postmile used for matching to the road network. | Miles |
+| `severity` | Severity value when it is present in the source. | Source value |
+| `duration_min` | Time between `timestamp` and `end_time`. | Minutes |
+| `duration_default` | Indicates whether a 30-minute default duration was used. | `True` or `False` |
+| `source_file` | Name of the CHP source containing the incident. | Text |
+| `detail_message_count` | Number of CHP detail messages associated with the incident before note selection. | Message count |
+| `chp_notes` | Up to three retained source messages about the collision, vehicles, lanes, or road condition. Repeated and dispatch-only messages are removed; CHP abbreviations remain available for source checking. | JSON text array |
+| `link_id` | Directional road link assigned to the incident. It is empty when no suitable link is found. | Road-link ID |
+| `match_method` | Information used to assign the link, such as route-direction-postmile or coordinate proximity. | Text |
+| `postmile_gap` | Difference between the incident postmile and the matched link. | Miles |
+| `coordinate_gap_m` | Distance between the incident coordinate and the matched link. | Metres |
+| `speed_before_mph` | Median speed on the matched link during the 30 minutes before the incident. | Miles per hour |
+| `speed_during_mph` | Median speed while the incident is active. | Miles per hour |
+| `speed_after_mph` | Median speed during the 30 minutes after the incident. | Miles per hour |
+| `speed_drop_mph` | `speed_before_mph` minus `speed_during_mph`. A positive value means speed was lower during the incident. | Miles per hour |
+| `speed_drop_pct` | Speed drop as a percentage of the before-incident speed. | Percent |
+| `normal_during_mph` | Median speed at the same weekday and five-minute position on other dates in the same month. | Miles per hour |
+| `deficit_vs_normal_mph` | `normal_during_mph` minus `speed_during_mph`. A positive value means incident-period speed was below the usual value. | Miles per hour |
+| `samples_before` | Number of valid five-minute link speeds used for `speed_before_mph`. | Observation count |
+| `samples_during` | Number of valid five-minute link speeds used for `speed_during_mph`. | Observation count |
+| `samples_after` | Number of valid five-minute link speeds used for `speed_after_mph`. | Observation count |
+
+Incident descriptions are grouped into five categories. Incidents are first matched by district, freeway, direction, and postmile. Coordinates are used when postmile matching is unavailable. Empty speed fields mean that the incident was not matched to a link or that there were not enough valid traffic observations for the comparison. These speed values describe the observed pattern and are not a causal estimate of the incident effect.
+
+### 2.5 Weather
+
+The weather table has one row for each weather station and five-minute interval. All seven stations use the same 210,240 timestamps, producing 1,471,680 rows.
+
+| Field | Information contained | Unit or format |
+|:--|:--|:--|
+| `station` | NOAA station identifier. | Text ID |
+| `station_name` | NOAA station name. | Text |
+| `time` | Observation time converted from UTC to Los Angeles local time and placed on the five-minute traffic index. | `YYYY-MM-DD HH:MM:SS` |
+| `latitude` | Weather station latitude. | Decimal degrees |
+| `longitude` | Weather station longitude. | Decimal degrees |
+| `temperature_c` | Air temperature. | Degrees Celsius |
+| `wind_speed_ms` | Wind speed. | Metres per second |
+| `visibility_km` | Visibility distance. | Kilometres |
+| `rain_hour_mm` | Precipitation reported during the previous hour. | Millimetres |
+
+The seven stations are Ontario International Airport, Riverside Municipal Airport, Long Beach Daugherty Airport, Burbank Glendale Pasadena Airport, Los Angeles International Airport, Palm Springs ASOS, and Santa Ana John Wayne Airport.
+
+Temperature, wind, and visibility observations may be carried forward for no more than 90 minutes. Temperatures outside -20--60 degrees Celsius and negative wind, visibility, or precipitation values are stored as missing. Each road link is associated with its nearest weather station. A value greater than zero in `rain_hour_mm` is treated as rain.
+
+### 2.6 Summary statistics
+
+The cleaned traffic data contain 210,240 five-minute intervals and 3,934 fixed road links. This gives 827,084,160 possible link-time speed values. Of these, 821,072,295 contain a valid speed, giving an overall coverage rate of 99.27%.
+
+The available CHP data contain 408,014 incidents. A road link was assigned to 390,273 incidents, or 95.65% of the available records. Before, during, and after speed comparisons were calculated for 290,033 incidents, which is 74.32% of the matched incidents. The weather data contain 1,471,680 five-minute station records from seven stations.
+
+#### Monthly traffic coverage
+
+`District-days` is the number of available daily district files. A complete 31-day month has 93 district-days, a complete 30-day month has 90, and a complete 28-day month has 84. `Link-speed values` counts nonmissing speeds after station observations have been joined to the fixed road network.
+
+| Month | District-days | Link-speed values (million) | Coverage | Note |
+|:--|--:|--:|--:|:--|
+| 2024-07 | 93 | 34.96 | 99.53% | Complete |
+| 2024-08 | 93 | 34.97 | 99.56% | Complete |
+| 2024-09 | 90 | 33.85 | 99.59% | Complete |
+| 2024-10 | 93 | 34.99 | 99.62% | Complete |
+| 2024-11 | 90 | 33.86 | 99.62% | Complete |
+| 2024-12 | 93 | 34.99 | 99.62% | Complete |
+| 2025-01 | 93 | 34.99 | 99.62% | Complete |
+| 2025-02 | 84 | 30.74 | 96.91% | Complete |
+| 2025-03 | 93 | 34.94 | 99.48% | Complete |
+| 2025-04 | 90 | 33.86 | 99.62% | Complete |
+| 2025-05 | 93 | 34.99 | 99.62% | Complete |
+| 2025-06 | 90 | 33.86 | 99.62% | Complete |
+| 2025-07 | 93 | 35.02 | 99.72% | Complete |
+| 2025-08 | 93 | 35.12 | 100.00% | Complete |
+| 2025-09 | 90 | 33.98 | 99.98% | Complete |
+| 2025-10 | 93 | 35.11 | 99.97% | Complete |
+| 2025-11 | 84 | 30.74 | 90.45% | D7, D8, and D12 missing on November 28--29 |
+| 2025-12 | 93 | 35.11 | 99.97% | Complete |
+| 2026-01 | 93 | 35.11 | 99.97% | Complete |
+| 2026-02 | 84 | 31.72 | 99.97% | Complete |
+| 2026-03 | 93 | 35.07 | 99.84% | Complete |
+| 2026-04 | 90 | 33.98 | 99.97% | Complete |
+| 2026-05 | 93 | 35.11 | 99.97% | Complete |
+| 2026-06 | 90 | 33.98 | 99.97% | Complete |
+
+#### CHP incidents by period
+
+| Period | Collision | Traffic hazard | Fire | Construction / closure | Other | Total |
+|:--|--:|--:|--:|--:|--:|--:|
+| July--December 2024 | 42,449 | 66,339 | 6,657 | 1,363 | 10,816 | 127,624 |
+| January--June 2025 | 13,570 | 19,977 | 2,769 | 367 | 3,539 | 40,222 |
+| July--December 2025 | 42,826 | 62,311 | 5,679 | 1,823 | 10,407 | 123,046 |
+| January--June 2026 | 39,871 | 60,016 | 5,569 | 1,670 | 9,996 | 117,122 |
+| **Available records** | **138,716** | **208,643** | **20,674** | **5,223** | **34,758** | **408,014** |
+
+The January--June 2025 total is not comparable with the other periods. March 2025 contains only five CHP records, and April, May, and June 2025 have no monthly CHP data.
+
+#### CHP incidents by month
+
+| Month | Collision | Traffic hazard | Fire | Construction / closure | Other | Total |
+|:--|--:|--:|--:|--:|--:|--:|
+| 2024-07 | 6,628 | 11,714 | 1,083 | 246 | 1,809 | 21,480 |
+| 2024-08 | 7,054 | 12,097 | 1,093 | 265 | 1,818 | 22,327 |
+| 2024-09 | 6,950 | 11,201 | 1,150 | 240 | 1,763 | 21,304 |
+| 2024-10 | 7,860 | 11,308 | 1,104 | 269 | 1,865 | 22,406 |
+| 2024-11 | 7,068 | 10,340 | 1,105 | 145 | 1,814 | 20,472 |
+| 2024-12 | 6,889 | 9,679 | 1,122 | 198 | 1,747 | 19,635 |
+| 2025-01 | 6,680 | 10,324 | 1,954 | 204 | 1,773 | 20,935 |
+| 2025-02 | 6,887 | 9,652 | 814 | 163 | 1,766 | 19,282 |
+| 2025-03 | 3 | 1 | 1 | 0 | 0 | 5 |
+| 2025-04 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 2025-05 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 2025-06 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 2025-07 | 4,833 | 8,091 | 779 | 268 | 1,223 | 15,194 |
+| 2025-08 | 6,987 | 11,747 | 1,172 | 355 | 1,749 | 22,010 |
+| 2025-09 | 7,036 | 10,809 | 990 | 403 | 1,703 | 20,941 |
+| 2025-10 | 8,069 | 11,388 | 1,071 | 350 | 1,847 | 22,725 |
+| 2025-11 | 7,964 | 9,956 | 809 | 185 | 1,930 | 20,844 |
+| 2025-12 | 7,937 | 10,320 | 858 | 262 | 1,955 | 21,332 |
+| 2026-01 | 6,921 | 9,948 | 918 | 260 | 1,791 | 19,838 |
+| 2026-02 | 6,980 | 9,436 | 763 | 210 | 1,713 | 19,102 |
+| 2026-03 | 7,045 | 11,274 | 947 | 327 | 1,747 | 21,340 |
+| 2026-04 | 6,366 | 9,555 | 850 | 279 | 1,520 | 18,570 |
+| 2026-05 | 6,159 | 9,687 | 1,009 | 281 | 1,642 | 18,778 |
+| 2026-06 | 6,400 | 10,116 | 1,082 | 313 | 1,583 | 19,494 |
+
+### 2.7 Coverage
+
+The traffic data contain 24 monthly tables from July 2024 to June 2026. Station 5-Minute files are unavailable for Districts 7, 8, and 12 on 28 and 29 November 2025. These timestamps remain in the monthly table with missing speed values.
+
+CHP monthly incident data are unavailable for April, May, and June 2025. The traffic and weather data for these months are still retained. Missing traffic and incident periods are labelled in the map.
+
+## 3. Map
+
+The map uses OpenStreetMap as the base layer. Freeway links are coloured by speed and separated by direction. Line width and directional spacing change with zoom level so that the regional view remains readable while the two travel directions can still be distinguished when zoomed in.
+
+The month selector covers July 2024 through June 2026. Within each month, the time slider moves through five-minute intervals and can also be played automatically. A road link without speed at the selected time is shown in grey.
+
+The speed colours are:
+
+* **60 mph and above**: dark green.
+
+* **55--59 mph**: green.
+
+* **50--54 mph**: yellow-green.
+
+* **45--49 mph**: yellow.
+
+* **40--44 mph**: orange.
+
+* **35--39 mph**: dark orange.
+
+* **35 mph and below**: red.
+
+CHP markers show the incident type, road location, retained notes, and the before, during, after, and normal speed values when a road match is available. Common CHP event codes and dispatch abbreviations are expanded when the map data are prepared. For example, collision injury codes, vehicle descriptions, travel directions, lane references, and shoulder locations are written as readable phrases in the popup, while the original incident description remains available in a collapsed source field. Incidents can be filtered by category.
+
+Each matched incident popup also contains a speed chart for the directional road link. The chart uses the five-minute link speeds from two hours before to two hours after the reported event time. The event time is placed at the centre of the x-axis, speed in miles per hour is shown on the y-axis, and the reported duration is lightly shaded after the event line. A shorter window is shown when an incident occurs within two hours of a month boundary. The curve describes the observed link speed around the event and does not by itself establish that the incident caused the change.
+
+The seven NOAA stations are marked on the map. A station marker changes to blue when rain is reported. Road information uses the nearest weather station and includes temperature, wind, visibility, and previous-hour rainfall.
+
+The congestion list ranks the eight road links with the largest difference between normal speed and current speed. PeMS station points and road casing can be turned on when a closer view of the network is needed.
