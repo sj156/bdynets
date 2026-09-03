@@ -1,0 +1,184 @@
+# Current five-family simulation samplers
+
+This file replaces the *development workflow* formerly provided by the frozen
+`4gibbs.Rmd`; it does not overwrite that historical source.  Load
+`2helpers.Rmd` first.  The sampler functions themselves are maintained in
+`R/gmde-state-update.R`, `R/gmde-classifier.R`, and `R/gmde-mcmc.R`.
+
+## One current MCMC sweep
+
+The implementation follows the current Overleaf manuscript in this order:
+
+1. Compute `N[k]`, `S[k, t]`, and the fixed-within-proposal
+   `r[k, t] = rho * max(S[k, t], 1)`.
+2. For each nonempty expert, draw Pólya--Gamma variables, make one complete
+   path proposal with information-form FFBS, and apply one Poisson/NB
+   Metropolis correction to the entire path.  Empty experts are drawn from the
+   DLM prior without evaluating `log(N[k])`.
+3. Update the allocation model: one joint ESS transition for a graph/Euclidean
+   GP gate, one Dirichlet draw for MoDE, or a random-scan single-site Gibbs
+   sweep for fixed-beta Potts-MDE.
+4. Combine the same Poisson expert likelihood with that allocation model and
+   update labels.  The Potts full conditional is
+   `count log likelihood + beta * sum_j W[i,j] * I(Z[j] == k)`.
+5. Relabel by increasing expert mean intensity and store MH, ESS/Potts, rho,
+   occupancy, and timing diagnostics.
+
+The five families differ only in the allocation part:
+
+| method | allocation input | allocation update |
+|---|---|---|
+| GMDE-W | rank-40 weighted-road Matérn basis | joint ESS |
+| GMDE-C | rank-40 binary-connectivity Matérn basis | joint ESS |
+| Euc-MDE | rank-40 Euclidean Matérn basis | joint ESS |
+| MoDE | common symmetric `Dirichlet(1/10, ..., 1/10)` weights | Gibbs |
+| Potts-MDE | approved weighted road graph and fixed beta | random-scan single-site Gibbs |
+
+## Public entry points
+
+```{r current-sampler-interface, eval=FALSE}
+## Fixed-rho run.  rho is explicit because r_tune from the old sampler has a
+## different meaning and is rejected rather than silently converted.
+fit_gmde <- run_gmde_mcmc(
+  Y = Y,
+  Fmat = Fmat,
+  Phi = Phi,
+  K = K,
+  n_iter = n_iter,
+  burn = burn,
+  rho = rho,
+  pg_backend = "devroye-exact",
+  seed = chain_seed
+)
+
+fit_mode <- run_nograph_mcmc(
+  Y = Y,
+  Fmat = Fmat,
+  K = K,
+  alpha_pi = alpha_pi,
+  n_iter = n_iter,
+  burn = burn,
+  rho = rho,
+  pg_backend = "devroye-exact",
+  seed = chain_seed
+)
+
+fit_potts <- run_potts_mcmc(
+  Y = Y,
+  Fmat = Fmat,
+  K = K,
+  potts_W = W_road,
+  potts_beta = fixed_beta,
+  n_iter = n_iter,
+  burn = burn,
+  rho = rho,
+  pg_backend = "devroye-exact",
+  seed = chain_seed
+)
+```
+
+All entry points share exactly the same state-path kernel and DLM priors.
+GMDE-W, GMDE-C, and Euc-MDE all call `run_gmde_mcmc()`; only `Phi` changes.
+`countdlm_road_fit_method()` is the fail-closed dispatcher used by the quick
+workflow.  It accepts only the five exact method names, so a misspelling cannot
+silently fall through to MoDE.
+
+At fixed beta, Potts label Gibbs updates do not require the global normalizing
+constant.  That constant is needed for an observed-data marginal and for
+learning beta, however.  The sampler therefore stores the valid unnormalized
+complete-data diagnostic (Poisson count term plus Potts energy), sets the
+Potts observed-log-likelihood trace to `NA`, and never substitutes a product
+of node conditionals.  Sensitivity across beta must use the prespecified
+label-free rule, not these unnormalized values.
+
+For the Beijing application, `run_gmde_mcmc_heterogeneous()` applies the same
+PG → information-FFBS → whole-path MH update separately to each expert's
+`F_list`, `m0_list`, `C0_list`, `G_list`, and `W_list`, followed by the same
+joint classifier ESS.  Heterogeneous expert specifications identify the class
+labels, so this entry point performs no within-chain relabeling and defaults to
+`order_initial_labels = FALSE`.  It currently supports a time-varying design
+matrix for each expert with expert-specific but time-constant `G` and `W`;
+fully time-varying `G[k,t]`/`W[k,t]` remains an explicit interface extension.
+
+```{r current-heterogeneous-interface, eval=FALSE}
+fit_beijing <- run_gmde_mcmc_heterogeneous(
+  Y = Y,
+  F_list = F_list,
+  Phi = Phi,
+  K = K,
+  n_iter = n_iter,
+  burn = burn,
+  m0_list = m0_list,
+  C0_list = C0_list,
+  G_list = G_list,
+  W_list = W_list,
+  rho = approved_integer_rho,
+  pg_backend = "devroye-exact",
+  seed = chain_seed
+)
+```
+
+## Independent fixed-rho calibration
+
+The approved road pilot does not change `rho` inside an MCMC chain.  Its first
+phase instead runs 42 separate fixed-rho branches: seven method variants by two
+initializations by `rho = 1, 2, 4`.  Every branch has 120 transitions; the first
+60 are an unscored settling period and only transitions 61--120 contribute to
+the calibration score.  Within a variant-initialization pair, the three rho
+branches use the same registered method seed and byte-identical initial
+allocation, state paths, and classifier state.  They never inherit a terminal
+state from one another.
+
+The public wrapper registers and executes this complete protocol:
+
+```{r current-rho-calibration-interface, eval=FALSE}
+calibration_cfg <- countdlm_road_calibration_config(
+  context_file = approved_context_file,
+  output_dir = new_external_output_directory
+)
+
+calibration_result <- countdlm_road_calibration_pilot(
+  config = calibration_cfg,
+  repository_root = repository_root
+)
+```
+
+The score pools raw accepted information-weighted movement and raw complete
+state-update seconds before division.  State-update time includes PG sampling,
+information-form FFBS, and the whole-path MH correction.  Each non-Potts
+record has weight one and each of the three fixed-beta Potts records has weight
+one third.  The smallest candidate within 5% of the largest pooled efficiency
+is selected only if every branch has an accepted proposal with positive
+information-weighted movement, both initialization strata and both halves of
+the scoring window select the same rho, every branch's largest
+single-transition movement share is at most 20%, and the shared rho retains at
+least 80% of each method family's best efficiency.  A failed audit is a
+completed, unresolved Phase-1
+outcome; it never starts Phase 2.  A resolved rho is held fixed in the 14-task
+short stability phase and in any later evaluation run.
+
+Full-path proposals are implemented.  The optional temporal blocking mentioned
+in the appendix is not automatically enabled because its threshold and block
+design have not been specified.
+
+## Required diagnostics
+
+Every fit records:
+
+- `state_accepted`, `state_log_acceptance`, and accepted weighted movement;
+- per-expert complete `state_update_seconds`, PG time, and the sum and maximum
+  of the realized PG shapes;
+- the complete fixed `state_rho` trace, registered initialization, and
+  calibration audit tables;
+- joint-ESS bracket and likelihood evaluation counts;
+- the Pólya--Gamma backend and `algorithm_exact` flag;
+- the new sampler version, state-update identity, and classifier-update
+  identity.
+
+For the noninferential runtime quick test, truth labels are not supplied to the
+sampler and all truth-based recovery scores remain uncomputed.  Potts-MDE is
+run at every beta in the short provisional grid solely to measure the full
+internal computational envelope.
+
+Archived 2026-08-22 fits do not contain this contract and must never be resumed
+or relabelled as outputs of the current sampler.
