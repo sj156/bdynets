@@ -1,0 +1,7 @@
+"method","mode_id","parent_chain_id","parent_fit_member","representative_iteration","occupied_experts","substantive_experts","partition_sha256"
+"GMDE-W","A",1,"01-GMDE-W-chain-1-fit.rds",7646,6,5,"63ff60b740f1dfcca7cda950b626dc934748ca5c5c339409092fd6130530a2d2"
+"GMDE-W","B",2,"04-GMDE-W-chain-2-fit.rds",7598,5,4,"f1c7144c308e49e4d9a3193520ea1db291c0a1f0c11f7e163693dffe2160a5b6"
+"GMDE-C","A",1,"02-GMDE-C-chain-1-fit.rds",7397,3,3,"93261c1fc09550b82ecfcfcfdf509bd0cba7977db9c25e20b6c6f90c499714ad"
+"GMDE-C","B",2,"05-GMDE-C-chain-2-fit.rds",7264,5,5,"149e0563ab9a87ed12a0ff1e2441734ff655149915edbadd1c81f844e75de41c"
+"Euc-MDE","A",1,"03-Euc-MDE-chain-1-fit.rds",7481,6,6,"b4c0983afbaeda9558ee59d9facb0ced7928ec5c3dab071cd6ba74988fe01b8e"
+"Euc-MDE","B",2,"06-Euc-MDE-chain-2-fit.rds",7362,5,5,"c867d3a6f6d142502cbffe6a5e991089f02990b62f2f29805e48466d0e4888dd"

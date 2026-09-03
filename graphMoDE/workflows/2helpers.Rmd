@@ -1,0 +1,90 @@
+# Current algorithm helpers
+
+This file is the development counterpart of the frozen
+`stage1-2026-08-22/source-release/2helpers.Rmd`.  The frozen file remains
+unchanged because it is part of the provenance of the archived n=100 results.
+
+The current manuscript-matched numerical helpers live in `R/*.R`; this analysis
+loads and calls them rather than redefining scientific functions inside an Rmd.
+The required sampler identity is
+`exact-poisson-info-ffbs-joint-ess-devroye-2026-08-31-v2`; the approved-road
+quick-test API is `countdlm-road-benchmark-2026-09-02-v1`.
+
+## Development loader
+
+This loader does not launch an experiment or create output.  The quick timing
+run records the exact hashes of every sourced file and records whether the
+worktree is dirty.  A later formal run will require a reviewed clean commit.
+
+```{r current-helper-loader, eval=FALSE}
+countdlm_code_dir <- Sys.getenv("COUNTDLM_CODE_DIR", unset = getwd())
+countdlm_code_dir <- normalizePath(
+  countdlm_code_dir,
+  winslash = "/",
+  mustWork = TRUE
+)
+
+countdlm_r_files <- sort(list.files(
+  file.path(countdlm_code_dir, "R"),
+  pattern = "[.]R$",
+  full.names = TRUE
+))
+invisible(lapply(countdlm_r_files, sys.source, envir = .GlobalEnv))
+
+stopifnot(
+  identical(
+    countdlm_gmde_sampler_version,
+    "exact-poisson-info-ffbs-joint-ess-devroye-2026-08-31-v2"
+  ),
+  identical(
+    countdlm_road_benchmark_api_version,
+    "countdlm-road-benchmark-2026-09-02-v1"
+  )
+)
+```
+
+## Old-to-current helper map
+
+| Frozen helper or behavior | Current function or rule |
+|---|---|
+| `cluster_stats()` | `gmde_cluster_stats()`; preserves explicit zero rows for empty experts |
+| scalar `r_tune` | `gmde_make_nb_r(S, rho)` giving `rho * pmax(S, 1)` |
+| pseudo-observation `zeta / omega` | not constructed |
+| automatic Cholesky jitter | `gmde_chol_spd()` fails closed without jitter |
+| clipped Pólya--Gamma draws | no clipping; non-positive/non-finite draws fail |
+| nested allocation loops | `gmde_allocation_log_weights()` |
+| contrast-specific graph likelihood | `gmde_classifier_loglik()` from the full utility matrix |
+| approved road evidence | `countdlm_road_load_approved_context()`; D-017 plus exact context and selected-ID hashes |
+| ad hoc geographic sampling | fixed H=10 km, 5-by-5-by-4 road-vertex sample with seed `2026090201` |
+
+## Exactness boundary
+
+`devroye-exact` calls `BayesLogit::rpg.devroye()` and is the exact-production
+backend.  It requires integer Pólya--Gamma shape parameters; under the current
+structured-r rule, formal runs must therefore use a positive integer `rho`
+(and an all-integer calibration grid).  Every realized `b = S + r` is checked
+again before conversion to an integer.  The hybrid `BayesLogit::rpg()` is not
+used because it switches to approximate algorithms for part of its parameter
+range.  The explicit `truncated` backend exists only for non-inferential
+interface and sensitivity checks; its objects carry `algorithm_exact = FALSE`.
+
+The old rolling one-step predictor is intentionally not loaded here.  Its
+single NB--Pólya--Gamma assimilation step is an approximate predictive filter,
+and adding one Metropolis decision would not turn it into an exact Poisson
+filter.  Prediction migration therefore remains a separate registered task.
+
+## Current quick-test boundary
+
+The runtime quick test keeps the costly dimensions unchanged:
+`n=100`, `T=168`, `K_true=5`, `K_max=10`, rank `m=40`, and exact Devroye PG.
+Only the number of MCMC transitions is shortened.  It covers five internally
+matched method families: GMDE-W, GMDE-C, Euc-MDE, MoDE, and Potts-MDE.  Every
+value in the provisional short Potts grid is timed separately.  The largest
+integer rho in the provisional geometric grid is used for timing.
+
+The quick run is deliberately blinded to recovery: it neither passes
+`Z_true` to the sampler nor computes ARI, NMI, VI, best-permutation accuracy,
+or co-clustering error.  Rho, beta, chain length, and replication count remain
+provisional until the timing files are reviewed.  PNARM and AR(1) latent class
+are not silently replaced: their exact upstream adapters are still unavailable,
+and no package is installed automatically.
