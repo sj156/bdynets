@@ -1,0 +1,15 @@
+# Real data example
+
+We run the Gibbs sampler on real data.
+
+We'll load the data, process it, then feed it into the MCMC.
+
+
+# Documenting the package and building
+
+We finish by running commands that will document, build, and install the
+package.  It may also be a good idea to check the package from within this file.
+
+```{r, results='hide'}
+litr::document() # <-- use instead of devtools::document()
+```

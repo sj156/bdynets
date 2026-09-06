@@ -4,12 +4,24 @@
 \name{bdynets-package}
 \alias{bdynets}
 \alias{bdynets-package}
-\title{bdynets}
+\title{Bayesian Dynamic Network Analysis}
 \description{
-This package implements the \code{bdynets} method.
+One package with separate analysis modules. The \verb{gmde_*} functions provide
+fixed-K Gaussian/static graph-informed mixtures. \code{gibbs_sampler()} retains
+the historical experimental dynamic count-mixture method. These engines have
+different targets and numerical guarantees; their helpers are not shared.
+}
+\details{
+Package code is maintained directly in R scripts. R Markdown notes do not
+generate or overwrite the package. See \code{gmde_fit()} for a working example.
 }
 \author{
 \strong{Maintainer}: Sheng Jiang \email{jiangsheng@cuhk.edu.cn}
+
+Authors:
+\itemize{
+  \item Sheng Jiang \email{jiangsheng@cuhk.edu.cn}
+}
 
 }
 \keyword{internal}

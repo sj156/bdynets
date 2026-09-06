@@ -1,0 +1,7 @@
+.DS_Store
+.Rhistory
+.RData
+.Rproj.user/
+*.Rcheck/
+bdynets_*.tar.gz
+graphMoDE_*.tar.gz

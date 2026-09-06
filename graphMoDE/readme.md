@@ -1,10 +1,62 @@
-# graphMoDE development handoff
+# graphMoDE: graph-informed mixtures in bdynets
 
-> **Status: debugging snapshot, not a release. Formal simulation is not
-> authorized.** One registered K=10 conditional-allocation diagnostic still
-> fails reproducibly; see [`debug/KNOWN_ISSUE.md`](debug/KNOWN_ISSUE.md).
+The maintained graphMoDE implementation is now a module of the
+[`bdynets` R package](../bdynets/README.md). Its source is in
+[`../bdynets/R/`](../bdynets/R), in scripts named `gmde-*.R`.
+This research folder preserves the earlier code snapshot, supporting data,
+provenance and debugging material.
 
-This directory is a self-contained handoff of the graph-informed mixture of
+## Install and use the maintained module
+
+After the package changes are pushed to GitHub:
+
+```r
+install.packages("pak") # only if needed
+pak::pak("sj156/bdynets/bdynets", dependencies = TRUE)
+library(bdynets)
+```
+
+Before pushing, run `pak::pak("../bdynets", dependencies = TRUE)` from this
+`graphMoDE/` folder to install the adjacent local package.
+The former standalone `graphMoDE/packages/graphMoDE` path is retired; use
+`library(bdynets)` for the integrated module.
+
+| Entry point | Purpose |
+| --- | --- |
+| `gmde_graph()` | Validate graph IDs and construct the graph covariance |
+| `gmde_expert()` | Specify Gaussian/static experts and proper priors |
+| `gmde_gate()` | Choose adaptive, graph-free or forced graph guidance |
+| `gmde_mcmc()` | Set iterations, warmup, thinning and seed |
+| `gmde_fit()` | Sample the fixed-K model with whole-series allocations |
+| `gmde_partition()` | Compute co-clustering probabilities and a representative partition |
+
+The [package README](../bdynets/README.md) contains a complete runnable example.
+See also the [integration guide](GRAPHMODE-PACKAGE.md) and
+[repository migration record](../MIGRATION.md).
+
+## Current package scope
+
+The integrated reference implementation supports complete Gaussian panels with
+static experts and the revised adaptive structured-plus-independent graph gate.
+Each series has one cluster label for its entire history. K is fixed, empty
+components are allowed, and graph and panel IDs must agree. Raw chain labels
+are retained; partition summaries use posterior co-clustering probabilities.
+
+The migration passed 148 assertions, R CMD check with Status: OK, and local pak
+installation. Default chain lengths are smoke tests, not an inference protocol.
+Poisson/static with exact PG plus MH is the next implementation milestone,
+followed by dynamic engines, prediction and posterior calibration. The Poisson
+code in the historical snapshot below is not the current package's supported
+graphMoDE engine.
+
+## Preserved September 3, 2026 handoff
+
+> The historical snapshot remains a debugging artifact. Its registered K=10
+> conditional-allocation diagnostic failure is unresolved; see
+> [`debug/KNOWN_ISSUE.md`](debug/KNOWN_ISSUE.md). The package migration did not
+> repair or validate that diagnostic.
+
+The original contents of this directory are a handoff of the graph-informed mixture of
 dynamic experts (graphMoDE/GMDE) code used on 3 September 2026. It is intended
 for Sheng Jiang to continue debugging without receiving the hundreds of
 megabytes of MCMC chains, checkpoints, private working files, or the full
@@ -17,7 +69,7 @@ Git commit `ec79ed13f2844e814b88a986eeaa1abdd96d76f0` is only the base commit: t
 executed development source was in a dirty worktree, so the file hashes—not
 that commit alone—identify this snapshot.
 
-## What is included
+### Historical snapshot contents
 
 - `R/`: the exact 16-file implementation snapshot.
 - `workflows/`: readable guides corresponding to `2helpers`, `4gibbs`, and
@@ -34,13 +86,13 @@ that commit alone—identify this snapshot.
 - `tests/`: a focused exact-enumeration and RNG-passivity regression test for
   the conditional-allocation diagnostic.
 
-No Wang/Liang traffic or population data, private observations, PNARM source,
+The historical handoff excludes Wang/Liang traffic or population data, private observations, PNARM source,
 raw road data, MCMC chain, terminal state, checkpoint, cache, result ZIP, or
-local absolute path is included.
+local absolute paths in its distributed source and input files.
 
-## Model and code map
+### Historical model and code map
 
-The implementation combines:
+The September 3 implementation combines:
 
 1. Poisson dynamic experts with a Metropolis-corrected
    negative-binomial--Polya--Gamma proposal;
@@ -56,7 +108,7 @@ The implementation combines:
 [`CODE_MAP.md`](CODE_MAP.md) explains the responsibility of every source file
 and the relationship among the five internal comparison methods.
 
-## Environment
+### Historical environment
 
 The failing run used:
 
@@ -69,8 +121,9 @@ The focused input audit and regression test require `digest`; exact failure
 reproduction additionally requires `BayesLogit`. The scripts never install or
 update packages automatically.
 
-## First checks
+### Checks for the historical snapshot
 
+These checks concern the preserved snapshot, not the installed package tests.
 Start R in this `graphMoDE` directory, then run:
 
 ```r
@@ -93,7 +146,7 @@ The replay uses `n=100`, `T=168`, `K=10`, graph-basis rank `m=40`, fixed
 threshold 5, mode A and seed 2026094102. It can take several minutes. It is a
 debug replay, not a simulation study.
 
-## Current result
+### Recorded K=10 diagnostic result
 
 The parent K=10 scientific traces were verified before the passive diagnostic
 was added. In the latest passive-diagnostic run, 11 of 12 registered tasks
@@ -111,7 +164,7 @@ upstream. It also does not establish that the main sampler is either correct or
 incorrect. See the known-issue document for the exact call chain and acceptance
 criteria.
 
-## Formal-run gate
+### Historical formal-run gate
 
 Do not start, report, or publish a formal simulation from this snapshot. The
 debug blocker is cleared only after all criteria in
@@ -136,4 +189,3 @@ local, middle-class and major road classes. Those shades are background map
 styling; they do not represent estimated weights, uncertainty, traffic volume,
 or simulation results. The thin gray qNN edges connect selected nodes for the
 statistical graph and are not drawn road routes.
-

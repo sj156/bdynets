@@ -1,10 +1,16 @@
-# Generated from _main.Rmd: do not edit by hand
+# Maintained legacy-module source; not used by the gmde_* reference sampler.
 
 #' Run the full Gibbs sampler for Bayesian dynamic network clustering.
 #'
 #' This function runs the complete MCMC algorithm for fitting Bayesian
 #' dynamic network models with Polya-Gamma augmentation and forward-filtering
 #' backward-sampling (FFBS).
+#'
+#' @details This is the preserved experimental count-mixture implementation.
+#' It uses an approximate PG fallback when BayesLogit is unavailable, clips
+#' auxiliary weights, and does not implement the revised graphMoDE adaptive
+#' gate or its exact Poisson correction. It is retained for compatibility;
+#' its historical statistical limitations are unchanged by package integration.
 #'
 #' @param Y Response matrix (n x TT) of count data.
 #' @param Fmat Design matrix (TT x p) for the state-space model.
@@ -35,7 +41,6 @@
 #'   \item{size}{Posterior samples of cluster sizes.}
 #'   \item{ari}{Adjusted Rand Index at each iteration (if Z_true provided).}
 #'   \item{acc}{Best label accuracy at each iteration (if Z_true provided).}
-#'   \item{accept_rate}{Acceptance rate diagnostics.}
 #'   \item{settings}{List of MCMC settings used.}
 #'
 #' @export
@@ -312,7 +317,7 @@ plot.bdynets_mcmc <- function(x, burn = NULL, type = "all", ...){
 
     if(type == "trace" || type == "all"){
         ## Trace plots for cluster probabilities
-        matplot(
+        graphics::matplot(
             keep_idx, x$pi[keep_idx, ],
             type = "l",
             lty = 1,
@@ -321,14 +326,14 @@ plot.bdynets_mcmc <- function(x, burn = NULL, type = "all", ...){
             ylab = "Cluster Probability",
             main = "Trace Plot: Cluster Probabilities (pi)"
         )
-        legend("topright", legend = paste("Cluster", seq_len(K)),
+        graphics::legend("topright", legend = paste("Cluster", seq_len(K)),
                col = seq_len(K), lty = 1, cex = 0.8)
     }
 
     if(type == "ari" || type == "all"){
         if(length(x$ari) > 0 && any(x$ari > 0)){
             ## ARI over iterations
-            plot(
+            graphics::plot(
                 keep_idx, x$ari[keep_idx],
                 type = "l",
                 col = "blue",
@@ -337,13 +342,13 @@ plot.bdynets_mcmc <- function(x, burn = NULL, type = "all", ...){
                 ylab = "Adjusted Rand Index",
                 main = "Clustering Accuracy (ARI) Over Iterations"
             )
-            abline(h = mean(x$ari[keep_idx]), col = "red", lty = 2)
+            graphics::abline(h = mean(x$ari[keep_idx]), col = "red", lty = 2)
         }
     }
 
     if(type == "size" || type == "all"){
         ## Cluster sizes over iterations
-        matplot(
+        graphics::matplot(
             keep_idx, x$size[keep_idx, ],
             type = "l",
             lty = 1,
@@ -352,7 +357,7 @@ plot.bdynets_mcmc <- function(x, burn = NULL, type = "all", ...){
             ylab = "Cluster Size",
             main = "Trace Plot: Cluster Sizes"
         )
-        legend("topright", legend = paste("Cluster", seq_len(K)),
+        graphics::legend("topright", legend = paste("Cluster", seq_len(K)),
                col = seq_len(K), lty = 1, cex = 0.8)
     }
 

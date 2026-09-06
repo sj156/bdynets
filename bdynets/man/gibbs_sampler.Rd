@@ -69,11 +69,17 @@ A list containing:
 \item{size}{Posterior samples of cluster sizes.}
 \item{ari}{Adjusted Rand Index at each iteration (if Z_true provided).}
 \item{acc}{Best label accuracy at each iteration (if Z_true provided).}
-\item{accept_rate}{Acceptance rate diagnostics.}
 \item{settings}{List of MCMC settings used.}
 }
 \description{
 This function runs the complete MCMC algorithm for fitting Bayesian
 dynamic network models with Polya-Gamma augmentation and forward-filtering
 backward-sampling (FFBS).
+}
+\details{
+This is the preserved experimental count-mixture implementation.
+It uses an approximate PG fallback when BayesLogit is unavailable, clips
+auxiliary weights, and does not implement the revised graphMoDE adaptive
+gate or its exact Poisson correction. It is retained for compatibility;
+its historical statistical limitations are unchanged by package integration.
 }

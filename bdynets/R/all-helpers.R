@@ -1,4 +1,4 @@
-# Generated from _main.Rmd: do not edit by hand
+# Maintained R source. Historical derivation is in the repository R Markdown notes.
 
 #' A helper function to print the progress of a simulation. Place directly at
 #' the beginning of the loop, before any computation happens.
@@ -34,7 +34,11 @@ printprogress <- function(isim, nsim, type="simulation", lapsetime=NULL,
         cat("\r", type, " ", isim, "out of", nsim, "with lapsed time",
             lapsetime, lapsetimeunit, "and remaining time", remainingtime,
             lapsetimeunit, "and will finish at", endtime, ".")
-        if(beep & isim==nsim){beepr::beep()}
+        if(beep & isim==nsim){
+            if(!requireNamespace("beepr", quietly = TRUE))
+                stop("Install the optional 'beepr' package to use beep = TRUE.")
+            beepr::beep()
+        }
     }
     if(fill) cat(fill=TRUE)
 }
@@ -52,7 +56,7 @@ logsumexp <- function(x){
 #'
 #' @param alpha Numeric vector of Dirichlet concentration parameters.
 rdirichlet1 <- function(alpha){
-    z <- rgamma(length(alpha), shape = alpha, rate = 1)
+    z <- stats::rgamma(length(alpha), shape = alpha, rate = 1)
     ret <- z / sum(z)
     return(ret)
 }
@@ -81,7 +85,7 @@ chol_spd <- function(Sigma){
 #' @param Sigma Covariance matrix.
 rmvn <- function(mu, Sigma){
     R <- chol_spd(Sigma)
-    ret <- as.vector(mu + t(R) %*% rnorm(length(mu)))
+    ret <- as.vector(mu + t(R) %*% stats::rnorm(length(mu)))
     return(ret)
 }
 
