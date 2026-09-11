@@ -1,0 +1,74 @@
+# Package setup
+
+The DESCRIPTION file is created using this code.
+
+```{r package-setup, message=FALSE, results='hide'}
+usethis::create_package(
+  path = ".",
+  fields = list(
+    Package = params$package_name,
+    Version = "0.0.0.9000",
+    Title = "bdynets",
+    Description = "Bayesian dynamic network models",
+    `Authors@R` = person(
+      given = "Sheng",
+      family = "Jiang",
+      email = "jiangsheng@cuhk.edu.cn",
+      role = c("aut", "cre")
+      )
+  )
+)
+usethis::use_mit_license(copyright_holder = "Sheng Jiang")
+```
+
+The following is what will show up when someone types `package?bdynets` in
+the console.
+
+```{package_doc}
+#' bdynets
+#'
+#' This package implements the `bdynets` method.
+#' 
+#' @docType package
+```
+
+
+This package will have some dependancies:
+
+```{r dependencies, message = FALSE}
+library(tidyverse)
+##library(ggplot2)
+##usethis::use_package("tidyverse", type = "depends") 
+## usethis::use_package("ggplot2")
+usethis::use_package("ggplot2", type = "depends")
+usethis::use_package("MASS", type = "depends")
+usethis::use_package("parallel", type = "depends")
+usethis::use_package("Rfast", type = "depends")
+usethis::use_package("mvnfast", type = "depends")
+usethis::use_package("stats", type = "depends")
+usethis::use_package("matrixsampling", type = "depends")
+usethis::use_package("matrixNormal", type = "depends")
+usethis::use_package("pgdraw", type = "depends")
+usethis::use_package("tmvnsim", type = "depends")
+usethis::use_pipe(export=TRUE)
+```
+
+
+
+
+
+<!-- library("tmvnsim") ## for tmvnsim -->
+<!-- library("MASS") ## for mvrnorm -->
+<!-- library("scatterplot3d") # for 3d plot  -->
+<!-- library("RColorBrewer") ## distinct colors  -->
+<!-- library("matrixsampling") ## r-inverse Wishart -->
+<!-- library("matrixNormal") ## matrix normal random elements  -->
+<!-- library("pgdraw") ## draw PG r.v.'s  -->
+<!-- library("parallel") ## mc-mapply -->
+<!-- library("svMisc") -->
+<!-- library("mclust") ## for warm start  -->
+<!-- library("plotly") -->
+<!-- library("ggcorrplot") -->
+
+<!-- library("Rfast") -->
+<!-- library("Rfast2") -->

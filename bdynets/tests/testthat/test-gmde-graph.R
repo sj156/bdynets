@@ -1,0 +1,31 @@
+test_that("graph IDs, trace and permutation covariance are preserved", {
+  g <- gmde_test_path_graph()
+  expect_equal(sum(diag(g$covariance)), 6)
+  expect_identical(rownames(g$Phi), g$unit_ids)
+  perm <- c(3, 1, 6, 2, 5, 4)
+  gp <- gmde_graph(g$W_graph[perm, perm], g$unit_ids[perm])
+  expect_equal(gp$covariance, g$covariance[perm, perm], tolerance = 1e-10)
+  expect_error(gmde_graph(g$W_graph, rev(g$unit_ids)), "names")
+  W <- unname(g$W_graph); W[1, 2] <- 2
+  expect_error(gmde_graph(W, g$unit_ids), "symmetric")
+  expect_error(gmde_graph(matrix(-1, 2, 2), c("a", "b")), "nonnegative")
+  expect_error(gmde_graph(matrix(0, 2, 2), c("a", "a")), "unique")
+  expect_error(gmde_graph(diag(2), c("a", "b")), "zero-diagonal")
+})
+
+test_that("rank preserves complete tied and zero eigenspaces", {
+  g <- gmde_graph(matrix(0, 4, 4), letters[1:4], rank = 1)
+  expect_equal(g$rank, 4)
+  expect_equal(unname(g$covariance), diag(4))
+  W <- matrix(1, 4, 4) - diag(4)
+  complete <- gmde_graph(W, letters[1:4], rank = 2)
+  expect_equal(complete$rank, 4)
+  W <- matrix(0, 4, 4); W[1, 2] <- W[2, 1] <- W[3, 4] <- W[4, 3] <- 1
+  disconnected <- gmde_graph(W, letters[1:4], rank = 1)
+  expect_equal(disconnected$rank, 2)
+  perm <- c(3, 1, 4, 2)
+  gp <- gmde_graph(W[perm, perm], letters[perm], rank = 1)
+  expect_equal(gp$covariance, disconnected$covariance[perm, perm])
+  single <- gmde_graph(matrix(0, 1, 1), "only")
+  expect_equal(unname(single$covariance), matrix(1, 1, 1))
+})

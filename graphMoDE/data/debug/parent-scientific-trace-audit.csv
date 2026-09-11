@@ -1,0 +1,13 @@
+"task_id","parent_fit_member","expected_scientific_trace_sha256","observed_scientific_trace_sha256","parent_trace_verified"
+"GMDE-W-mode-A-seed-1","01-GMDE-W-mode-A-seed-1-fit.rds","4faa4b050f7455ac78ecc3223708b1543e9efb5c520870af28904e3d88ac7c18","4faa4b050f7455ac78ecc3223708b1543e9efb5c520870af28904e3d88ac7c18",TRUE
+"GMDE-W-mode-B-seed-1","02-GMDE-W-mode-B-seed-1-fit.rds","dd20f899af8ef2a33f3ad14cec16bdd30b6fc9fbc23da2054f84d0a5284c6a4d","dd20f899af8ef2a33f3ad14cec16bdd30b6fc9fbc23da2054f84d0a5284c6a4d",TRUE
+"GMDE-C-mode-A-seed-1","03-GMDE-C-mode-A-seed-1-fit.rds","25cce38fa6d14b66334655f276021d6e2b8bcdc0f2955421e3e67c2ed3536cec","25cce38fa6d14b66334655f276021d6e2b8bcdc0f2955421e3e67c2ed3536cec",TRUE
+"GMDE-C-mode-B-seed-1","04-GMDE-C-mode-B-seed-1-fit.rds","b8545af756b3e5962397671e6bbc45752a0d509cb54dd20ff49b8b62297aa338","b8545af756b3e5962397671e6bbc45752a0d509cb54dd20ff49b8b62297aa338",TRUE
+"Euc-MDE-mode-A-seed-1","05-Euc-MDE-mode-A-seed-1-fit.rds","bed1af21783595753ce7cca261a0e2b17c6947c9179fd7f448cb6796c96923f9","bed1af21783595753ce7cca261a0e2b17c6947c9179fd7f448cb6796c96923f9",TRUE
+"Euc-MDE-mode-B-seed-1","06-Euc-MDE-mode-B-seed-1-fit.rds","37fc30f7d2549acfb8da728df2ea626d5b499297faed4719dab624c03928948d","37fc30f7d2549acfb8da728df2ea626d5b499297faed4719dab624c03928948d",TRUE
+"GMDE-W-mode-A-seed-2","07-GMDE-W-mode-A-seed-2-fit.rds","4146dc66cf553170155dacd7f6660ecb16492426b2fd25674434aea17c7f1ced","4146dc66cf553170155dacd7f6660ecb16492426b2fd25674434aea17c7f1ced",TRUE
+"GMDE-W-mode-B-seed-2","08-GMDE-W-mode-B-seed-2-fit.rds","460f8ddb7d74714c47da44a53f08643a2203dd054a8ff3d85f3d86894e092763","460f8ddb7d74714c47da44a53f08643a2203dd054a8ff3d85f3d86894e092763",TRUE
+"GMDE-C-mode-A-seed-2","09-GMDE-C-mode-A-seed-2-fit.rds","9898d29f163051b081854aec0dc785000499091d5f7de15ac7eda232ce314ce9","9898d29f163051b081854aec0dc785000499091d5f7de15ac7eda232ce314ce9",TRUE
+"GMDE-C-mode-B-seed-2","10-GMDE-C-mode-B-seed-2-fit.rds","b7dad21ebab594e668606ac967fd30e6a9071878e7923be0100126587b725702","b7dad21ebab594e668606ac967fd30e6a9071878e7923be0100126587b725702",TRUE
+"Euc-MDE-mode-A-seed-2","11-Euc-MDE-mode-A-seed-2-fit.rds","4975b4ba1ce0a8dfc8fdb3968a12dac3ae8676d6758b2d05fbc02589704f4f5a","4975b4ba1ce0a8dfc8fdb3968a12dac3ae8676d6758b2d05fbc02589704f4f5a",TRUE
+"Euc-MDE-mode-B-seed-2","12-Euc-MDE-mode-B-seed-2-fit.rds","f21a499efa90f27c19b1eec5cdf5eef00e3a41d2f2b66cb6ae81a33045f925a0","f21a499efa90f27c19b1eec5cdf5eef00e3a41d2f2b66cb6ae81a33045f925a0",TRUE

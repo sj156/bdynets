@@ -1,0 +1,70 @@
+# Current simulation status: K=10 conditional-allocation Debug
+
+This handoff replaces the earlier K=6 entry note. Scientific functions remain
+in `R/*.R`; opening or knitting this file never launches computation.
+
+## Status on 3 September 2026
+
+The planned road experiment uses `n=100`, `T=168`, `K_true=5`, an overfitted
+`K_fit=10`, graph rank `m=40`, fixed `rho=1`, exact Devroye Polya--Gamma draws,
+information-form FFBS with a whole-path Poisson Metropolis correction, and
+joint elliptical slice sampling for the three graph-gating variants.
+
+The most recent truth-blinded passive conditional-allocation diagnostic did not
+pass its fail-closed gate:
+
+- 11 of 12 registered tasks completed;
+- `GMDE-W-mode-A-seed-2`, seed 2026094102, failed after about 307 seconds;
+- the error was `Poisson-binomial threshold recursion failed its mass audit.`;
+- no formal simulation was launched or authorized.
+
+This failure is in deterministic diagnostic work immediately before a label
+draw. The current evidence neither proves nor disproves correctness of the
+underlying MCMC transition. It must be diagnosed without changing K, rho,
+seeds, starts, DGP, graph or scientific thresholds.
+
+## Self-contained handoff entry points
+
+Start R in the `graphMoDE` directory.
+
+```{r input-audit, eval=FALSE}
+source("scripts/check_inputs.R")
+```
+
+```{r focused-tests, eval=FALSE}
+source("scripts/run_tests.R")
+```
+
+```{r reproduce-single-failure, eval=FALSE}
+source("scripts/reproduce_k10_failure.R")
+```
+
+The final command runs only the known failing chain and installs an in-memory,
+non-random wrapper around `gmde_poisson_binomial_threshold()`. On failure it
+saves the first probability vector and recursion state in the git-ignored
+`debug-output/` directory. It does not edit the source file or require the
+large K10/K6 parent archives.
+
+## Fixed comparison boundary
+
+| method | allocation structure |
+|---|---|
+| GMDE-W | weighted road qNN graph basis |
+| GMDE-C | binary road-connectivity graph basis |
+| Euc-MDE | Euclidean Matérn basis |
+| MoDE | graph-free global Dirichlet mixture |
+| Potts-MDE | weighted road Potts field |
+
+These five methods use the same dynamic Poisson expert structure. A common
+`K_fit=10` is an overfitted comparison because reversible-jump MCMC is not being
+used; it does not make the allocation priors identical. PNARM and AR(1) latent
+class remain external model comparisons and are not bundled here.
+
+## Gate before any formal run
+
+A repair must capture and explain the numerical failure, pass exact-enumeration
+and stress tests, complete the failing chain without warning, preserve its
+scientific trace and RNG exactly, and then pass all 12 registered K=10 tasks
+against their frozen trace hashes. Simply loosening the `1e-12` mass threshold
+is not sufficient. Full criteria are in `debug/KNOWN_ISSUE.md`.
+

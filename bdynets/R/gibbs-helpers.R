@@ -1,4 +1,4 @@
-# Generated from _main.Rmd: do not edit by hand
+# Maintained legacy-module source; not used by the gmde_* reference sampler.
 
 #' Sample a prior state trajectory from a Dynamic Linear Model (DLM).
 #'
@@ -60,14 +60,14 @@ rpg <- function(n, h, z, trunc = 80){
 
     for(i in seq_len(n)){
         denom <- (m - 0.5)^2 + z[i]^2 / (4 * pi^2)
-        g <- rgamma(trunc, shape = h[i], rate = 1)
+        g <- stats::rgamma(trunc, shape = h[i], rate = 1)
         out[i] <- sum(g / denom) / (2 * pi^2)
     }
 
     return(out)
 }
 
-#' Sample omega_{k,t} once per MCMC sweep.
+#' Sample cluster-time auxiliary variables once per MCMC sweep.
 #'
 #' @param Y Response matrix (n x TT).
 #' @param Z Cluster allocation vector.
@@ -306,4 +306,3 @@ relabel_by_mean_intensity <- function(theta, pi_vec, Z, Fmat){
     )
     return(ret)
 }
-

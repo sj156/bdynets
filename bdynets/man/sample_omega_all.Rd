@@ -2,7 +2,7 @@
 % Please edit documentation in R/gibbs-helpers.R
 \name{sample_omega_all}
 \alias{sample_omega_all}
-\title{Sample omega_{k,t} once per MCMC sweep.}
+\title{Sample cluster-time auxiliary variables once per MCMC sweep.}
 \usage{
 sample_omega_all(Y, Z, theta, Fmat, r_tune, K)
 }
@@ -20,5 +20,5 @@ sample_omega_all(Y, Z, theta, Fmat, r_tune, K)
 \item{K}{Number of clusters.}
 }
 \description{
-Sample omega_{k,t} once per MCMC sweep.
+Sample cluster-time auxiliary variables once per MCMC sweep.
 }

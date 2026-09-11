@@ -1,0 +1,18 @@
+.DS_Store
+.RData
+.Rhistory
+.Rproj.user/
+*.Rcheck/
+*.tar.gz
+*.zip
+
+# Generated or heavyweight diagnostic material must stay outside Git.
+/cache/
+/checkpoints/
+/debug-output/
+/outputs/
+/results/
+/raw-data/
+*-fit.rds
+*-terminal-state.rds
+

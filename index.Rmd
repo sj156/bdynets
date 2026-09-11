@@ -1,70 +1,46 @@
 ---
-title: "Creating the ``r params$package_name`` R package"
+title: "Developing bdynets"
 author: "Sheng Jiang"
-date: "`r Sys.Date()`"
-site: bookdown::bookdown_site
-knit: litr::render
-output: litr::litr_gitbook
-params:
-  package_name: "bdynets" # <-- change this to your package name
-  package_parent_dir: "." # <-- relative to this file's location
-documentclass: book
+output: rmarkdown::html_document
 ---
 
-# Introduction
+# One modular package
 
-This package implements `bdynets`, a Bayesian mixture of experts model used for
-Bayesian dynamic network models, including model 1, model 2. 
-The documentation and
-package are both created using one simple command:
+The maintained R package is in `bdynets/`. Edit `bdynets/R/*.R` directly.
+This document explains development; rendering it does not generate or alter
+package code. The former litr setup is retained in
+`docs/legacy-litr/index.Rmd.txt` for historical reference.
 
-```{r render, eval = FALSE}
-litr::render("index.Rmd", output_format = litr::litr_gitbook())
-## install.packages("./bdynets/", repos = NULL, type="source") 
-```
+# Install
 
-This line is purely for testing (to be deleted later!).
-
-```{r, eval = FALSE}
-# Complete development workflow
-my_load <- function(){
-  litr::render("~/repos/bdynets/index.Rmd",  
-               output_format = litr::litr_gitbook(minimal_eval = TRUE))
-  devtools::document("~/repos/bdynets/bdynets")  # Update documentation
-  devtools::load_all("~/repos/bdynets/bdynets")
-}
-
-my_load()
-
-# Step 2: Check the package (optional but recommended)
-devtools::check("~/repos/bdynets/bdynets", document = FALSE)
-
-# Step 3: Install the package locally for full installation
-devtools::install("~/repos/bdynets/bdynets")
-
-# Step 4: Load the installed package (optional, if you want to test installation)
+```{r install, eval=FALSE}
+pak::pak("sj156/bdynets/bdynets", dependencies = TRUE)
 library(bdynets)
-
-
 ```
-```{r, eval = FALSE}
-setwd("~/repos/bdynets/") 
-## 1. Delete the auto-generated _main.Rmd file
-unlink("_main.Rmd")
-unlink("_bookdown_files", recursive = TRUE)
-if(!dir.create("bdynets")){
-  unlink("bdynets", recursive = TRUE)
-}
 
-## 2. Re-run the render command
-litr::render(
-  "index.Rmd", 
-  output_format = litr::litr_gitbook(
-    minimal_eval = FALSE
-    )
-)
+# Develop and verify
 
-## 3. Document and load the package
-devtools::document("bdynets")
-devtools::load_all("bdynets")
-``` 
+From the repository root, generate help and NAMESPACE from R source comments,
+then run the module tests:
+
+```{r develop, eval=FALSE}
+roxygen2::roxygenise("bdynets")
+testthat::test_local("bdynets")
+```
+
+Build and check from the shell:
+
+```sh
+R CMD build bdynets
+R CMD check --no-manual bdynets_0.1.0.tar.gz
+```
+
+# Modules
+
+Graph-informed Gaussian/static mixtures use the `gmde_*` entry points.
+The historical `gibbs_sampler()` remains available as a separate experimental
+count-mixture engine. The newer module does not call its approximate PG or
+jittered covariance helpers. See `bdynets/README.md` for a complete example.
+
+The remaining root R Markdown chapters retain mathematical explanations and
+old experiments. They are reference material, not the package build inputs.

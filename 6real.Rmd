@@ -1,15 +1,16 @@
 # Real data example
 
-We run the Gibbs sampler on real data.
+The analysis workflow is to load data, prepare model inputs and call the
+appropriate module from `bdynets`. Historical real-data analyses belong in
+research scripts, outside the package's `R/` directory.
 
-We'll load the data, process it, then feed it into the MCMC.
+# Documenting and checking the package
 
+Run these commands explicitly from the repository root. Rendering this document
+does not build or overwrite the package. The former litr command is preserved
+in `docs/legacy-litr/6real.Rmd.txt`.
 
-# Documenting the package and building
-
-We finish by running commands that will document, build, and install the
-package.  It may also be a good idea to check the package from within this file.
-
-```{r, results='hide'}
-litr::document() # <-- use instead of devtools::document()
+```{r document-package, eval=FALSE}
+roxygen2::roxygenise("bdynets")
+testthat::test_local("bdynets")
 ```
