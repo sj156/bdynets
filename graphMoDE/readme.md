@@ -6,6 +6,21 @@ The maintained graphMoDE implementation is now a module of the
 This research folder preserves the earlier code snapshot, supporting data,
 provenance and debugging material.
 
+## September 12, 2026 frozen research code
+
+The latest Poisson/dynamic research handoff is in
+[`snapshots/2026-09-12-rho-screen-v1/`](snapshots/2026-09-12-rho-screen-v1/).
+It preserves 31 runtime/source/test/requirement files from execution commit
+`c2968a148fcc5bd9793ca3eabd6260db5f8506b0`, with SHA-256 manifests and a
+[reviewed short-test summary](snapshots/2026-09-12-rho-screen-v1/docs/GRAPHMODE_R4_RHO_RESULTS_2026-09-12.md).
+
+This is a separate source-checkout snapshot, **not an update to the installed
+package or its `gmde_*` interfaces**. All eight rho-screen branches completed
+and numerical checks passed, but rho selection remains unresolved and
+convergence is not certified. No formal simulation is authorized by this
+handoff. Raw data, chains, checkpoints and private logs are not uploaded.
+The maintained package and September 3 snapshot described below are unchanged.
+
 ## Install and use the maintained module
 
 After the package changes are pushed to GitHub:
