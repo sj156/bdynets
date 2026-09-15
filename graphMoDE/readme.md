@@ -6,6 +6,26 @@ The maintained graphMoDE implementation is now a module of the
 This research folder preserves the earlier code snapshot, supporting data,
 provenance and debugging material.
 
+## September 15, 2026 frozen research code (latest handoff)
+
+The current Poisson/dynamic execution snapshot is
+[`snapshots/2026-09-15-gate-refresh-v1/`](snapshots/2026-09-15-gate-refresh-v1/),
+exported from development commit `903f4d26a98ec43aba9ab57bc5df1299dea78e81`.
+It includes 68 frozen source/test/provenance files, source and transfer SHA-256
+manifests, and a [reviewed outcome note](snapshots/2026-09-15-gate-refresh-v1/RESULTS.md).
+
+The m1/m4 screen used one n=121, T=168 synthetic spiral panel and four chains
+per arm. All eight chains completed and recovered this panel's true five-class
+partition, but **both arms still fail the original statistical validity rules**.
+This is not eight independent data replicates, convergence certification or
+formal-simulation readiness. Raw chains and private data are not uploaded.
+
+This is a source archive, **not a package/API update or a portable experiment
+release**: historical Git/receipt guards remain unchanged and are not satisfied
+by a public checkout alone. See the snapshot README before attempting reuse.
+The September 12 snapshot, all earlier code and the maintained package remain
+unchanged; the sections below retain their historical handoff descriptions.
+
 ## September 12, 2026 frozen research code
 
 The latest Poisson/dynamic research handoff is in
