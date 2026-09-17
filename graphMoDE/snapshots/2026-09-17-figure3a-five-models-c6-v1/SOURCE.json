@@ -1,0 +1,214 @@
+{
+  "executed_c6_commit": "4996cb1479a5e634f806a549dbcb67fbf8776a82",
+  "executed_c5_commit": "1520bd34de41414e2c3c2617a3802286372a0ea5",
+  "public_base_commit": "a0ba5f0aa867dd0f078f0d79e9ab588b952eaace",
+  "c6_registration_signature": "ff53052cf5420b31f1fb387549b18cd0e51ed6e4422133ff53e0c4af3c6721a7",
+  "c6_registration_sha256": "72a0f019b42d9d4b345352754ad1cff32c1a065e237b243d5eae4e5eac270231",
+  "c6_report_sha256": "bafb182bf86e274a92b985787d30eae0780f927c878c46fb38310308d1892d7b",
+  "registered_c6_sources": {
+    "R/gmde-helpers.R": "b0adb2967a3602aa9315722e608e7e2790168d23c5fc4872ab43852405559af0",
+    "R/gmde-state-update.R": "ad9c26d3e868c582359e1297bda655d81e56205cc9de70b614a874575ae2c2a1",
+    "R/graphmode-gate.R": "e67790c843171c412287ac6d102000b0ece7be7c8c5f145b885b9ab274f80223",
+    "R/graphmode-geometry.R": "0b94538cdfbc5b7950f0f862b44d3333d4269f8fead91074971c5e0494c61134",
+    "R/graphmode-numerics.R": "8fc2feb80850bacbb3d18a3239e745933fc7b28189e05a6dfa4653cef5cf449c",
+    "R/graphmode-pilot.R": "093fcb8d3df6691037b7ada0ae7d51dbc7de8c11cb37dcc4458b7672b1fc7f2a",
+    "R/graphmode-runner.R": "b39949641518b5ffa2494f7c06413975aa2d71f06dfa718c1841504b95a480f2",
+    "R/graphmode-sampler.R": "b85b7222b5f270c72ba54c614dfef4201222aa2a5421b8eb0fd019feb40fc268",
+    "R/graphmode4-design.R": "8da8d0f2fd0658d0ccba3b0d21edb7c0822126370dea70b6424091b6b632b094",
+    "R/graphmode4-diagnostics.R": "13a90903c56ec6e551fae91254aa46e82c04347e918eabdafbeb8800fcf20ccd",
+    "R/graphmode4-forecast.R": "3f2ffc30d79be49b66c765808e8dd015609bc0635c6cc94e748822d4dde89d81",
+    "R/graphmode4-pilot.R": "13468ab8ac48de9c720e1e1d189a1ba9be47471f9ead7de4a1b7c63bb63fdab5",
+    "R/graphmode4-provenance.R": "3589a23c58d106c2fc8c229362fc44320abebf2cad50e6ceef94b3f3a991fd5b",
+    "R/graphmode4-rho-experiment.R": "0c0a579a45b1ca908006374edc72cb616fd598596197e4ccb3a357f885212ea7",
+    "R/graphmode4-selection.R": "5fed8f1af9d7eb9ba5bcb0633f163ab80d3cc6c47d47a818888849d4cb4848ed",
+    "R/graphmode4-tuning.R": "7288e3d0e6a7add185365deddc865773ce9b774bdf21a55973ba8b253bdad519",
+    "R/graphmode_dev.R": "6eb3f322aef883f7012889375958f2f515dcf022b7c1888d05eb792d27fd3cec",
+    "R/graphmode_dev_run.R": "69494e1c88bfa870533eb3aecc997a1fdf880bf0f3f178038002ab492d8b9bd8",
+    "R/graphmode_warmup.R": "d23a3470118f7e27188d3537972c79c20fff6ec41e4fb38e51a573c26dae01f5",
+    "R/graphmode_validation.R": "e8e6ff06bada17fc57c1d5e97f03fa9f5b2c2c23954c62489da33e8d3c6d1c00",
+    "R/graphmode_gate_refresh.R": "7f1533088e16a0ee167d9cd9815c505e1dd8cfd82ec52d619e73e07c60c9bf41",
+    "R/graphmode_refresh_run.R": "695c3867e8a89ba7ffd31a3d241035220568a75b8dde396c59b85eb4b514903d",
+    "R/graphmode_expert_blocks.R": "cc3bb0c18afe25adb11a988e185fba149b250b733406bfd49da8428bf5214122",
+    "R/graphmode_blocks_run.R": "2e9aa7cc4a8208c66b7ea56f2f88a2772173a23955e910bf7b2a1e730341d10f",
+    "R/graphmode_gate_blocks.R": "f9a36d04681b33f4a2229c77d86b7eadc7ce41353f42f7beba6c302ec0403258",
+    "R/graphmode_gate_blocks_run.R": "94b98a714792b2ba963c9dc4970f6cf8305be75084c6d2da4abe1ce9311feb0a",
+    "R/graphmode_gate_factor_cache.R": "c55259b982b48ee37c60ebb4be2aea2d7a41734fa8c7c6a993036884e9bcc06c",
+    "R/graphmode_receipt_repair.R": "bf42af3108b9fdcfccd33e8a04a88c52b33c08d50d12b8252446e93e75f444be",
+    "R/graphmode_gate_cache_run.R": "80bb1d6568b8f7f185b87b7536cab5ad8b01f07c3c8f5f42b5271e28e3d329ea",
+    "R/graphmode_joint_partition.R": "9649dd7f34dc1dc0f6bc61bf6af19bb5c38cf6fd9cabab66384c83aedda240eb",
+    "R/graphmode_joint_run.R": "9fa21613ef848425e165c7e64b237f7a4271e79c6e961a9762557f8a284b7f73",
+    "R/graphmode_compare_run.R": "58cb235673ed7de8a4d00b9446a37beee94c4ff5fb9ea4b1fe10a325f6b2fa28",
+    "scripts/graphmode-joint-run.R": "08b6ef7880cf711996db43821cedc8e70214b25511925a8938fb5822403a1f7a",
+    "scripts/graphmode-joint-controller.py": "1ec37cb4488164ee26f802cd23ac63d35ddf616b81d176edca5c2becbc28327d",
+    "scripts/tests/graphmode-joint-run-deterministic.R": "8c52232016cc99689eceb93343fc3565f599f00978df9b53e65a75fb97799a80",
+    "scripts/graphmode-joint-partition.R": "17716daad6eafe6362d6935016f266ac8ef4779ff9dd897a7e45460b8582e8d6",
+    "scripts/tests/graphmode-joint-partition-deterministic.R": "09793fcdedae6db1336ee249fb6f001ef35948c5be211101cec9a069787ce7ed",
+    "scripts/graphmode-compare-run.R": "699ee6a25276a66d84a8b1ce357f32385ade5acc1e118d422324966940cd72ec",
+    "scripts/graphmode-compare-controller.py": "5b69e6f311acfba0088251d49a31548b0298d07c24b8e355e36a39a0ab76ba92",
+    "scripts/tests/graphmode-compare-run-deterministic.R": "b4ef3cffece6b81865f77170eb3b7e1e940234d883020c2edd0a77feaae2ad2f",
+    "docs/GRAPHMODE_FOUR_MODEL_PLAN_2026-09-17.md": "2db190387791cc0785ac78b6bff50301c30c43f8d54dde97bfc7fd6e11ead065"
+  },
+  "exported_source_files": 122,
+  "inherited_c5_source_files": 117,
+  "new_c6_source_files": 5,
+  "source_bytes_changed_for_publication": false,
+  "inputs": {
+    "graphmode-joint-partition-20260917-c5/registration.rds": "f17f2423bcdbcad591ff9bd6fbef34ea14f30ab753385f0719ca92d958dff149",
+    "graphmode-joint-partition-20260917-c5/fresh-starts.rds": "0d47852271c521ed86bf53a09691e191c20bca6f864a4f7f7cc3cd56a56cbac1",
+    "graphmode-joint-partition-20260917-c5/completion.json": "f859d05bd01e4b7e53f821284604ce450d648eef754d493b0c88c5da791780e8",
+    "graphmode-joint-partition-20260917-c5/science-complete.rds": "8bfee46ddb09b783bf31aaaa0dc5bda3005d0148a74ff1222e7234becb35c998",
+    "graphmode-joint-partition-20260917-c5/diagnostic-report.rds": "71d13e713f9f8b29ece19374ad25f8eaad34d941679d64b12a82ac3ccef31ff4",
+    "graphmode-gate-cache-20260916-c4/run/blinded-inputs.rds": "ce452d778c9aa47fe560117feedffd2731afd95e8851ba489dd6f62e3136580a",
+    "graphmode-gate-cache-20260916-c4/run/generation.rds": "db92197ccee45005cdf48893481e0ec0a612cce74606454562d91bd2f1986d07"
+  },
+  "iterations": 600,
+  "warmup": 300,
+  "thin": 1,
+  "chains_per_method": 4,
+  "start_occupancy": [
+    1,
+    3,
+    7,
+    10
+  ],
+  "jobs": [
+    {
+      "method": "graphMoDE-C",
+      "chain": 1,
+      "name": "graphMoDE-C-chain-01",
+      "seed": 2026121101
+    },
+    {
+      "method": "EucMoDE",
+      "chain": 1,
+      "name": "EucMoDE-chain-01",
+      "seed": 2026121102
+    },
+    {
+      "method": "MoDE",
+      "chain": 1,
+      "name": "MoDE-chain-01",
+      "seed": 2026121103
+    },
+    {
+      "method": "PottsMoDE",
+      "chain": 1,
+      "name": "PottsMoDE-chain-01",
+      "seed": 2026121104
+    },
+    {
+      "method": "PottsMoDE",
+      "chain": 2,
+      "name": "PottsMoDE-chain-02",
+      "seed": 2026121105
+    },
+    {
+      "method": "MoDE",
+      "chain": 2,
+      "name": "MoDE-chain-02",
+      "seed": 2026121106
+    },
+    {
+      "method": "EucMoDE",
+      "chain": 2,
+      "name": "EucMoDE-chain-02",
+      "seed": 2026121107
+    },
+    {
+      "method": "graphMoDE-C",
+      "chain": 2,
+      "name": "graphMoDE-C-chain-02",
+      "seed": 2026121108
+    },
+    {
+      "method": "graphMoDE-C",
+      "chain": 3,
+      "name": "graphMoDE-C-chain-03",
+      "seed": 2026121109
+    },
+    {
+      "method": "EucMoDE",
+      "chain": 3,
+      "name": "EucMoDE-chain-03",
+      "seed": 2026121110
+    },
+    {
+      "method": "MoDE",
+      "chain": 3,
+      "name": "MoDE-chain-03",
+      "seed": 2026121111
+    },
+    {
+      "method": "PottsMoDE",
+      "chain": 3,
+      "name": "PottsMoDE-chain-03",
+      "seed": 2026121112
+    },
+    {
+      "method": "PottsMoDE",
+      "chain": 4,
+      "name": "PottsMoDE-chain-04",
+      "seed": 2026121113
+    },
+    {
+      "method": "MoDE",
+      "chain": 4,
+      "name": "MoDE-chain-04",
+      "seed": 2026121114
+    },
+    {
+      "method": "EucMoDE",
+      "chain": 4,
+      "name": "EucMoDE-chain-04",
+      "seed": 2026121115
+    },
+    {
+      "method": "graphMoDE-C",
+      "chain": 4,
+      "name": "graphMoDE-C-chain-04",
+      "seed": 2026121116
+    }
+  ],
+  "base_policy": {
+    "gate": {
+      "schema": "graphmode-gate-refresh-20260915-v1",
+      "inner_steps": 4,
+      "guidance_proposal_sd": 2.2688962687759413,
+      "adaptation": "none"
+    },
+    "block": {
+      "schema": "graphmode-expert-blocks-20260915-v1",
+      "block_length": 42,
+      "offset_rule": "uniform",
+      "adaptation": "none",
+      "order": "forward"
+    },
+    "ess_scheme": "contrast",
+    "factor_cache": true
+  },
+  "thresholds": {
+    "pg_mean_z_max": 6,
+    "pg_variance_relative_error_max": 0.2,
+    "factor_residual_max": 1e-10,
+    "root_residual_max": 1e-06,
+    "root_rcond_min": 2.220446049250313e-16,
+    "rank_rhat_max": 1.01,
+    "folded_rhat_max": 1.01,
+    "bulk_ess_min": 400,
+    "tail_ess_min": 400,
+    "pairwise_psm_rms_max": 0.05
+  },
+  "EucMoDE_range": 2.3283463448707398,
+  "EucMoDE_nu": 1,
+  "PottsMoDE_beta": 1,
+  "independent_datasets": 1,
+  "formal_authorized": false,
+  "raw_MCMC_included": false,
+  "verification_evidence": {
+    "c6_fixed_input_groups": 9,
+    "c6_seed_registrations_checked": 85,
+    "c6_seed_collisions": 0,
+    "publication_reuses_existing_test_and_diagnostic_evidence": true
+  },
+  "note": "Research source archive; public commit differs from execution commit. W rows reuse c5; c6 did not rerun W. Historical absolute paths and Git/input guards are unchanged; this is not a portable rerun package. Source docs retain their dated scope/authorization wording; README and RESULTS describe this user-authorized publication."
+}

@@ -6,6 +6,24 @@ The maintained graphMoDE implementation is now a module of the
 This research folder preserves the earlier code snapshot, supporting data,
 provenance and debugging material.
 
+## September 17, 2026 — Figure 3(a): five models and two W update schemes (c6)
+
+**最新研究快照：** [五模型代码、方法差异和六行比较表](snapshots/2026-09-17-figure3a-five-models-c6-v1/README.md)。
+新增graphMoDE-C、EucMoDE、MoDE、PottsMoDE的同数据补跑；W-reference与W-joint复用既有结果。
+**两个W是同一graphMoDE-W模型的不同采样方案，不是两个模型。** 所有模型均使用专家时间分块；
+C/Euc/W另有门控分块，只有W-joint在本轮加入联合拆分/合并。
+
+[结果表与原统计标志](snapshots/2026-09-17-figure3a-five-models-c6-v1/RESULTS.md)同时列出代表性分类、
+完整分区吻合频率、曲线恢复和耗时。“完整分区吻合”不是节点正确率；MoDE代表性分类ARI=1，
+与其499/1200个保留分区完全吻合真值并不矛盾。所有原统计未通过项保留。
+
+The current dated research handoff contains 122 unchanged source/test/provenance
+files and the saved c6 summaries. It separates model structure from sampling
+improvements and does not rank models from one short development panel.
+Future larger server studies will reset settings jointly for all five models.
+The c5 figures and earlier snapshots remain available below; their dated
+handoff descriptions retain their historical scope.
+
 ## September 17, 2026 — Figure 3(a): graphMoDE code and result figures
 
 The latest research snapshot is

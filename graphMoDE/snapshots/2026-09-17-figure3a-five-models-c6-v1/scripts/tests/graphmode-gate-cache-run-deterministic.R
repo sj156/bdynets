@@ -1,0 +1,525 @@
+# D-066 fixed-input/mock-process checks. No real simulation/PG/subprocess.
+if(!exists("graphmode_root",inherits=FALSE)) graphmode_root <- normalizePath(".")
+local({
+    kernel <- new.env(parent=globalenv())
+    for(f in c("gmde-helpers.R","gmde-state-update.R",
+        sort(list.files(file.path(graphmode_root,"R"),"^graphmode-.*[.]R$")),
+        sort(list.files(file.path(graphmode_root,"R"),"^graphmode4-.*[.]R$")),
+        "graphmode_dev.R","graphmode_dev_run.R","graphmode_warmup.R","graphmode_validation.R",
+        "graphmode_gate_refresh.R","graphmode_refresh_run.R","graphmode_expert_blocks.R","graphmode_blocks_run.R","graphmode_gate_blocks.R","graphmode_gate_blocks_run.R","graphmode_gate_factor_cache.R","graphmode_receipt_repair.R","graphmode_gate_cache_run.R")) sys.source(file.path(graphmode_root,"R",f),kernel)
+    test_env <- environment();parent.env(test_env) <- kernel
+    seed_before <- if(exists(".Random.seed",.GlobalEnv,inherits=FALSE)) get(".Random.seed",.GlobalEnv) else NULL
+    kind <- RNGkind();checks <- 0L
+    assert <- function(x) if(!isTRUE(x)) stop("D-066 assertion: ",paste(deparse(substitute(x)),collapse=" "),call.=FALSE)
+    fails <- function(code,pattern=NULL) {
+        e <- suppressWarnings(tryCatch({force(code);NULL},error=function(e) e));assert(inherits(e,"error"))
+        if(!is.null(pattern)) assert(grepl(pattern,conditionMessage(e),fixed=TRUE))
+        invisible(e)
+    }
+    patched <- function(bindings,code) {
+        old <- mget(names(bindings),kernel);on.exit(list2env(old,kernel),add=TRUE)
+        list2env(bindings,kernel);force(code)
+    }
+    test <- function(name,code) {
+        patched(list(graphmode_normal=function(...) stop("Unexpected random normal"),
+            graphmode_uniform=function(...) stop("Unexpected random uniform"),graphmode_pg=function(...) stop("Unexpected real PG"),
+            graphmode_gamma=function(...) stop("Unexpected random gamma")),force(code))
+        checks <<- checks+1L;cat("OK",checks,name,"\n");flush.console()
+    }
+    fixture <- tempfile("graphmode-gate-cache-run-fixed-",tmpdir="/private/tmp");dir.create(fixture);fixture <- normalizePath(fixture)
+    evidence <- list(directory=file.path(fixture,"A"),
+        registration_signature="f248b516d6de752aa7e8b259d26023911256bf85e181001a13dd7a9aa18aefff",
+        source_commit="b698fd83ef70e60e3b922229f88ee26464149655",
+        source_sha256=setNames(rep(strrep("a",64),47),paste0("source",1:47)),
+        file_sha256=setNames(rep(strrep("b",64),5),c("registration.rds","diagnostic-request.rds","diagnostic-execution.rds","diagnostic-report.rds","diagnostic-acceptance.rds")),
+        candidate_scale=2.2688962687759413,reviewed=TRUE)
+    identity <- graphmode_gate_cache_run_identity(graphmode_root);runtime <- graphmode4_pilot_runtime()
+    loaded_before_tapes <- graphmode_dev_run_loaded(graphmode_root,identity)
+    api <- graphmode_gate_cache_run_context()
+    r <- api$graphmode_refresh_run_record(graphmode_root,file.path(fixture,"draft"),identity,runtime,evidence);s <- r$spec
+    test("scope, balanced order, fixed policies, paired seed candidates and budget", {
+        assert(identical(s$arms,c("reference","cached")) && s$gate_inner_steps==4L && is.null(s$inner_steps))
+        assert(s$iterations==1200L && s$warmup==600L && s$thin==1L && s$checkpoint_every==300L)
+        assert(s$block_policies$reference$block_length==42L && s$block_policies$cached$block_length==42L)
+        assert(s$block_policies$cached$offset_rule=="uniform" && is.null(s$policy) && s$rho==4L)
+        assert(s$total_seconds+s$diagnostic_seconds==18000 && 8*s$reserve_seconds<s$total_seconds)
+        assert(s$sweep_budget_seconds<s$worker_seconds && s$worker_seconds<s$reserve_seconds && s$workers==1L)
+        assert(length(s$seeds)==24L && !anyDuplicated(s$seeds))
+        assert(identical(s$ess_scheme,"contrast") && grepl("four independent streams",s$stream_pairing,fixed=TRUE))
+        assert(!length(intersect(s$seeds,graphmode_refresh_run_spec(evidence$candidate_scale)$seeds)))
+        assert(!length(intersect(s$seeds,graphmode_blocks_run_spec(evidence$candidate_scale)$seeds)))
+        assert(!length(intersect(s$seeds,graphmode_gate_blocks_run_spec(evidence$candidate_scale)$seeds)))
+        assert(identical(s$block_policies$reference,s$block_policies$cached) && s$gate_max_ess_steps==1000L)
+        assert(identical(s$panel_spec$thresholds,graphmode_validation_spec(evidence$candidate_scale)$panel_spec$thresholds))
+        assert(nrow(graphmode_expert_blocks_layout(168,42,0))==4L && nrow(graphmode_expert_blocks_layout(168,42,1))==5L)
+    })
+    test("audited92+D065 immutable; complete new definitions loaded; unfrozen refusal", {
+        assert(identity$audited_unchanged && loaded_before_tapes)
+        not_frozen <- identity;not_frozen$committed <- FALSE
+        bad <- api$graphmode_refresh_run_record(graphmode_root,r$directory,not_frozen,runtime,evidence)
+        fails(api$graphmode_refresh_run_guard(bad,graphmode_root),"unfrozen")
+        assert(identical(environment(graphmode_refresh_run_worker),kernel))
+    })
+    test("approval tokens guard all write/launch paths", {
+        fails(api$graphmode_refresh_run_prepare(NULL,NULL,NULL),"Approve")
+        fails(api$graphmode_refresh_run_execute(NULL,NULL,NULL),"authorization")
+        fails(api$graphmode_refresh_run_worker(NULL,NULL),"authorization")
+        fails(api$graphmode_refresh_run_launch(NULL,NULL,NULL),"authorization")
+        fails(api$graphmode_refresh_run_batch(NULL,NULL),"authorization")
+        fails(api$graphmode_refresh_run_diagnostic_worker(NULL,NULL),"authorization")
+    })
+    test("legacy/changed registration and arm rejected", {
+        fails(api$graphmode_refresh_run_validate(graphmode_refresh_run_record(graphmode_root,fixture,identity,runtime,evidence)))
+        legacy <- graphmode_blocks_run_context()
+        fails(api$graphmode_refresh_run_validate(legacy$graphmode_refresh_run_record(graphmode_root,fixture,identity,runtime,evidence)))
+        gate_legacy <- graphmode_gate_blocks_run_context()
+        fails(api$graphmode_refresh_run_validate(gate_legacy$graphmode_refresh_run_record(graphmode_root,fixture,identity,runtime,evidence)))
+        for(field in c("iterations","warmup","rho","candidate_scale","total_seconds")) {
+            b <- r;b$spec[[field]] <- b$spec[[field]]+1;fails(api$graphmode_refresh_run_validate(b))
+        }
+        b <- r;b$spec$block_policies$cached$block_length <- 21L;fails(api$graphmode_refresh_run_validate(b))
+        b <- r;b$spec$gate_max_ess_steps <- 9000L;fails(api$graphmode_refresh_run_validate(b))
+        fails(api$graphmode_refresh_run_job(r,1L,"m4"))
+        assert(api$graphmode_refresh_run_job(r,1L,"reference")$seed==api$graphmode_refresh_run_job(r,1L,"cached")$seed)
+    })
+    test("quoted new entry and hard timeout without starting a process", {
+        captured <- NULL
+        # The inherited system2 lookup occurs in the immutable parent environment.
+        assign("system2",function(command,args,stdout,stderr,timeout,...) {
+            captured <<- list(args=args,timeout=timeout);structure("fixed timeout",status=124L)
+        },kernel)
+        out <- api$graphmode_refresh_run_child("worker",file.path(fixture,"input with spaces.rds"),graphmode_root,1800)
+        rm("system2",envir=kernel)
+        assert(out$status==124L && captured$timeout==1800)
+        assert(any(grepl("scripts/graphmode-gate-cache-run.R",captured$args,fixed=TRUE)))
+        assert(any(grepl("input with spaces.rds",captured$args,fixed=TRUE)))
+    })
+    tiny <- graphmode_config(matrix(1:15,3,5),cbind(1,seq(-.5,.5,length.out=5)),c(0,0),diag(2),
+        "graphMoDE-W",K=3L,G=diag(2),W=diag(.02,2),Phi=diag(3),guidance_proposal_sd=.4,rho=4L)
+    initial <- graphmode_initial_state(tiny,c(1L,1L,2L),array(0,c(3,5,2)),v=c(-.3,.1,.5))
+    tape <- function(code) {
+        used <- c(normal=0L,uniform=0L,pg=0L)
+        patched(list(graphmode_normal=function(n) {i <- used["normal"]+seq_len(n);used["normal"] <<- used["normal"]+n;.12*sin(i/5)},
+            graphmode_uniform=function(n) {i <- used["uniform"]+seq_len(n);used["uniform"] <<- used["uniform"]+n;.25+.5*(i%%13)/13},
+            graphmode_pg=function(b,z) {used["pg"] <<- used["pg"]+length(b);rep(.3,length(b))}), {
+                value <- force(code);list(value=value,used=used)
+            })
+    }
+    for(arm in c("reference","cached")) test(paste("audited original/cached step plus passive wrapper",arm), {
+        pol <- list(gate=graphmode_gate_refresh_policy(4L,.4),block=graphmode_expert_blocks_policy(2L,"uniform"),ess_scheme="contrast",factor_cache=arm=="cached")
+        fun <- if(pol$factor_cache) graphmode_gate_factor_cache_sweep else graphmode_gate_blocks_sweep
+        a <- tape(fun(initial,tiny,pol$gate,pol$block,graphmode_gate_blocks_policy(tiny,"contrast"),TRUE))
+        b <- tape(api$graphmode_refresh_run_step(initial,tiny,pol))
+        assert(identical(a$used,b$used) && identical(a$value$transition$state,b$value$state))
+        graphmode_gate_cache_run_gate_check(b$value$diagnostic$gate,tiny,pol)
+        for(k in 1:3) graphmode_blocks_run_expert_check(b$value$diagnostic$expert[[k]],matrix(initial$theta[k,,],5,2),
+            matrix(b$value$state$theta[k,,],5,2),tiny$Y[initial$Z==k,,drop=FALSE],tiny,pol$block,b$value$diagnostic$block_offset,s$panel_spec$thresholds)
+    })
+    for(arm in c("reference","cached")) test(paste("actual fixed-tape states pass complete result validation",arm), {
+        pol <- list(gate=graphmode_gate_refresh_policy(4L,.4),block=graphmode_expert_blocks_policy(2L,"uniform"),ess_scheme="contrast",factor_cache=arm=="cached")
+        small <- r;small$spec$iterations <- 3L;small$spec$warmup <- 1L
+        job <- list(signature="fixed-tape-job",record=small,policy=pol,chain=1L,seed=1L)
+        input <- list(signature="fixed-tape-input",fit=list(core=tiny,signature=graphmode_digest(tiny)),starts=list(list(state=initial)))
+        tape({
+            state <- initial;ds <- saved <- list()
+            for(i in 1:3) {
+                a <- api$graphmode_refresh_run_step(state,tiny,pol);state <- a$state;ds[[i]] <- a$diagnostic
+                if(i>1) saved[[i-1L]] <- state[c("iteration","Z","theta","sigma2","v","pi")]
+            }
+            result <- list(schema=graphmode_gate_cache_run_version,job_signature=job$signature,input_signature=input$signature,formal_authorized=FALSE,
+                checkpoint=list(schema=graphmode_gate_cache_run_version,policy=pol,status="completed-not-convergence-certified",
+                    plan_signature=job$signature,source_identity=identity,completed_steps=3L,state=state,diagnostics=ds,saved=saved,
+                    elapsed_seconds=1,resume_supported=FALSE,error=NULL))
+            chain <- api$graphmode_refresh_run_result_check(job,result,input)
+            assert(chain$complete && length(chain$draws)==2L && chain$numerical_guards_passed)
+        })
+    })
+    test("cached schema/counts and inherited scan order/budget reject tampering", {
+        pol <- list(gate=graphmode_gate_refresh_policy(4L,.4),block=graphmode_expert_blocks_policy(2L,"uniform"),ess_scheme="contrast",factor_cache=TRUE)
+        g <- tape(api$graphmode_refresh_run_step(initial,tiny,pol))$value$diagnostic$gate
+        graphmode_gate_cache_run_gate_check(g,tiny,pol)
+        mutations <- list(
+            function(x) {x$schema <- graphmode_gate_blocks_version;x},
+            function(x) {x$factor_cache <- NULL;x},
+            function(x) {x$factor_cache[[1]]$builds <- 2L;x},
+            function(x) {x$factor_cache[[1]]$hits <- 0L;x},
+            function(x) {x$factor_cache[[1]]$requests <- NA_integer_;x},
+            function(x) {x$factor_cache[[1]]$enabled <- FALSE;x},
+            function(x) {x$ess_policy$blocks[[1]][1] <- 2L;x},
+            function(x) {x$ess_scans <- x$ess_scans[-1L];x},
+            function(x) {x$ess_scans[[1]] <- rev(x$ess_scans[[1]]);x},
+            function(x) {x$ess_scans[[1]][[1]]$evaluations <- 0L;x},
+            function(x) {x$ess_scans[[1]][[1]]$evaluations <- 1.5;x},
+            function(x) {x$ess_scans[[1]][[1]]$jump_squared <- NaN;x},
+            function(x) {x$ess_scans[[1]][[1]]$jump_squared <- x$ess_scans[[1]][[1]]$jump_squared+1;x},
+            function(x) {x$records[[1]]$ess_evaluations <- x$records[[1]]$ess_evaluations+1L;x},
+            function(x) {
+                x$ess_scans[[1]][[1]]$evaluations <- tiny$max_ess_steps
+                x$records[[1]]$ess_evaluations <- sum(vapply(x$ess_scans[[1]],`[[`,numeric(1),"evaluations"))
+                x$counts <- graphmode_gate_refresh_counts(x$records,pol$gate,3L);x
+            })
+        for(mutate in mutations) fails(graphmode_gate_cache_run_gate_check(mutate(g),tiny,pol))
+        pol$factor_cache <- FALSE
+        fails(graphmode_gate_cache_run_gate_check(g,tiny,pol),"Reference arm")
+    })
+    # Actual immutable generator with preset component values, not new data.
+    captured <- list();active <- 0L;nc <- 0L;seen <- integer()
+    hooks <- list(graphmode_pilot_seeded=function(seed,code) {
+        seen <<- c(seen,seed)
+        if(seed %in% s$seeds[1:4]) {
+            if(seed==s$seeds[1]) return(array(sin(seq_len(5*168*3)/17),c(5L,168L,3L)))
+            if(seed==s$seeds[2]) return(5:1)
+            if(seed==s$seeds[3]) return(121:1)
+            if(seed==s$seeds[4]) return(matrix(2,121,168))
+        }
+        previous <- active;active <<- seed;on.exit(active <<- previous);force(code)
+    },graphmode_normal=function(n) {nc <<- nc+1L;rep(.01+active%%10*.003+nc%%10*.0001,n)},
+        graphmode_uniform=function(n) rep(seq(.2,.8,length.out=10),length.out=n))
+    assign("sample.int",function(n,size=n,replace=FALSE) {assert(!replace);((seq_len(n)+active%%n-1L)%%n+1L)[seq_len(size)]},kernel)
+    blind <- patched(hooks,api$graphmode_refresh_run_generate(r,function(x,n) captured[[n]] <<- x))
+    rm("sample.int",envir=kernel)
+    test("one new fixed panel and full dispersed starts paired between arms", {
+        assert(identical(seen[1:4],unname(s$seeds[1:4])))
+        assert(identical(names(captured),c("generation.rds",sprintf("INITIAL-%02d.rds",1:4),"blinded-inputs.rds")))
+        assert(blind$schema==graphmode_gate_cache_run_version && graphmode_warmup_starts_check(blind$starts,blind$fit,s))
+        assert(identical(vapply(blind$starts,function(x) length(unique(x$state$Z)),integer(1)),c(1L,3L,7L,10L)))
+        assert(identical(blind$fit$core$guidance_proposal_sd,s$candidate_scale))
+    })
+    # Tiny process fixtures still use n121/T168/K10 and real boundary validators.
+    old_spec <- graphmode_gate_cache_run_spec
+    short_spec <- function(scale) {z <- old_spec(scale);z$iterations <- 8L;z$warmup <- 4L;z$checkpoint_every <- 4L;z}
+    fixed_step <- function(state,config,policy) {
+        before <- state;K <- config$K;TT <- nrow(config$Fmat)
+        offset <- if(policy$block$offset_rule=="fixed-zero") 0L else as.integer((state$iteration*7L)%%policy$block$block_length)
+        layout <- graphmode_expert_blocks_layout(TT,policy$block$block_length,offset)
+        accept <- state$iteration%%3L==0L;es <- vector("list",K)
+        for(k in 1:K) {
+            N <- sum(state$Z==k);empty <- N==0L;S <- colSums(config$Y[state$Z==k,,drop=FALSE]);rs <- gmde_make_nb_r(S,config$rho)
+            if(empty) state$theta[k,,] <- state$theta[k,,]+.001
+            rows <- if(empty) list() else lapply(seq_len(nrow(layout)),function(j) {
+                at <- layout$start[j]:layout$end[j]
+                left <- if(min(at)>1) state$theta[k,min(at)-1,] else NULL
+                right <- if(max(at)<TT) state$theta[k,max(at)+1,] else NULL
+                old <- matrix(state$theta[k,at,],length(at),ncol(config$Fmat))
+                if(accept) state$theta[k,at,] <<- state$theta[k,at,]+.001
+                next_path <- matrix(state$theta[k,at,],length(at),ncol(config$Fmat))
+                movement <- sum(pmax(S[at],1)*(rowSums(next_path*config$Fmat[at,,drop=FALSE])-rowSums(old*config$Fmat[at,,drop=FALSE]))^2)
+                correction <- rep(if(accept) 0 else -.1,length(at));la <- min(0,sum(correction))
+                list(block=j,start=layout$start[j],end=layout$end[j],left=left,right=right,accepted=accept,log_acceptance=la,r=rs[at],
+                    observation=list(schema=graphmode_expert_blocks_version,occupied_series=N,accepted=accept,log_acceptance=la,
+                        log_ratio=sum(correction),correction_by_time=correction,proposed_information_movement=1,accepted_information_movement=movement),
+                    kernel_seconds=.001,observation_seconds=.0001,factor_residual=0,root_residual=0,root_reciprocal_condition=1)
+            })
+            ac <- if(empty) logical() else rep(accept,length(rows))
+            es[[k]] <- list(schema=graphmode_expert_blocks_version,empty=empty,r=if(empty) numeric() else rs,
+                movement=sum(vapply(rows,function(b) b$observation$accepted_information_movement,numeric(1))),seconds=.01,
+                timing_scope="complete expert update including observations; do not add observation_seconds again",
+                factor_residual=0,root_residual=0,root_reciprocal_condition=if(empty) NA_real_ else 1,
+                counts=list(proposals=length(ac),accepted=sum(ac),acceptance=if(length(ac)) mean(ac) else NA_real_,prior_refreshes=as.integer(empty)),blocks=rows)
+        }
+        records <- lapply(seq_len(policy$gate$inner_steps),function(j) list(inner_step=j,accepted=rep(accept,K),
+            proposals=rep(1L,K),ess_evaluations=1L,x_jump_squared=.01,logit_jump_squared=rep(if(accept) .01 else 0,K),
+            weight_jump_squared=rep(if(accept) .001 else 0,K),ess_seconds=.001,guidance_seconds=.002))
+        nb <- length(graphmode_gate_blocks_policy(config,policy$ess_scheme)$blocks)
+        records <- lapply(records,function(g) {g$ess_evaluations <- nb;g})
+        scans <- lapply(records,function(g) lapply(seq_len(nb),function(h)
+            list(block=h,evaluations=1L,jump_squared=g$x_jump_squared/nb)))
+        state$x <- state$x+.0001;state$v <- state$v+if(accept) .1 else 0;state$iteration <- state$iteration+1L
+        d <- list(iteration=state$iteration,policy=policy,block_offset=offset,before_signature=graphmode_digest(before),
+            after_signature=graphmode_digest(state),before_occupancy=tabulate(before$Z,K),x=state$x,v=state$v,Z=state$Z,theta=state$theta,
+            theta_signature=graphmode_digest(state$theta),sizes=tabulate(state$Z,K),events=graphmode_allocation_events(before$Z,state$Z,K),
+            expert=es,gate=list(schema=graphmode_gate_blocks_version,ess_policy=graphmode_gate_blocks_policy(config,policy$ess_scheme),
+                ess_scans=scans,records=records,counts=graphmode_gate_refresh_counts(records,policy$gate,K),
+                policy=policy$gate,inner_states_are_retained_draws=FALSE),allocation=graphmode_dev_allocation_parts(state,config,before$Z),
+            transition_seconds=.2,total_seconds=.3,outer_x_jump_squared=sum((state$x-before$x)^2),outer_v_jump_squared=(state$v-before$v)^2)
+        if(policy$factor_cache) {
+            d$gate$schema <- graphmode_gate_factor_cache_version
+            d$gate$factor_cache <- rep(list(list(enabled=TRUE,requests=1L+3L*nb,builds=1L,hits=3L*nb)),policy$gate$inner_steps)
+        }
+        list(state=state,diagnostic=d)
+    }
+    patched(list(graphmode_gate_cache_run_spec=short_spec,graphmode_gate_cache_run_step=fixed_step,
+        graphmode_pilot_seeded=function(seed,code) {
+            existed <- exists(".Random.seed",.GlobalEnv,inherits=FALSE)
+            previous <- if(existed) get(".Random.seed",.GlobalEnv) else NULL
+            on.exit(if(existed) assign(".Random.seed",previous,.GlobalEnv) else rm(".Random.seed",envir=.GlobalEnv))
+            assign(".Random.seed",c(10403L,624L,rep(as.integer(seed),624L)),.GlobalEnv)
+            force(code)
+        },graphmode_warmup_disk=function(...) c(free_bytes=100*1024^3,stage_bytes=0)), {
+        api <- graphmode_gate_cache_run_context()
+        # Preserve this test fixture's lexical old_spec binding after cloning.
+        api$graphmode_refresh_run_spec <- short_spec
+        api$graphmode_refresh_run_guard <- function(record,repository) {api$graphmode_refresh_run_validate(record);invisible(TRUE)}
+        make <- function(name,chain=1L,arm="cached") {
+            directory <- file.path(fixture,name);dir.create(directory)
+            rec <- api$graphmode_refresh_run_record(graphmode_root,directory,identity,runtime,evidence)
+            graphmode_save_new(rec,file.path(directory,"registration.rds"));dir.create(rec$output_dir)
+            graphmode_save_new(list(record=rec,authorized=TRUE),file.path(rec$output_dir,"launch.rds"))
+            for(n in names(captured)) graphmode_save_new(captured[[n]],file.path(rec$output_dir,n))
+            graphmode_save_new(list(registration_signature=rec$signature,blinded_signature=blind$signature),file.path(rec$output_dir,"inputs-identity.rds"))
+            job <- api$graphmode_refresh_run_job(rec,chain,arm);path <- file.path(rec$output_dir,paste0(job$name,"-plan.rds"));graphmode_save_new(job,path)
+            list(record=rec,job=job,path=path)
+        }
+        f <- make("worker-ok");res <- NULL
+        test("new job guard rejects changed paired input ESS budget and arm policy", {
+            bad <- f$job;bad$policy$ess_scheme <- "reference"
+            fails(api$graphmode_refresh_run_job_guard(bad,graphmode_root),"Changed block-comparison job")
+            g <- make("input-budget-tamper")
+            changed <- blind;changed$fit$core$max_ess_steps <- 9000L
+            changed$fit$signature <- NULL;changed$fit$signature <- graphmode_digest(changed$fit)
+            changed$signature <- NULL;changed$signature <- graphmode_digest(changed)
+            saveRDS(changed,file.path(g$record$output_dir,"blinded-inputs.rds"))
+            saveRDS(list(registration_signature=g$record$signature,blinded_signature=changed$signature),
+                file.path(g$record$output_dir,"inputs-identity.rds"))
+            fails(api$graphmode_refresh_run_job_guard(g$job,graphmode_root),"Changed shared ESS scan budget")
+        })
+        test("worker fixed transitions persist new schema and only four outer draws", {
+            api$graphmode_refresh_run_worker(f$job,graphmode_root,TRUE)
+            res <- readRDS(file.path(f$job$directory,"result.rds"))
+            c <- api$graphmode_refresh_run_result_check(f$job,res,blind)
+            assert(c$complete && identical(vapply(c$draws,`[[`,integer(1),"iteration"),5:8))
+            assert(all(vapply(res$checkpoint$diagnostics,function(d) d$gate$counts$total_proposals==40,logical(1))))
+            assert(all(vapply(res$checkpoint$diagnostics,function(d) length(unlist(d$gate$ess_scans,recursive=FALSE))==36L,logical(1))))
+            assert(identical(c$evidence_identity,graphmode_digest(res)) && identical(c$movement,res$checkpoint$diagnostics))
+            fails(api$graphmode_refresh_run_worker(f$job,graphmode_root,TRUE),"already attempted")
+        })
+        test("missing blocks, boundaries, local corrections, numerical flags and counts fail closed", {
+            k <- which(tabulate(blind$starts[[1]]$state$Z,10)>0)[1L]
+            mutations <- list(
+                function(x) {x$checkpoint$diagnostics[[1]]$expert[[k]]$blocks <- list();x},
+                function(x) {x$checkpoint$diagnostics[[1]]$expert[[k]]$blocks[[1]]$right <- rep(99,3);x},
+                function(x) {x$checkpoint$diagnostics[[2]]$expert[[k]]$blocks[[1]]$observation$correction_by_time[1] <- 8;x},
+                function(x) {x$checkpoint$diagnostics[[1]]$expert[[k]]$counts$proposals <- 1L;x},
+                function(x) {x$checkpoint$diagnostics[[1]]$expert[[k]]$root_residual <- .01;x},
+                function(x) {x$checkpoint$diagnostics[[1]]$expert[[k]]$blocks[[1]]$root_reciprocal_condition <- 0;x},
+                function(x) {x$checkpoint$diagnostics[[2]]$gate$counts$total_proposals <- 10L;x},
+                function(x) {x$checkpoint$diagnostics[[2]]$gate$ess_scans[[1]][[1]]$evaluations <- 1001L;x},
+                function(x) {x$checkpoint$diagnostics[[2]]$gate$schema <- graphmode_gate_refresh_version;x},
+                function(x) {x$checkpoint$diagnostics[[2]]$before_signature <- "changed";x},
+                function(x) {x$checkpoint$saved[[1]]$iteration <- 1L;x},
+                function(x) {x$checkpoint$diagnostics[[1]]$block_offset <- 42L;x},
+                function(x) {x$checkpoint$diagnostics[[1]]$expert[[k]]$accepted <- TRUE;x})
+            for(mutate in mutations) fails(api$graphmode_refresh_run_result_check(f$job,mutate(res),blind))
+        })
+        test("per-time outer rejection streak follows changing offsets, not block index", {
+            m <- graphmode_gate_cache_run_mechanism(res$checkpoint$diagnostics,f$record$spec)
+            occupied <- which(tabulate(blind$starts[[1]]$state$Z,10)>0)
+            assert(all(m$longest_time_rejection_outer_sweeps[occupied,]==2L))
+            assert(all(m$longest_time_rejection_outer_sweeps[-occupied,]==0L))
+            assert(identical(m$guidance_proposals,rep(16,10)))
+            # Retained offsets 28,35,0,7 imply 5+5+4+5, not always five blocks.
+            assert(all(m$expert$block_proposals[occupied]==19L))
+            assert(all(m$expert$empty_prior_refreshes[-occupied]==4L))
+            assert(m$gate_ess$retained_scans==16L && m$gate_ess$retained_block_updates==144L)
+            assert(identical(m$gate_ess$evaluations_by_block,rep(16,9L)))
+            assert(m$gate_ess$max_evaluations_per_scan==9L)
+            assert(identical(m$factor_cache$all_steps,list(scans=32L,requests=896L,builds=32L,hits=864L)))
+            assert(identical(m$factor_cache$retained,list(scans=16L,requests=448L,builds=16L,hits=432L)))
+        })
+        test("later step error retains last complete outer state; no retry", {
+            g <- make("step-error");calls <- 0L;old <- api$graphmode_refresh_run_step
+            api$graphmode_refresh_run_step <- function(...) {calls <<- calls+1L;if(calls==3L) stop("fixed step failure");old(...)}
+            fails(api$graphmode_refresh_run_worker(g$job,graphmode_root,TRUE),"fixed step failure")
+            api$graphmode_refresh_run_step <- old
+            cp <- readRDS(file.path(g$job$directory,"failure.rds"))
+            assert(cp$completed_steps==2L && cp$state$iteration==2L && calls==3L)
+            assert(!file.exists(file.path(g$job$directory,"result.rds")))
+        })
+        test("actual conditional ESS shared-budget error retains last complete outer state", {
+            g <- make("gate-budget-error");calls <- 0L;old <- api$graphmode_refresh_run_step
+            limited <- tiny;limited$max_ess_steps <- 1L
+            api$graphmode_refresh_run_step <- function(...) {
+                calls <<- calls+1L
+                if(calls==3L) tape(graphmode_gate_factor_cache_ess(initial$x,initial$v,initial$Z,limited,
+                    graphmode_gate_blocks_policy(limited,"contrast")))
+                old(...)
+            }
+            fails(api$graphmode_refresh_run_worker(g$job,graphmode_root,TRUE),"shared bracket budget")
+            api$graphmode_refresh_run_step <- old
+            cp <- readRDS(file.path(g$job$directory,"failure.rds"))
+            assert(cp$completed_steps==2L && cp$state$iteration==2L && length(cp$diagnostics)==2L && length(cp$saved)==0L)
+            assert(!file.exists(file.path(g$job$directory,"result.rds")))
+            fails(api$graphmode_refresh_run_worker(g$job,graphmode_root,TRUE),"already attempted")
+        })
+        test("canonical alias, moved path and pending publication protections remain", {
+            assert(identical(graphmode4_output_target(sub("^/private/tmp/","/tmp/",f$record$directory)),f$record$directory))
+            target <- file.path(f$job$directory,"extra-acceptance.rds")
+            fails(api$graphmode_refresh_run_publish(f$record,list(ok=TRUE),target,function() stop("fixed moved source")),"fixed moved source")
+            assert(!file.exists(target) && file.exists(sub("[.]rds$","-pending.rds",target)))
+        })
+        for(exit_status in c(0L,124L)) test(paste("parent accepts only successful exit even with saved result",exit_status), {
+            g <- make(paste0("launch-",exit_status))
+            api$graphmode_refresh_run_child <- function(command,path,repository,timeout,log_file=NULL) {
+                assert(command=="worker" && timeout==1800);api$graphmode_refresh_run_worker(readRDS(path),repository,TRUE)
+                list(status=exit_status,output="fixed process")
+            }
+            if(exit_status==0L) {
+                api$graphmode_refresh_run_launch(g$job,g$path,graphmode_root,TRUE)
+                assert(api$graphmode_refresh_run_job_evidence(g$job,graphmode_root)$receipt$postflight_passed)
+            } else {
+                fails(api$graphmode_refresh_run_launch(g$job,g$path,graphmode_root,TRUE),"timed out")
+                assert(file.exists(file.path(g$job$directory,"result.rds")) && !file.exists(file.path(g$job$directory,"acceptance.rds")))
+                fails(api$graphmode_refresh_run_job_evidence(g$job,graphmode_root))
+            }
+        })
+        directory <- file.path(fixture,"full-fixed-batch");dir.create(directory)
+        rr <- api$graphmode_refresh_run_record(graphmode_root,directory,identity,runtime,evidence)
+        path <- file.path(directory,"registration.rds");graphmode_save_new(rr,path)
+        calls <- character();diagnoses <- 0L
+        api$graphmode_refresh_run_generate <- function(record,persist) {for(n in names(captured)) persist(captured[[n]],n);blind}
+        api$graphmode_refresh_run_child <- function(command,path,repository,timeout,log_file=NULL) {
+            object <- readRDS(path)
+            if(command=="batch") api$graphmode_refresh_run_batch(object,repository,TRUE)
+            else if(command=="worker") {calls <<- c(calls,object$name);api$graphmode_refresh_run_worker(object,repository,TRUE)}
+            else if(command=="diagnostic-worker") {diagnoses <<- diagnoses+1L;api$graphmode_refresh_run_diagnostic_worker(object,repository,TRUE)}
+            else stop("unexpected child")
+            list(status=0L,output="fixed mock process")
+        }
+        test("all eight mock workers share inputs/paired starts and complete parent receipts", {
+            api$graphmode_refresh_run_execute(rr,path,graphmode_root,FALSE,TRUE)
+            x <- api$graphmode_refresh_run_science_evidence(rr,graphmode_root)
+            assert(length(x$evidence)==8L && diagnoses==0L)
+            assert(identical(calls,sprintf("%s-chain-%02d",rr$spec$jobs$arm,rr$spec$jobs$chain)))
+            assert(length(unique(vapply(x$evidence,function(e) e$result$input_signature,character(1))))==1L)
+            assert(!file.exists(file.path(directory,"diagnostic-report.rds")))
+        })
+        test("explicit fixed-input diagnosis retains all original flags and complete worker ESS cost", {
+            api$graphmode_refresh_run_execute(rr,path,graphmode_root,TRUE,TRUE)
+            report <- readRDS(file.path(directory,"diagnostic-report.rds"))
+            assert(api$graphmode_refresh_run_diagnostic_evidence(rr,graphmode_root)$postflight_passed && diagnoses==1L)
+            assert(identical(names(report$arms),c("reference","cached")))
+            for(a in report$arms) {
+                assert(!a$validity$valid && nrow(a$validity$scalars)==37L && nrow(a$validity$psm_rms)==6L)
+                assert(identical(a$efficiency$bulk_ess_per_worker_second,a$efficiency$bulk_ess/sum(a$worker_seconds)))
+            }
+            sci <- api$graphmode_refresh_run_science_evidence(rr,graphmode_root)
+            bad <- report;bad$arms$cached$validity$valid <- TRUE;fails(api$graphmode_refresh_run_report_check(bad,rr,sci))
+            bad <- report;bad$arms$reference$efficiency$bulk_ess_per_worker_second <- 99;fails(api$graphmode_refresh_run_report_check(bad,rr,sci))
+            bad <- report;bad$arms$cached$mechanism[[1]]$longest_time_rejection_outer_sweeps[1,1] <- 99
+            fails(api$graphmode_refresh_run_report_check(bad,rr,sci))
+            bad <- report;bad$arms$reference$mechanism[[1]]$expert$retained_complete_seconds[1] <- 99
+            fails(api$graphmode_refresh_run_report_check(bad,rr,sci))
+            bad <- report;bad$arms$cached$mechanism[[1]]$gate_ess$retained_block_updates <- 16L
+            fails(api$graphmode_refresh_run_report_check(bad,rr,sci))
+            assert(report$arms$reference$mechanism[[1]]$gate_ess$retained_block_updates==144L)
+            assert(report$arms$cached$mechanism[[1]]$gate_ess$retained_block_updates==144L)
+            assert(is.null(report$arms$reference$mechanism[[1]]$factor_cache$all_steps))
+            assert(report$arms$cached$mechanism[[1]]$factor_cache$all_steps$builds==32L)
+        })
+        test("paired science receipt binds four equivalent streams and complete costs", {
+            eq <- graphmode_gate_cache_run_pairs(sci,rr$spec)
+            assert(identical(eq,report$paired_equivalence) && nrow(eq)==4L)
+            assert(all(eq$checked_outer_steps==8L & eq$final_rng_identical & eq$scientific_records_identical))
+            assert(length(unique(vapply(sci$jobs,`[[`,integer(1),"seed")))==4L)
+            assert(identical(sci$receipt$paired_equivalence_signature,graphmode_digest(eq)))
+            assert(identical(report$paired_worker_cost,graphmode_gate_cache_run_pair_cost(sci)))
+            before <- body(graphmode_refresh_run_report_check)
+            assert(identical(body(api$graphmode_blocks_run_base("report_check")),body(graphmode_receipt_repair_checker())))
+            assert(identical(body(graphmode_refresh_run_report_check),before))
+        })
+        test("pair checker rejects state RNG draw seed and intermediate scientific changes", {
+            at <- which(vapply(sci$jobs,function(j) j$arm=="cached" && j$chain==1L,logical(1)))
+            changes <- list(
+                function(x) {x$state$x[1] <- x$state$x[1]+.01;x},
+                function(x) {x$saved[[1]]$v[1] <- x$saved[[1]]$v[1]+.01;x},
+                function(x) {x$rng_state <- NULL;x},
+                function(x) {x$rng_state[3] <- x$rng_state[3]+1L;x},
+                function(x) {x$diagnostics[[1]]$x[1] <- x$diagnostics[[1]]$x[1]+.01;x},
+                function(x) {x$diagnostics[[1]]$before_signature <- "changed";x},
+                function(x) {x$diagnostics[[1]]$gate$records[[1]]$accepted[1] <- !x$diagnostics[[1]]$gate$records[[1]]$accepted[1];x},
+                function(x) {x$diagnostics[[1]]$expert[[1]]$factor_residual <- 1e-12;x},
+                function(x) {x$diagnostics[[1]]$extra_scientific_field <- 1;x})
+            for(change in changes) {
+                altered <- sci;altered$evidence[[at]]$result$checkpoint <- change(altered$evidence[[at]]$result$checkpoint)
+                fails(graphmode_gate_cache_run_pairs(altered,rr$spec),"mismatch")
+            }
+            altered <- sci;altered$jobs[[at]]$seed <- altered$jobs[[at]]$seed+1L
+            fails(graphmode_gate_cache_run_pairs(altered,rr$spec),"mismatch")
+            altered <- sci
+            d <- altered$evidence[[at]]$result$checkpoint$diagnostics[[1]]
+            d$total_seconds <- d$total_seconds+1;d$transition_seconds <- d$transition_seconds+1
+            d$gate$records[[1]]$ess_seconds <- d$gate$records[[1]]$ess_seconds+1
+            d$gate$records[[1]]$guidance_seconds <- d$gate$records[[1]]$guidance_seconds+1
+            d$expert[[1]]$seconds <- d$expert[[1]]$seconds+1
+            altered$evidence[[at]]$result$checkpoint$diagnostics[[1]] <- d
+            assert(identical(graphmode_gate_cache_run_pairs(altered,rr$spec),report$paired_equivalence))
+        })
+        test("integrated science postflight cannot accept a mismatched pair", {
+            original_evidence <- api$graphmode_refresh_run_job_evidence
+            api$graphmode_refresh_run_job_evidence <- function(job,repository,receipt=TRUE) {
+                x <- original_evidence(job,repository,receipt)
+                if(job$arm=="cached" && job$chain==1L) x$result$checkpoint$rng_state[3] <- x$result$checkpoint$rng_state[3]+1L
+                x
+            }
+            fails(api$graphmode_refresh_run_science_evidence(rr,graphmode_root,FALSE),"mismatch")
+            api$graphmode_refresh_run_job_evidence <- original_evidence
+        })
+        test("paired equivalence cost cache totals and paired summaries cannot be altered", {
+            bad <- report;bad$paired_equivalence$checked_outer_steps[1] <- 9L
+            fails(api$graphmode_refresh_run_report_check(bad,rr,sci),"Paired equivalence")
+            bad <- report;bad$paired_worker_cost$reference_over_cached[1] <- 99
+            fails(api$graphmode_refresh_run_report_check(bad,rr,sci),"Paired equivalence")
+            bad <- report;bad$arms$cached$mechanism[[1]]$factor_cache$all_steps$builds <- 1L
+            fails(api$graphmode_refresh_run_report_check(bad,rr,sci),"mechanism")
+            bad <- report;bad$arms$cached$validity$scalars$rank_rhat[1] <- 1.023
+            bad$arms$cached$efficiency$rank_rhat[1] <- 1.023
+            fails(api$graphmode_refresh_run_report_check(bad,rr,sci),"different statistical summaries")
+        })
+        make_efficiency <- function(arm) {
+            tab <- arm$validity$scalars
+            tab$bulk_ess_per_worker_second <- tab$bulk_ess/sum(arm$worker_seconds)
+            tab$tail_ess_per_worker_second <- tab$tail_ess/sum(arm$worker_seconds)
+            tab$precision_certified <- FALSE;arm$efficiency <- tab;arm
+        }
+        passed <- report
+        for(arm in rr$spec$arms) {
+            v <- passed$arms[[arm]]$validity
+            v$scalars$status <- "passed";v$scalars$rank_rhat <- 1.005;v$scalars$folded_rhat <- 1.003
+            v$scalars$bulk_ess <- 500;v$scalars$tail_ess <- 600
+            v$scalars$status[2:12] <- "uninformative-constant-discrete";v$scalars[2:12,3:6] <- NA_real_
+            v$psm_rms$rms <- 0;v$valid <- TRUE;v$failures <- character()
+            passed$arms[[arm]]$validity <- v;passed$arms[[arm]] <- make_efficiency(passed$arms[[arm]])
+        }
+        test("new adapter accepts legitimate zero failures while frozen checker reproduces c3 bug", {
+            fails(graphmode_blocks_run_report_check(passed,rr,sci),"Original necessary validity flags changed.")
+            api$graphmode_refresh_run_report_check(passed,rr,sci)
+            assert(all(vapply(passed$arms,function(a) a$validity$valid,logical(1))))
+        })
+        test("all original threshold boundaries and PSM-only false flags remain enforced", {
+            for(field in c("rank_rhat","folded_rhat","bulk_ess","tail_ess")) {
+                limit <- if(grepl("rhat",field)) 1.01 else 400
+                boundary <- passed
+                for(arm in rr$spec$arms) {
+                    boundary$arms[[arm]]$validity$scalars[[field]][13] <- limit
+                    boundary$arms[[arm]] <- make_efficiency(boundary$arms[[arm]])
+                }
+                api$graphmode_refresh_run_report_check(boundary,rr,sci)
+                bad <- boundary;bad$arms$cached$validity$scalars[[field]][13] <- limit+if(grepl("rhat",field)) 1e-6 else -1e-6
+                fails(api$graphmode_refresh_run_report_check(bad,rr,sci),"incorrectly passes")
+            }
+            psm <- passed
+            for(arm in rr$spec$arms) {
+                psm$arms[[arm]]$validity$psm_rms$rms[1] <- .051
+                psm$arms[[arm]]$validity$valid <- FALSE
+                psm$arms[[arm]]$validity$failures <- "statistical: pairwise PSM RMS exceeds 0.05"
+            }
+            api$graphmode_refresh_run_report_check(psm,rr,sci)
+            psm$arms$cached$validity$valid <- TRUE
+            fails(api$graphmode_refresh_run_report_check(psm,rr,sci),"flags changed")
+        })
+        test("once-only science and diagnosis refuse retry; late failures invalidate receipts", {
+            fails(api$graphmode_refresh_run_execute(rr,path,graphmode_root,FALSE,TRUE),"already attempted")
+            fails(api$graphmode_refresh_run_execute(rr,path,graphmode_root,TRUE,TRUE),"already attempted")
+            assert(diagnoses==1L && length(calls)==8L)
+            graphmode_save_new(list(error="fixed late failure"),file.path(directory,"science-failure.rds"))
+            fails(api$graphmode_refresh_run_diagnostic_evidence(rr,graphmode_root),"Failed block comparison")
+        })
+    })
+    test("all original source identities and RNG state/kind unchanged", {
+        assert(identical(identity,graphmode_gate_cache_run_identity(graphmode_root)))
+        after <- if(exists(".Random.seed",.GlobalEnv,inherits=FALSE)) get(".Random.seed",.GlobalEnv) else NULL
+        assert(identical(after,seed_before) && identical(RNGkind(),kind))
+    })
+    cat("PASS",checks,"D-066 fixed-input/mock-process groups; no real data/PG/MCMC, subprocess or old-result rerun.\n")
+    cat("Fixed artifacts retained:",fixture,"\n")
+})
