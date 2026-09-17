@@ -1,0 +1,208 @@
+{
+  "experiment": "c5",
+  "model": "graphMoDE-W; dynamic Poisson experts and an adaptive graph-informed gate",
+  "manuscript_geometry": "Figure 3(a): two-arm intertwined spiral with a central connector",
+  "n": 121,
+  "T": 168,
+  "true_classes": 5,
+  "fitted_capacity": 10,
+  "independent_data_panels": 1,
+  "role": "single-panel development illustration; the same observed panel was used in development",
+  "truth_generation": {
+    "distance": "shortest road distance along curved segments",
+    "seed_selection": "deterministic farthest-point traversal starting at geometric ID 1; ID tie breaking",
+    "seed_ids_in_selection_order": [
+      1,
+      121,
+      61,
+      22,
+      100
+    ],
+    "cell_to_profile_permutation": [
+      1,
+      5,
+      4,
+      2,
+      3
+    ],
+    "class_sizes_in_profile_order": [
+      10,
+      26,
+      26,
+      49,
+      10
+    ],
+    "truth_used_by_sampler": false
+  },
+  "design": {
+    "schema": "graphmode-joint-comparison-20260917-v1",
+    "iterations": 600,
+    "warmup": 300,
+    "thin": 1,
+    "joint_every": 10,
+    "start_occupancy": [
+      1,
+      3,
+      7,
+      10
+    ],
+    "seeds": [
+      2026120101,
+      2026120102,
+      2026120103,
+      2026120104,
+      2026120105,
+      2026120106,
+      2026120107,
+      2026120108,
+      2026120109,
+      2026120110,
+      2026120111,
+      2026120112,
+      2026120113,
+      2026120114,
+      2026120115,
+      2026120116,
+      2026120117,
+      2026120118,
+      2026120119,
+      2026120120,
+      2026120121,
+      2026120122,
+      2026120123,
+      2026120124
+    ],
+    "jobs": [
+      {
+        "chain": 1,
+        "arm": "reference"
+      },
+      {
+        "chain": 1,
+        "arm": "joint"
+      },
+      {
+        "chain": 2,
+        "arm": "joint"
+      },
+      {
+        "chain": 2,
+        "arm": "reference"
+      },
+      {
+        "chain": 3,
+        "arm": "reference"
+      },
+      {
+        "chain": 3,
+        "arm": "joint"
+      },
+      {
+        "chain": 4,
+        "arm": "joint"
+      },
+      {
+        "chain": 4,
+        "arm": "reference"
+      }
+    ],
+    "worker_seconds": 900,
+    "science_seconds": 7200,
+    "diagnostic_seconds": 600,
+    "storage": [
+      17179869184,
+      34359738368,
+      5368709120
+    ],
+    "joint_policy": {
+      "schema": "graphmode-joint-partition-20260916-v1",
+      "newton_steps": 8,
+      "backtracks": 20,
+      "gate_steps": 64,
+      "gate_tolerance": 1e-10,
+      "split_scale": 4,
+      "gate_scale": "log(K)",
+      "adaptation": "none"
+    },
+    "role": "fixed c4 observed-panel development comparison, fresh dispersed starts and independent arm seeds; no checkpoint continuation or formal release"
+  },
+  "base_policy": {
+    "gate": {
+      "schema": "graphmode-gate-refresh-20260915-v1",
+      "inner_steps": 4,
+      "guidance_proposal_sd": 2.2688962687759413,
+      "adaptation": "none"
+    },
+    "block": {
+      "schema": "graphmode-expert-blocks-20260915-v1",
+      "block_length": 42,
+      "offset_rule": "uniform",
+      "adaptation": "none",
+      "order": "forward"
+    },
+    "ess_scheme": "contrast",
+    "factor_cache": true
+  },
+  "original_thresholds": {
+    "pg_mean_z_max": 6,
+    "pg_variance_relative_error_max": 0.2,
+    "factor_residual_max": 1e-10,
+    "root_residual_max": 1e-06,
+    "root_rcond_min": 2.220446049250313e-16,
+    "rank_rhat_max": 1.01,
+    "folded_rhat_max": 1.01,
+    "bulk_ess_min": 400,
+    "tail_ess_min": 400,
+    "pairwise_psm_rms_max": 0.05
+  },
+  "retained_true_partition_counts": {
+    "reference": [
+      101,
+      300,
+      216,
+      300
+    ],
+    "joint": [
+      300,
+      300,
+      300,
+      300
+    ]
+  },
+  "retained_draws_per_chain": 300,
+  "final_exact_partition_counts": {
+    "reference": 4,
+    "joint": 4
+  },
+  "chain_starts_are_data_replicates": false,
+  "classification_figure_draw": {
+    "arm": "joint",
+    "chain": 1,
+    "iteration": 301,
+    "selection_rule": "first retained draw; labels aligned to truth for display only"
+  },
+  "plot_notes": {
+    "trace_rows": "occupancy/pair error use sweeps 1-600; response log likelihood uses retained 301-600 only; vertical scales matched across arms",
+    "profile_bands": "pointwise empirical 2.5%-97.5% latent-mean quantiles pooled over four joint chains; not predictive intervals or calibrated coverage",
+    "psm": "equally weighted mean of 4 x 300 retained co-membership indicators, sorted by immutable geometric IDs; no claim of all-mode exploration",
+    "residual_traces": "original six failing scalar summaries; saved diagnostics unchanged"
+  },
+  "executed_source_commit": "1520bd34de41414e2c3c2617a3802286372a0ea5",
+  "registration_signature": "1d2515ab6715ce8c1a09767cc3150c9720bc02bb29f347e4fe7ffe5685b72dba",
+  "blinded_input_sha256": "ce452d778c9aa47fe560117feedffd2731afd95e8851ba489dd6f62e3136580a",
+  "generation_sha256": "db92197ccee45005cdf48893481e0ec0a612cce74606454562d91bd2f1986d07",
+  "diagnostic_report_sha256": "71d13e713f9f8b29ece19374ad25f8eaad34d941679d64b12a82ac3ccef31ff4",
+  "chain_result_sha256": {
+    "reference 1": "bdfcef6dc12263a5fc046b7f7166d5ed36dc72cd189d2e4e4292a709aeadebda",
+    "reference 2": "378b57f8c1aa0473ee02c2cbd8d11def9a6b2638d49319dedfa7c9d901b00e5f",
+    "reference 3": "66f77792b6564171d10ceb15899f04b53d634a162536cee70e1b2df09a3d13ab",
+    "reference 4": "e8b3c259053737a24f53a155aa3537132b34a17b00d3a404ad185bc703888499",
+    "joint 1": "aa5c2f1de86bf667e36851de93b1216a35079c44402386eb236e2513a77fda32",
+    "joint 2": "b0d1725656d88c5514222af7f2adc3dce0f141422648445dc4271c411d3638b3",
+    "joint 3": "62f223c687e2235cb594669a9cdab7cbf9d993d954c7e8ccdf8de0dacf0ccfa0",
+    "joint 4": "18a93696a017d0e281b00f8c4ac15d355976508601d50f1247699773b7bf264f"
+  },
+  "both_arms_pass_full_statistical_rule": false,
+  "formal_benchmark_completed": false,
+  "new_simulation_for_publication": false
+}

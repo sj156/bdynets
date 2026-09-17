@@ -1,0 +1,116 @@
+{
+  "status": "completed",
+  "registration_signature": "1d2515ab6715ce8c1a09767cc3150c9720bc02bb29f347e4fe7ffe5685b72dba",
+  "completed": "2026-09-17T10:27:08+0800",
+  "arms": [
+    {
+      "arm": "reference",
+      "valid": false,
+      "scalars": {
+        "failed": 25,
+        "passed": 6,
+        "uninformative-constant-discrete": 6
+      },
+      "psm_failures": 3,
+      "mechanism": [
+        {
+          "chain": 1,
+          "attempts": 0,
+          "accepted": 0,
+          "accepted_splits": 0,
+          "accepted_merges": 0,
+          "self": 0,
+          "final_Kocc": 5,
+          "retained_node_moves": 26
+        },
+        {
+          "chain": 2,
+          "attempts": 0,
+          "accepted": 0,
+          "accepted_splits": 0,
+          "accepted_merges": 0,
+          "self": 0,
+          "final_Kocc": 5,
+          "retained_node_moves": 0
+        },
+        {
+          "chain": 3,
+          "attempts": 0,
+          "accepted": 0,
+          "accepted_splits": 0,
+          "accepted_merges": 0,
+          "self": 0,
+          "final_Kocc": 5,
+          "retained_node_moves": 10
+        },
+        {
+          "chain": 4,
+          "attempts": 0,
+          "accepted": 0,
+          "accepted_splits": 0,
+          "accepted_merges": 0,
+          "self": 0,
+          "final_Kocc": 5,
+          "retained_node_moves": 0
+        }
+      ],
+      "total_worker_seconds": 1868.9030000000002
+    },
+    {
+      "arm": "joint",
+      "valid": false,
+      "scalars": {
+        "failed": 6,
+        "passed": 20,
+        "uninformative-constant-discrete": 11
+      },
+      "psm_failures": 0,
+      "mechanism": [
+        {
+          "chain": 1,
+          "attempts": 60,
+          "accepted": 2,
+          "accepted_splits": 2,
+          "accepted_merges": 0,
+          "self": 0,
+          "final_Kocc": 5,
+          "retained_node_moves": 0
+        },
+        {
+          "chain": 2,
+          "attempts": 60,
+          "accepted": 1,
+          "accepted_splits": 1,
+          "accepted_merges": 0,
+          "self": 0,
+          "final_Kocc": 5,
+          "retained_node_moves": 0
+        },
+        {
+          "chain": 3,
+          "attempts": 60,
+          "accepted": 2,
+          "accepted_splits": 2,
+          "accepted_merges": 0,
+          "self": 0,
+          "final_Kocc": 5,
+          "retained_node_moves": 0
+        },
+        {
+          "chain": 4,
+          "attempts": 60,
+          "accepted": 1,
+          "accepted_splits": 1,
+          "accepted_merges": 0,
+          "self": 0,
+          "final_Kocc": 5,
+          "retained_node_moves": 0
+        }
+      ],
+      "total_worker_seconds": 2201.1780000000003
+    }
+  ],
+  "report_sha256": "71d13e713f9f8b29ece19374ad25f8eaad34d941679d64b12a82ac3ccef31ff4",
+  "convergence_certified": false,
+  "formal_authorized": false
+}

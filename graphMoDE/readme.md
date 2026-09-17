@@ -6,6 +6,25 @@ The maintained graphMoDE implementation is now a module of the
 This research folder preserves the earlier code snapshot, supporting data,
 provenance and debugging material.
 
+## September 17, 2026 — Figure 3(a): graphMoDE code and result figures
+
+The latest research snapshot is
+[`snapshots/2026-09-17-figure3a-joint-c5-v1/`](snapshots/2026-09-17-figure3a-joint-c5-v1/).
+It contains the executed c5 source and the newly added manuscript Figures 4–8,
+including classification maps, trace plots, five temporal profiles and PSMs.
+[Open the five-page figure gallery](snapshots/2026-09-17-figure3a-joint-c5-v1/graphMoDE-c5-figure-gallery.pdf).
+
+本版对应 **Figure 3(a) 双臂螺旋路网的动态 Poisson graphMoDE-W**：n=121、T=168，
+真实五类、拟合容量 K=10。联合方案四条链的全部保留分区均正确恢复五类；
+仍保留六项连续参数检查失败，属于单面板开发结果。
+
+Both compared arms fit graphMoDE-W; the joint arm adds a fixed-capacity joint
+partition/path/gate move. This is one development panel, not replicated formal
+evaluation or full convergence certification. See the
+[results and limitations](snapshots/2026-09-17-figure3a-joint-c5-v1/RESULTS.md).
+Older snapshots, earlier package interfaces and their descriptions below are
+preserved; this dated snapshot is the current code-and-figures handoff.
+
 ## September 15, 2026 frozen research code (latest handoff)
 
 The current Poisson/dynamic execution snapshot is
