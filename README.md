@@ -1,11 +1,17 @@
 # bdynets
 
-Bayesian dynamic network analysis in one modular R package.
+Bayesian dynamic network analysis with a maintained modular package and a
+standalone BDCN research package.
 
 The maintained package is in [`bdynets/`](bdynets). The graphMoDE method is an
 analysis module of that package, accessed through `gmde_*` functions after
 `library(bdynets)`. The separate [`graphMoDE/`](graphMoDE/readme.md) folder holds
 research material and the preserved development snapshot.
+
+The graph-shrinkage Bayesian dynamic count network implementation is an
+independently installable package in [`BDCN/`](BDCN/README.md). It includes the
+posterior sampler, diagnostics, joint DSS, sequential prediction, and a packaged
+sparse multi-hop simulation example.
 
 ## Install
 
@@ -30,11 +36,19 @@ The previous standalone `graphMoDE/packages/graphMoDE` installation path has
 been retired. Both the graphMoDE and historical modules now use the one
 `bdynets` installation.
 
+Install BDCN separately from the same repository root:
+
+```r
+pak::pak("./BDCN", dependencies = TRUE)
+library(BDCN)
+```
+
 ## Analysis modules
 
 | Module | Entry points | Current scope |
 | --- | --- | --- |
 | Graph-informed mixtures (graphMoDE) | `gmde_graph()`, `gmde_expert()`, `gmde_gate()`, `gmde_mcmc()`, `gmde_fit()`, `gmde_partition()` | Reference Gaussian/static implementation; adaptive graph guidance |
+| Bayesian dynamic count networks (BDCN) | `bdcn_fit()`, `bdcn_fit_general()`, `bdcn_run_bike_example()`, `bdcn_dss()`, `predict()` | Standalone edge-count package; graph shrinkage, DSS, multi-hop simulation and packaged Divvy workflow |
 | Historical dynamic count mixtures | `gibbs_sampler()`, `summary()`, `plot()` | Preserved experimental engine; not the revised graphMoDE Poisson sampler |
 | Clustering comparison | `adj_rand_index()`, `best_label_accuracy()` | Existing comparison utilities |
 
@@ -49,6 +63,7 @@ Poisson/static graphMoDE, dynamic experts and prediction are later milestones.
 | [`bdynets/tests/testthat/`](bdynets/tests/testthat) | Module-specific and integration tests |
 | [`bdynets/man/`](bdynets/man) | R help pages generated from source comments |
 | [`bdynets/README.md`](bdynets/README.md) | Working Gaussian/static example and model contract |
+| [`BDCN/`](BDCN/README.md) | Standalone BDCN package and sparse multi-hop simulation example |
 | [`graphMoDE/`](graphMoDE/readme.md) | Historical research snapshot, provenance, data attribution and debugging guides |
 | [`docs/legacy-litr/`](docs/legacy-litr) | Archived package-generation instructions, retained as text |
 | Root `.Rmd` files | Documentation, historical derivations and analysis examples |
@@ -65,6 +80,10 @@ These checks cover implementation and migration compatibility. Default chains
 are smoke tests; posterior calibration, mixing assessment and formal scientific
 experiments remain separate work. The old K=10 diagnostic issue documented in
 the graphMoDE research snapshot is still unresolved.
+
+The BDCN package separately passes its unit tests and `R CMD check --no-manual`
+with **Status: OK**. Its `smoke` and `quick` profiles are workflow checks rather
+than posterior-convergence or scientific-performance evidence.
 
 ## Source of truth and development
 
@@ -90,8 +109,9 @@ The root `*.Rmd` chapters are historical explanations and analysis examples.
 `index.Rmd` is now an ordinary R Markdown development guide. The original
 package-generation setup is preserved as inert text in `docs/legacy-litr/`.
 Do not regenerate the maintained package with litr. Existing paper-specific
-folders (`graphMoDE/`, `BDCN/`, `dynamicGraphMaternGP/`) remain research material;
-only code under `bdynets/R/` is included in the installed package.
+folders (`graphMoDE/`, `dynamicGraphMaternGP/`) remain research material.
+`BDCN/` is a separate installable package and is not included when installing
+`bdynets`.
 
 Optional historical features use BayesLogit and beepr when installed. The
 Gaussian graphMoDE module does not require them. `dependencies = TRUE` also

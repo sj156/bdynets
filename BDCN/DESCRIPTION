@@ -1,0 +1,29 @@
+Package: BDCN
+Title: Bayesian Dynamic Count Networks
+Version: 0.1.0
+Authors@R: c(
+    person("Ying", "Wu", role = "aut"),
+    person("Sheng", "Jiang", email = "jiangsheng@cuhk.edu.cn",
+           role = c("aut", "cre"))
+  )
+Description: Fits Bayesian dynamic count network models for edge-indexed
+    multivariate count time series. The implementation combines a finite-shape
+    negative-binomial approximation, Polya-Gamma augmentation, dynamic latent
+    factors, graph-informed global-local shrinkage, posterior diagnostics,
+    joint decoupled shrinkage and selection, and sequential one-step
+    prediction. A reproducible sparse multi-hop propagation simulation is
+    included, together with a frozen 24-edge Divvy bike example supporting
+    arbitrary known calendar covariates and an all-pairs candidate domain.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Depends: R (>= 4.1.0)
+Imports:
+    BayesLogit,
+    parallel,
+    stats,
+    utils
+Suggests:
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+Roxygen: list(markdown = TRUE)
+Config/roxygen2/version: 8.0.0

@@ -1,0 +1,25 @@
+Edge,origin_node_idx,destination_node_idx,training_trips,origin_display_name,origin_latitude,origin_longitude,destination_display_name,destination_latitude,destination_longitude
+e01,20,52,10208,Wells St & Huron St,41.8947953,-87.6343743,Canal St & Madison St,41.882409,-87.639767
+e02,52,20,9735,Canal St & Madison St,41.882409,-87.639767,Wells St & Huron St,41.8947953,-87.6343743
+e03,10,52,9567,State St & Randolph St,41.88462107257936,-87.62783423066139,Canal St & Madison St,41.882409,-87.639767
+e04,52,10,8888,Canal St & Madison St,41.882409,-87.639767,State St & Randolph St,41.88462107257936,-87.62783423066139
+e05,20,11,6588,Wells St & Huron St,41.8947953,-87.6343743,Michigan Ave & Oak St,41.90096039,-87.62377664
+e06,11,20,6505,Michigan Ave & Oak St,41.90096039,-87.62377664,Wells St & Huron St,41.8947953,-87.6343743
+e07,237,52,6380,Elizabeth St & Randolph St,41.884336,-87.658902,Canal St & Madison St,41.882409,-87.639767
+e08,52,237,5860,Canal St & Madison St,41.882409,-87.639767,Elizabeth St & Randolph St,41.884336,-87.658902
+e09,20,10,5020,Wells St & Huron St,41.8947953,-87.6343743,State St & Randolph St,41.88462107257936,-87.62783423066139
+e10,203,52,4765,Federal St & Polk St,41.87207763285,-87.6295437729,Canal St & Madison St,41.882409,-87.639767
+e11,52,203,4691,Canal St & Madison St,41.882409,-87.639767,Federal St & Polk St,41.87207763285,-87.6295437729
+e12,10,20,4471,State St & Randolph St,41.88462107257936,-87.62783423066139,Wells St & Huron St,41.8947953,-87.6343743
+e13,11,52,4237,Michigan Ave & Oak St,41.90096039,-87.62377664,Canal St & Madison St,41.882409,-87.639767
+e14,52,11,4235,Canal St & Madison St,41.882409,-87.639767,Michigan Ave & Oak St,41.90096039,-87.62377664
+e15,194,20,4160,Milwaukee Ave & Grand Ave,41.891578,-87.648384,Wells St & Huron St,41.8947953,-87.6343743
+e16,20,194,4137,Wells St & Huron St,41.8947953,-87.6343743,Milwaukee Ave & Grand Ave,41.891578,-87.648384
+e17,62,290,4031,University Ave & 57th St,41.791478,-87.599861,Dorchester Ave & 53rd St,41.79943,-87.59227
+e18,203,10,4015,Federal St & Polk St,41.87207763285,-87.6295437729,State St & Randolph St,41.88462107257936,-87.62783423066139
+e19,194,52,3994,Milwaukee Ave & Grand Ave,41.891578,-87.648384,Canal St & Madison St,41.882409,-87.639767
+e20,52,194,3966,Canal St & Madison St,41.882409,-87.639767,Milwaukee Ave & Grand Ave,41.891578,-87.648384
+e21,10,203,3930,State St & Randolph St,41.88462107257936,-87.62783423066139,Federal St & Polk St,41.87207763285,-87.6295437729
+e22,290,62,3822,Dorchester Ave & 53rd St,41.79943,-87.59227,University Ave & 57th St,41.791478,-87.599861
+e23,73,62,3462,Cottage Grove Ave & 63rd St,41.78053094070882,-87.6059702038765,University Ave & 57th St,41.791478,-87.599861
+e24,62,73,3366,University Ave & 57th St,41.791478,-87.599861,Cottage Grove Ave & 63rd St,41.78053094070882,-87.6059702038765
