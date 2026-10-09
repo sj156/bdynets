@@ -4,6 +4,19 @@
 #' settings. The `smoke` and `quick` profiles are workflow checks; they are not
 #' inferential recommendations.
 #'
+#' @details The default propagation coefficient is `B + L * beta_t`.
+#' `static_network = FALSE` removes `B`. `dynamic_loading_scale = 0.25`
+#' fixes the loading prior standard deviation relative to the static coefficient,
+#' sharing each pair's global-local scale. This is not an effect-size bound.
+#' `factor_evolution = "discount"` uses a deterministic Poisson Laplace reference
+#' covariance with initial mean zero and variance one. `discount_grid` contains
+#' distinct values strictly between zero and one; `discount_prior` gives positive
+#' prior weights (uniform when only the grid is supplied). The discount is constant
+#' within a draw and sampled on the grid. `discount_tau_scale = 1` is the global
+#' half-Cauchy scale for discount fits. `factor_evolution = "unit"` restores unit
+#' innovations; combine with `static_network = FALSE` for the legacy model.
+#' The implementation supports rank one and fixed graph affinities. Online
+#' assimilation uses one Polya-Gamma sweep per observation and is approximate.
 #' @param profile One of `"default"`, `"quick"`, or `"smoke"`.
 #' @param ... Named settings replacing profile defaults.
 #' @return A validated list of BDCN settings.
@@ -20,6 +33,13 @@ bdcn_control <- function(profile = c("default", "quick", "smoke"), ...) {
     expected_active_pairs = 48L,
     long_heterogeneity = c(0.70, 0.85, 1.00, 1.15, 1.30),
     factor_dim = 1L,
+    static_network = TRUE,
+    dynamic_loading_scale = 0.25,
+    factor_evolution = "discount",
+    discount_grid = c(0.90, 0.95, 0.98, 0.995),
+    discount_prior = rep(0.25, 4L),
+    discount_tau_scale = 1,
+    engine_version = "static-dynamic-0.2.0",
     self_effect = 0.10,
     local_network_effect = 0.08,
     x_scale = 0.50,
@@ -97,6 +117,8 @@ bdcn_control <- function(profile = c("default", "quick", "smoke"), ...) {
          call. = FALSE)
   }
   cfg[names(replacements)] <- replacements
+  if ("discount_grid" %in% names(replacements) && !"discount_prior" %in% names(replacements))
+    cfg$discount_prior <- rep(1 / length(cfg$discount_grid), length(cfg$discount_grid))
   .validate_bdcn_control(cfg)
 }
 
@@ -154,6 +176,22 @@ bdcn_control <- function(profile = c("default", "quick", "smoke"), ...) {
   if (!cfg$dss_weight %in% c("intensity", "equal")) {
     stop("dss_weight must be 'intensity' or 'equal'.", call. = FALSE)
   }
+  if (!is.logical(cfg$static_network) || length(cfg$static_network) != 1L || is.na(cfg$static_network))
+    stop("static_network must be TRUE or FALSE.", call. = FALSE)
+  if (length(cfg$factor_evolution) != 1L || !cfg$factor_evolution %in% c("unit", "discount"))
+    stop("factor_evolution must be 'unit' or 'discount'.", call. = FALSE)
+  if (length(cfg$dynamic_loading_scale) != 1L || !is.finite(cfg$dynamic_loading_scale) ||
+      cfg$dynamic_loading_scale <= 0 || cfg$dynamic_loading_scale > 1)
+    stop("dynamic_loading_scale must be in (0,1].", call. = FALSE)
+  if (length(cfg$discount_tau_scale) != 1L || !is.finite(cfg$discount_tau_scale) || cfg$discount_tau_scale <= 0)
+    stop("discount_tau_scale must be positive.", call. = FALSE)
+  if (!is.numeric(cfg$discount_grid) || !length(cfg$discount_grid) || any(!is.finite(cfg$discount_grid)) ||
+      any(cfg$discount_grid <= 0 | cfg$discount_grid >= 1) || anyDuplicated(cfg$discount_grid))
+    stop("discount_grid must contain distinct values strictly between zero and one.", call. = FALSE)
+  if (!is.numeric(cfg$discount_prior) || length(cfg$discount_prior) != length(cfg$discount_grid) ||
+      any(!is.finite(cfg$discount_prior)) || any(cfg$discount_prior <= 0))
+    stop("discount_prior must give positive mass to every grid point.", call. = FALSE)
+  cfg$discount_prior <- cfg$discount_prior / sum(cfg$discount_prior)
   class(cfg) <- c("bdcn_control", "list")
   cfg
 }

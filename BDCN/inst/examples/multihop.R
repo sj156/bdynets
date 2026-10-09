@@ -1,3 +1,5 @@
+# Fits use static-plus-dynamic propagation and learned constant discount by default.
+# See bdcn_control() for static_network/factor_evolution comparison switches.
 # Sparse heterogeneous two-hop propagation example.
 #
 # Use BDCN_EXAMPLE_PROFILE=quick or default only when the additional runtime is

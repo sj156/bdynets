@@ -1,6 +1,6 @@
 Package: BDCN
 Title: Bayesian Dynamic Count Networks
-Version: 0.1.0
+Version: 0.2.0
 Authors@R: c(
     person("Ying", "Wu", role = "aut"),
     person("Sheng", "Jiang", email = "jiangsheng@cuhk.edu.cn",
@@ -9,7 +9,8 @@ Authors@R: c(
 Description: Fits Bayesian dynamic count network models for edge-indexed
     multivariate count time series. The implementation combines a finite-shape
     negative-binomial approximation, Polya-Gamma augmentation, dynamic latent
-    factors, graph-informed global-local shrinkage, posterior diagnostics,
+    factors with learned constant discount, static propagation coefficients,
+    graph-informed global-local shrinkage, posterior diagnostics,
     joint decoupled shrinkage and selection, and sequential one-step
     prediction. A reproducible sparse multi-hop propagation simulation is
     included, together with a frozen 24-edge Divvy bike example supporting

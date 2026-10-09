@@ -257,3 +257,46 @@ They do not replace substantive convergence assessment.
 `section6_general_extension/run_general_bdcn_extension.R`. Future algorithmic
 changes should update the corresponding internal engine, public contracts,
 tests, and reproducibility notes together.
+
+
+## Static propagation plus discounted dynamics (0.2.0)
+
+The fitted coefficient is now `B_ab + L_ab * beta_t`. Each pair shares a
+horseshoe scale, with the dynamic loading prior standard deviation multiplied
+by the fixed `dynamic_loading_scale = 0.25`. The factor starts with mean zero
+and variance one. This anchors the decomposition through the prior; the static
+and dynamic components are not separately identified by the observation
+likelihood. Report total trajectories and predictions, with prior sensitivity.
+
+```r
+control <- bdcn_control("smoke", static_network = TRUE,
+                        factor_evolution = "discount",
+                        discount_grid = c(.90, .95, .98, .995))
+# Controlled dynamic-only, unit-innovation comparison:
+legacy <- bdcn_control("smoke", static_network = FALSE,
+                       factor_evolution = "unit")
+```
+
+Each retained draw has one constant `discount`, its `B` coefficients, and terminal
+`reference_mean` and `reference_variance`. The reference covariance is a
+Poisson Laplace recursion; the actual augmented FFBS covariance is different.
+Every proposal changing a loading or offset includes the evolution-density
+Metropolis correction; `covariance_acceptance` records acceptance by chain.
+Discount frequencies estimate grid probabilities only after MCMC convergence.
+Inspect occupancy across chains, endpoint mass, and total-trajectory diagnostics.
+The engine version in controls invalidates earlier workflow caches.
+
+Forecasts and DSS use both static and dynamic propagation. Rolling prediction
+retains the existing one-PG-sweep assimilation approximation and intensity
+clipping to `exp(c(-15,12))`; it is not exact sequential Bayesian filtering.
+DSS weights multiply both components and use the retained terminal reference
+state for projected forecasts, followed by reference updates with projected
+loadings/offsets. This is a post-fit projection, not a posterior refit.
+
+This package implements the rank-one, fixed-affinity, static-baseline/covariate
+special case. The manuscript also describes learned affinities and dynamic
+nonnetwork states, which are not implemented here. The bundled 24-edge,
+three-hour Divvy example remains its original frozen dataset. Existing
+simulation generators and published results have not been changed into
+experiments for the new model. Smoke checks are not convergence evidence or
+evidence of superiority to STGCN or Graph WaveNet.

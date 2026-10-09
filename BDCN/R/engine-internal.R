@@ -45,17 +45,14 @@ joint_horseshoe_scale_move <- function(v, u, prior_scale, proposal_sd, n_steps =
     q_tau <- 0.5 * log(v)
     q_local <- 0.5 * log(u)
     accepted <- 0L
-    lo_tau <- 0.5 * log(1e-12)
-    hi_tau <- 0.5 * log(1e+06)
-    lo_local <- 0.5 * log(1e-12)
-    hi_local <- 0.5 * log(1e+12)
     log_prior <- log_half_cauchy_logscale(q_tau, prior_scale) + sum(log_half_cauchy_logscale(q_local, 1))
     for (step in seq_len(n_steps)) {
         shift <- rnorm(1L, 0, proposal_sd)
         q_tau_new <- q_tau + shift
         q_local_new <- q_local - shift
-        if (q_tau_new < lo_tau || q_tau_new > hi_tau || any(q_local_new < lo_local | q_local_new > hi_local)) 
-            next
+        candidate_scales <- exp(2 * c(q_tau_new, q_local_new))
+        if (any(!is.finite(candidate_scales) | candidate_scales <= 0))
+            stop("Horseshoe scale move exceeds floating-point range.")
         log_prior_new <- log_half_cauchy_logscale(q_tau_new, prior_scale) + sum(log_half_cauchy_logscale(q_local_new, 1))
         if (log(runif(1L)) < log_prior_new - log_prior) {
             q_tau <- q_tau_new
@@ -374,7 +371,7 @@ network_contribution <- function(H, beta) {
     out
 }
 
-ffbs_factor_identified <- function(response, H, omega) {
+ffbs_factor_identified <- function(response, H, omega, W = NULL) {
     TT <- nrow(response)
     r <- dim(H)[3L]
     m <- a <- matrix(0, TT, r)
@@ -383,7 +380,7 @@ ffbs_factor_identified <- function(response, H, omega) {
     Cp <- diag(1, r)
     for (t in seq_len(TT)) {
         a[t, ] <- mp
-        Rt <- symmetrize(Cp + diag(1, r))
+        Rt <- symmetrize(Cp + diag(if (is.null(W)) 1 else W[t], r))
         Ht <- H[t, , , drop = TRUE]
         if (r == 1L) 
             Ht <- matrix(Ht, ncol = 1L)
@@ -407,6 +404,8 @@ ffbs_factor_identified <- function(response, H, omega) {
             V <- symmetrize(C[, , t] - B %*% Rn %*% t(B))
             draw[t, ] <- rmvn_cov(mu, V)
         }
+    J0 <- solve_spd(Rpred[, , 1L])
+    attr(draw, "initial") <- rmvn_cov(J0 %*% draw[1L, ], symmetrize(diag(1, r) - J0))
     draw
 }
 
@@ -417,10 +416,12 @@ baseline_matrix <- function(alpha, common_coef, self_coef, w_coef, X, WX, time_c
         outer(season_covariate, rep(1, ncol(X))) + sweep(X, 2L, self_coef, "*") + sweep(WX, 2L, w_coef, "*")
 }
 
-update_alpha_loadings <- function(ystar_minus_common, X, WX, beta, omega, pairs, prior_var, means, alpha_prior_sd, static_prior_sd) {
+update_alpha_loadings <- function(ystar_minus_common, X, WX, beta, omega, pairs, prior_var, means, alpha_prior_sd, static_prior_sd, cfg = CFG) {
     k <- ncol(ystar_minus_common)
     r <- ncol(beta)
     L <- matrix(0, nrow(pairs), r)
+    B <- numeric(nrow(pairs))
+    ds <- dynamic_scale(cfg)
     alpha <- self_coef <- w_coef <- numeric(k)
     ids <- split(seq_len(nrow(pairs)), pairs$target)
     for (a in seq_len(k)) {
@@ -429,8 +430,8 @@ update_alpha_loadings <- function(ystar_minus_common, X, WX, beta, omega, pairs,
         Z_network <- if (r == 1L) 
             X[, src, drop = FALSE] * as.numeric(beta[, 1L])
         else do.call(cbind, lapply(src, function(s) beta * X[, s]))
-        Z <- cbind(Intercept = 1, SelfLag = X[, a], PhysicalW = WX[, a], Z_network)
-        prior_precision <- c(1/alpha_prior_sd^2, rep(1/static_prior_sd^2, 2L), rep(1/prior_var[ii], each = r))
+        Z <- cbind(Intercept = 1, SelfLag = X[, a], PhysicalW = WX[, a], if (cfg$static_network) X[, src, drop = FALSE], Z_network)
+        prior_precision <- c(1/alpha_prior_sd^2, rep(1/static_prior_sd^2, 2L), if (cfg$static_network) 1/prior_var[ii], rep(1/(ds^2 * prior_var[ii]), each = r))
         prior_mean <- c(log(means[a]), 0, 0, rep(0, length(prior_precision) - 3L))
         precision <- crossprod(Z, Z * omega[, a]) + diag(prior_precision)
         rhs <- crossprod(Z, omega[, a] * ystar_minus_common[, a]) + prior_precision * prior_mean
@@ -438,9 +439,11 @@ update_alpha_loadings <- function(ystar_minus_common, X, WX, beta, omega, pairs,
         alpha[a] <- draw[1L]
         self_coef[a] <- draw[2L]
         w_coef[a] <- draw[3L]
-        L[ii, ] <- matrix(draw[-c(1L, 2L, 3L)], ncol = r, byrow = TRUE)
+        rest <- draw[-c(1L, 2L, 3L)]
+        if (cfg$static_network) { B[ii] <- rest[seq_along(ii)]; rest <- rest[-seq_along(ii)] }
+        L[ii, ] <- matrix(rest, ncol = r, byrow = TRUE)
     }
-    list(alpha = alpha, self_coef = self_coef, w_coef = w_coef, L = L)
+    list(alpha = alpha, self_coef = self_coef, w_coef = w_coef, B = B, L = L)
 }
 
 update_common_time_effects <- function(ystar, X, WX, net, omega, alpha, self_coef, w_coef, time_covariate, season_covariate, 
@@ -474,6 +477,8 @@ fit_chain <- function(Y, X, time_covariate, season_covariate, W, pairs, means, c
     trend_initial <- season_initial <- numeric(k)
     beta <- matrix(factor_reference_scale, TT, r)
     L <- matrix(0, P, r)
+    B <- numeric(P)
+    qdim <- r + as.integer(cfg$static_network)
     ids <- split(seq_len(P), pairs$target)
     for (a in seq_len(k)) {
         ii <- ids[[as.character(a)]]
@@ -487,14 +492,18 @@ fit_chain <- function(Y, X, time_covariate, season_covariate, W, pairs, means, c
         self_coef[a] <- co[4L]
         w_coef[a] <- co[5L]
         L[ii, 1L] <- co[-seq_len(5L)]/factor_reference_scale
+        if (cfg$static_network) { B[ii] <- L[ii, 1L] * factor_reference_scale; L[ii, ] <- 0 }
     }
     common_coef <- c(time_trend = median(trend_initial), seasonal_sin = median(season_initial))
+    if (cfg$static_network) beta[,] <- 0
+    attr(beta, "initial") <- rep(0, r)
     r_nb_t <- choose_r_nb_time(Y, cfg)
     RNB <- matrix(r_nb_t, TT, k)
     expected_active <- cfg$n_long_pairs
     expected_active <- clamp(expected_active, 1, P - 1)
     tau_initial <- max((expected_active/(P - expected_active))/(sqrt(TT) * factor_reference_scale), cfg$tau_initial_floor)
     tau_prior_scale <- max(cfg$tau_prior_min_scale, cfg$tau_prior_multiplier * tau_initial)
+    if (cfg$factor_evolution == "discount") tau_prior_scale <- cfg$discount_tau_scale
     u <- rep(1, P)
     v <- tau_initial^2
     nu <- rinvgamma(P, 1, 1 + 1/u)
@@ -507,43 +516,61 @@ fit_chain <- function(Y, X, time_covariate, season_covariate, W, pairs, means, c
     L_save <- array(NA_real_, c(S, P, r))
     amplitude <- theta_average <- matrix(NA_real_, S, P)
     tau_save <- network_rms <- numeric(S)
+    B_save <- matrix(NA_real_, S, P)
+    discount_save <- reference_mean <- reference_variance <- initial_beta <- numeric(S)
+    covariance_accepted <- covariance_proposed <- 0L
     si <- 0L
     scale_move_log_sd <- log(cfg$scale_move_initial_sd)
     scale_move_accepted <- scale_move_proposed <- 0L
     scale_move_post_accepted <- scale_move_post_proposed <- 0L
     for (iter in seq_len(cfg$n_iter)) {
         H <- build_network_array(X, pairs, L, r, k)
-        net <- network_contribution(H, beta)
+        net <- static_network(X, pairs, B) + network_contribution(H, beta)
         baseline <- baseline_matrix(alpha, common_coef, self_coef, w_coef, X, WX, time_covariate, season_covariate)
+        discount_update <- update_discount(Y, H, baseline + static_network(X, pairs, B), beta, cfg)
+        discount <- discount_update$discount; ref <- discount_update$ref
         eta <- baseline + net
         zeta <- as.numeric(eta) - log(as.numeric(RNB))
         omega <- matrix(BayesLogit::rpg(length(zeta), h = as.numeric(Y) + as.numeric(RNB), z = zeta), TT, k)
         omega <- pmax(omega, 1e-10)
         ystar <- log(RNB) + (Y - RNB)/(2 * omega)
-        prior_var <- pmax(v * u * pairs$affinity^2, 1e-12)
+        prior_var <- v * u * pairs$affinity^2
+        if (any(!is.finite(prior_var) | prior_var <= 0)) stop("Non-finite shrinkage variance.")
         for (state_step in seq_len(cfg$state_block_substeps)) {
             H <- build_network_array(X, pairs, L, r, k)
             baseline <- baseline_matrix(alpha, common_coef, self_coef, w_coef, X, WX, time_covariate, season_covariate)
-            beta <- ffbs_factor_identified(ystar - baseline, H, omega)
+            beta <- ffbs_factor_identified(ystar - baseline - static_network(X, pairs, B), H, omega, W = ref$W)
             common_offset <- common_coef["time_trend"] * outer(time_covariate, rep(1, k)) + common_coef["seasonal_sin"] * 
                 outer(season_covariate, rep(1, k))
             block <- update_alpha_loadings(ystar - common_offset, X, WX, beta, omega, pairs, prior_var, means, cfg$alpha_prior_sd, 
-                cfg$static_prior_sd)
-            alpha <- block$alpha
-            self_coef <- block$self_coef
-            w_coef <- block$w_coef
-            L <- block$L
+                cfg$static_prior_sd, cfg)
+            proposed_H <- build_network_array(X, pairs, block$L, r, k)
+            proposed_offset <- baseline_matrix(block$alpha, common_coef, block$self_coef, block$w_coef, X, WX, time_covariate, season_covariate) + static_network(X, pairs, block$B)
+            correction <- accept_reference(Y, proposed_H, proposed_offset, beta, discount, ref, cfg)
+            covariance_proposed <- covariance_proposed + 1L
+            if (correction$accepted) {
+                alpha <- block$alpha; self_coef <- block$self_coef; w_coef <- block$w_coef
+                L <- block$L; B <- block$B; ref <- correction$ref
+                covariance_accepted <- covariance_accepted + 1L
+            }
             H <- build_network_array(X, pairs, L, r, k)
-            net <- network_contribution(H, beta)
-            common_coef <- update_common_time_effects(ystar, X, WX, net, omega, alpha, self_coef, w_coef, time_covariate, 
+            net <- static_network(X, pairs, B) + network_contribution(H, beta)
+            proposed_common <- update_common_time_effects(ystar, X, WX, net, omega, alpha, self_coef, w_coef, time_covariate,
                 season_covariate, cfg$trend_prior_sd, cfg$seasonal_prior_sd)
+            proposed_offset <- baseline_matrix(alpha, proposed_common, self_coef, w_coef, X, WX, time_covariate, season_covariate) + static_network(X, pairs, B)
+            correction <- accept_reference(Y, H, proposed_offset, beta, discount, ref, cfg)
+            covariance_proposed <- covariance_proposed + 1L
+            if (correction$accepted) {
+                common_coef <- proposed_common; ref <- correction$ref
+                covariance_accepted <- covariance_accepted + 1L
+            }
         }
-        L2 <- rowSums(L^2)
+        L2 <- B^2 + rowSums(L^2)/dynamic_scale(cfg)^2
         for (shrinkage_step in seq_len(cfg$shrinkage_substeps)) {
-            u <- clamp(rinvgamma(P, (r + 1)/2, 1/nu + L2/(2 * v * pairs$affinity^2)), 1e-12, 1e+12)
-            nu <- clamp(rinvgamma(P, 1, 1 + 1/u), 1e-12, 1e+12)
-            v <- clamp(rinvgamma(1, (r * P + 1)/2, 1/xi + 0.5 * sum(L2/(u * pairs$affinity^2))), 1e-12, 1e+06)
-            xi <- clamp(rinvgamma(1, 1, 1/tau_prior_scale^2 + 1/v), 1e-12, 1e+12)
+            u <- rinvgamma(P, (qdim + 1)/2, 1/nu + L2/(2 * v * pairs$affinity^2))
+            nu <- rinvgamma(P, 1, 1 + 1/u)
+            v <- rinvgamma(1, (qdim * P + 1)/2, 1/xi + 0.5 * sum(L2/(u * pairs$affinity^2)))
+            xi <- rinvgamma(1, 1, 1/tau_prior_scale^2 + 1/v)
         }
         move <- joint_horseshoe_scale_move(v, u, tau_prior_scale, exp(scale_move_log_sd), cfg$scale_move_steps)
         v <- move$v
@@ -554,8 +581,8 @@ fit_chain <- function(Y, X, time_covariate, season_covariate, W, pairs, means, c
             scale_move_post_accepted <- scale_move_post_accepted + move$accepted
             scale_move_post_proposed <- scale_move_post_proposed + cfg$scale_move_steps
         }
-        nu <- clamp(rinvgamma(P, 1, 1 + 1/u), 1e-12, 1e+12)
-        xi <- clamp(rinvgamma(1, 1, 1/tau_prior_scale^2 + 1/v), 1e-12, 1e+12)
+        nu <- rinvgamma(P, 1, 1 + 1/u)
+        xi <- rinvgamma(1, 1, 1/tau_prior_scale^2 + 1/v)
         if (iter <= cfg$burn_mcmc) {
             gain <- cfg$scale_move_adapt_rate/sqrt(iter)
             iteration_acceptance <- move$accepted/cfg$scale_move_steps
@@ -571,17 +598,21 @@ fit_chain <- function(Y, X, time_covariate, season_covariate, W, pairs, means, c
             final_beta[si, ] <- beta[TT, ]
             beta_save[si, , ] <- beta
             L_save[si, , ] <- L
-            theta_path <- L %*% t(beta)
+            B_save[si, ] <- B
+            discount_save[si] <- discount
+            reference_mean[si] <- ref$m; reference_variance[si] <- ref$C
+            initial_beta[si] <- attr(beta, "initial")
+            theta_path <- B + L %*% t(beta)
             amplitude[si, ] <- sqrt(rowMeans(theta_path^2))
             theta_average[si, ] <- rowMeans(theta_path)
             tau_save[si] <- sqrt(v)
-            network_rms[si] <- sqrt(mean(network_contribution(build_network_array(X, pairs, L, r, k), beta)^2))
+            network_rms[si] <- sqrt(mean((static_network(X, pairs, B) + network_contribution(build_network_array(X, pairs, L, r, k), beta))^2))
         }
         if (iter == 1L || iter%%cfg$progress_every == 0L || iter == cfg$n_iter) {
             progress_with_eta(sprintf("%s; signal %.2f; chain %d", model_label, signal, chain_id), iter, cfg$n_iter, start)
         }
     }
-    list(chain_id = chain_id, alpha = alpha_save, trend_coef = common_save[, "time_trend", drop = FALSE], season_coef = common_save[, 
+    list(B = B_save, discount = discount_save, initial_beta = initial_beta, reference_mean = reference_mean, reference_variance = reference_variance, covariance_acceptance = covariance_accepted/covariance_proposed, chain_id = chain_id, alpha = alpha_save, trend_coef = common_save[, "time_trend", drop = FALSE], season_coef = common_save[, 
         "seasonal_sin", drop = FALSE], common_coef = common_save, self_coef = self_save, w_coef = w_save, final_beta = final_beta, 
         beta_path = beta_save, L = L_save, amplitude = amplitude, theta_average = theta_average, tau = tau_save, network_rms = network_rms, 
         r_nb_t = r_nb_t, tau_initial = tau_initial, tau_prior_scale = tau_prior_scale, scale_move_acceptance = scale_move_accepted/scale_move_proposed, 
@@ -612,7 +643,7 @@ fit_bdcn <- function(Y, X, time_covariate, season_covariate, W, pairs, means, si
     chains <- if (cfg$parallel_chains && cfg$n_chains > 1L && .Platform$OS.type != "windows") 
         parallel::mclapply(ids, worker, mc.cores = min(cfg$n_chains, cores))
     else lapply(ids, worker)
-    list(label = model_label, pairs = pairs, chains = chains, chain_id = unlist(lapply(chains, function(z) rep(z$chain_id, 
+    list(label = model_label, B = do.call(rbind, lapply(chains, `[[`, "B")), discount = unlist(lapply(chains, `[[`, "discount")), initial_beta = unlist(lapply(chains, `[[`, "initial_beta")), reference_mean = unlist(lapply(chains, `[[`, "reference_mean")), reference_variance = unlist(lapply(chains, `[[`, "reference_variance")), covariance_acceptance = vapply(chains, `[[`, numeric(1), "covariance_acceptance"), factor_evolution = cfg$factor_evolution, static_network = cfg$static_network, discount_occupancy = discount_occupancy(chains, cfg), pairs = pairs, chains = chains, chain_id = unlist(lapply(chains, function(z) rep(z$chain_id, 
         nrow(z$alpha)))), alpha = do.call(rbind, lapply(chains, `[[`, "alpha")), trend_coef = do.call(rbind, lapply(chains, 
         `[[`, "trend_coef")), season_coef = do.call(rbind, lapply(chains, `[[`, "season_coef")), common_coef = do.call(rbind, 
         lapply(chains, `[[`, "common_coef")), self_coef = do.call(rbind, lapply(chains, `[[`, "self_coef")), w_coef = do.call(rbind, 
@@ -676,10 +707,10 @@ acf_ess <- function(draw_matrix) {
 
 chain_matrix <- function(fit, type, index = 1L) {
     n <- min(vapply(fit$chains, function(z) {
-        if (type %in% c("tau", "network_rms")) length(z[[type]]) else nrow(z[[type]])
+        if (type %in% c("tau", "network_rms", "discount")) length(z[[type]]) else nrow(z[[type]])
     }, integer(1)))
     do.call(cbind, lapply(fit$chains, function(z) {
-        if (type %in% c("tau", "network_rms")) 
+        if (type %in% c("tau", "network_rms", "discount")) 
             z[[type]][seq_len(n)]
         else z[[type]][seq_len(n), index]
     }))
@@ -688,6 +719,7 @@ chain_matrix <- function(fit, type, index = 1L) {
 diagnose_fit <- function(fit, signal, model_id, long_pairs, cfg = CFG) {
     specs <- list(list(type = "tau", index = 1L, parameter = "tau", target = NA_integer_, source = NA_integer_, is_long = FALSE), 
         list(type = "network_rms", index = 1L, parameter = "network_RMS", target = NA_integer_, source = NA_integer_, is_long = FALSE))
+    if (!is.null(fit$discount) && all(is.finite(fit$discount))) specs[[length(specs) + 1L]] <- list(type = "discount", index = 1L, parameter = "discount", target = NA_integer_, source = NA_integer_, is_long = FALSE)
     for (j in seq_len(ncol(fit$alpha))) specs[[length(specs) + 1L]] <- list(type = "alpha", index = j, parameter = sprintf("alpha[e%d]", 
         j), target = j, source = NA_integer_, is_long = FALSE)
     for (j in seq_len(ncol(fit$trend_coef))) specs[[length(specs) + 1L]] <- list(type = "trend_coef", index = j, parameter = "time_trend[global]", 
@@ -701,6 +733,7 @@ diagnose_fit <- function(fit, signal, model_id, long_pairs, cfg = CFG) {
     for (j in seq_len(nrow(fit$pairs))) {
         a <- fit$pairs$target[j]
         b <- fit$pairs$source[j]
+        if (!is.null(fit$B)) specs[[length(specs) + 1L]] <- list(type = "B", index = j, parameter = sprintf("B[e%d -> e%d]", b, a), target = a, source = b, is_long = any(long_pairs$target == a & long_pairs$source == b))
         specs[[length(specs) + 1L]] <- list(type = "amplitude", index = j, parameter = sprintf("A[e%d -> e%d]", b, a), target = a, 
             source = b, is_long = any(long_pairs$target == a & long_pairs$source == b))
         specs[[length(specs) + 1L]] <- list(type = "theta_average", index = j, parameter = sprintf("mean_theta[e%d -> e%d]", 
@@ -755,22 +788,19 @@ validation_bdcn_deviance <- function(fit, X, WX, time_covariate, season_covariat
     for (s in draw_ids) {
         alpha <- fit$alpha[s, ]
         beta <- as.numeric(fit$final_beta[s, ])
+        ref <- stored_reference(fit, s)
         L <- matrix(fit$L[s, , , drop = TRUE], nrow = nrow(fit$pairs), ncol = r)
         for (h in seq_along(rows)) {
             tt <- rows[h]
-            prior_mean <- beta
-            beta_predictive <- prior_mean + rnorm(r)
             Ht <- factor_design_one_time(X[tt, ], fit$pairs, L, k, d)
             baseline <- alpha + fit$trend_coef[s, 1L] * time_covariate[tt] + fit$season_coef[s, 1L] * season_covariate[tt] + 
                 fit$self_coef[s, ] * X[tt, ] + fit$w_coef[s, ] * WX[tt, ]
-            eta <- baseline + as.numeric(Ht %*% beta_predictive)
+            baseline <- baseline + as.numeric(static_network(X[tt, , drop = FALSE], fit$pairs, if (is.null(fit$B)) NULL else fit$B[s, ], d))
+            step <- forecast_factor_step(beta, ref, stored_discount(fit, s), stored_evolution(fit), Ht, baseline,
+                Y[tt, ], r_nb_from_previous(Y[max(1L, tt - 1L), ], cfg))
+            eta <- step$eta
+            beta <- step$beta; ref <- step$ref
             mu_sum[h, ] <- mu_sum[h, ] + exp(clamp(eta, -15, 12))
-            r_now <- r_nb_from_previous(Y[max(1L, tt - 1L), ], cfg)
-            omega <- pmax(BayesLogit::rpg(k, h = Y[tt, ] + r_now, z = eta - log(r_now)), 1e-10)
-            ystar <- log(r_now) + (Y[tt, ] - r_now)/(2 * omega)
-            precision <- diag(1, r) + crossprod(Ht, Ht * omega)
-            rhs <- prior_mean + crossprod(Ht, omega * (ystar - baseline))
-            beta <- rmvn_precision(precision, rhs)
         }
     }
     mu <- mu_sum/length(draw_ids)
@@ -797,7 +827,7 @@ run_dss <- function(fit, X_train, time_covariate, season_covariate, X_all, time_
         for (s in draws) {
             beta <- matrix(fit$beta_path[s, , , drop = TRUE], nrow = nrow(X_train), ncol = ncol(fit$final_beta))
             Ls <- matrix(fit$L[s, ii, , drop = TRUE], nrow = m, ncol = ncol(fit$final_beta))
-            U <- (beta %*% t(Ls)) * X_train[, src, drop = FALSE]
+            U <- sweep(beta %*% t(Ls), 2L, if (is.null(fit$B)) rep(0, m) else fit$B[s, ii], "+") * X_train[, src, drop = FALSE]
             y <- rowSums(U)
             w <- if (cfg$dss_weight == "intensity") 
                 exp(clamp(fit$alpha[s, a] + fit$trend_coef[s, 1L] * time_covariate + fit$season_coef[s, 1L] * season_covariate + 
@@ -966,26 +996,22 @@ predict_bdcn <- function(fit, X, time_covariate, season_covariate, Y, rows, cond
         trend_coef <- fit$trend_coef[s, 1L]
         season_coef <- fit$season_coef[s, 1L]
         beta <- fit$final_beta[s, ]
+        ref <- stored_reference(fit, s)
         L <- fit$L[s, , , drop = TRUE]
         if (ncol(fit$final_beta) == 1L) 
             L <- matrix(L, ncol = 1L)
         for (tt in sequential_rows) {
-            prior_mean <- beta
-            beta_predictive <- prior_mean + rnorm(length(beta))
             Ht <- factor_design_one_time(X[tt, ], fit$pairs, L, k, d)
             baseline <- alpha + trend_coef * time_covariate[tt] + season_coef * season_covariate[tt] + fit$self_coef[s, ] * 
                 X[tt, ] + fit$w_coef[s, ] * WX[tt, ]
-            eta <- baseline + as.numeric(Ht %*% beta_predictive)
+            baseline <- baseline + as.numeric(static_network(X[tt, , drop = FALSE], fit$pairs, if (is.null(fit$B)) NULL else fit$B[s, ], d))
+            step <- forecast_factor_step(beta, ref, stored_discount(fit, s), stored_evolution(fit), Ht, baseline,
+                Y[tt, ], r_nb_from_previous(Y[max(1L, tt - 1L), ], cfg))
+            eta <- step$eta
+            beta <- step$beta; ref <- step$ref
             h <- match(tt, rows)
             if (!is.na(h)) 
                 lam[h, , j] <- exp(clamp(eta, -15, 12))
-            r_now <- r_nb_from_previous(Y[max(1L, tt - 1L), ], cfg)
-            zeta <- eta - log(r_now)
-            omega <- pmax(BayesLogit::rpg(k, h = Y[tt, ] + r_now, z = zeta), 1e-10)
-            ystar <- log(r_now) + (Y[tt, ] - r_now)/(2 * omega)
-            precision <- diag(1, length(beta)) + crossprod(Ht, Ht * omega)
-            rhs <- prior_mean + crossprod(Ht, omega * (ystar - baseline))
-            beta <- rmvn_precision(precision, rhs)
         }
         if (j == 1L || j%%report_step == 0L || j == length(ids)) 
             progress_with_eta(sprintf("predict %s; signal %.2f", label, signal), j, length(ids), start)

@@ -34,6 +34,8 @@ update_general_block <- function(ystar, X, Q, beta, omega, pairs, prior_var, mea
     alpha <- numeric(k)
     gamma <- matrix(0, k, pQ)
     L <- matrix(0, nrow(pairs), r)
+    B <- numeric(nrow(pairs))
+    ds <- dynamic_scale(cfg)
     ids <- split(seq_len(nrow(pairs)), pairs$target)
     for (a in seq_len(k)) {
         ii <- ids[[as.character(a)]]
@@ -41,8 +43,8 @@ update_general_block <- function(ystar, X, Q, beta, omega, pairs, prior_var, mea
         Znet <- if (r == 1L) 
             X[, src, drop = FALSE] * beta[, 1L]
         else do.call(cbind, lapply(src, function(s) beta * X[, s]))
-        Z <- cbind(Intercept = 1, Q, Znet)
-        prec <- c(1/cfg$alpha_prior_sd^2, rep(1/cfg$season_prior_sd^2, pQ), rep(1/prior_var[ii], each = r))
+        Z <- cbind(Intercept = 1, Q, if (cfg$static_network) X[, src, drop = FALSE], Znet)
+        prec <- c(1/cfg$alpha_prior_sd^2, rep(1/cfg$season_prior_sd^2, pQ), if (cfg$static_network) 1/prior_var[ii], rep(1/(ds^2 * prior_var[ii]), each = r))
         pm <- c(log(means[a]), rep(0, length(prec) - 1L))
         P <- crossprod(Z, Z * omega[, a]) + diag(prec)
         rhs <- crossprod(Z, omega[, a] * ystar[, a]) + prec * pm
@@ -50,9 +52,11 @@ update_general_block <- function(ystar, X, Q, beta, omega, pairs, prior_var, mea
         alpha[a] <- draw[1L]
         if (pQ) 
             gamma[a, ] <- draw[1L + seq_len(pQ)]
-        L[ii, ] <- matrix(draw[-seq_len(1L + pQ)], ncol = r, byrow = TRUE)
+        rest <- draw[-seq_len(1L + pQ)]
+        if (cfg$static_network) { B[ii] <- rest[seq_along(ii)]; rest <- rest[-seq_along(ii)] }
+        L[ii, ] <- matrix(rest, ncol = r, byrow = TRUE)
     }
-    list(alpha = alpha, gamma = gamma, L = L)
+    list(alpha = alpha, gamma = gamma, B = B, L = L)
 }
 
 fit_general_chain <- function(Y, X, Q, pairs, means, chain_id, signal, cfg = CFG) {
@@ -68,6 +72,8 @@ fit_general_chain <- function(Y, X, Q, pairs, means, chain_id, signal, cfg = CFG
     gamma <- matrix(0, k, pQ)
     beta <- matrix(reference, TT, r)
     L <- matrix(0, P, r)
+    B <- numeric(P)
+    qdim <- r + as.integer(cfg$static_network)
     ids <- split(seq_len(P), pairs$target)
     for (a in seq_len(k)) {
         ii <- ids[[as.character(a)]]
@@ -79,12 +85,16 @@ fit_general_chain <- function(Y, X, Q, pairs, means, chain_id, signal, cfg = CFG
         if (pQ) 
             gamma[a, ] <- co[1L + seq_len(pQ)]
         L[ii, 1L] <- co[-seq_len(1L + pQ)]/reference
+        if (cfg$static_network) { B[ii] <- L[ii, 1L] * reference; L[ii, ] <- 0 }
     }
+    if (cfg$static_network) beta[,] <- 0
+    attr(beta, "initial") <- rep(0, r)
     r_nb_t <- choose_r_nb_time(Y, cfg)
     RNB <- matrix(r_nb_t, TT, k)
     active0 <- clamp(cfg$expected_active_pairs, 1, P - 1)
     tau_initial <- max((active0/(P - active0))/(sqrt(TT) * reference), cfg$tau_initial_floor)
     tau_prior_scale <- max(cfg$tau_prior_min_scale, cfg$tau_prior_multiplier * tau_initial)
+    if (cfg$factor_evolution == "discount") tau_prior_scale <- cfg$discount_tau_scale
     u <- rep(1, P)
     v <- tau_initial^2
     nu <- rinvgamma(P, 1, 1 + 1/u)
@@ -97,40 +107,53 @@ fit_general_chain <- function(Y, X, Q, pairs, means, chain_id, signal, cfg = CFG
     L_save <- array(NA_real_, c(S, P, r))
     amplitude <- theta_average <- matrix(NA_real_, S, P)
     tau_save <- network_rms <- numeric(S)
+    B_save <- matrix(NA_real_, S, P)
+    discount_save <- reference_mean <- reference_variance <- initial_beta <- numeric(S)
+    covariance_accepted <- covariance_proposed <- 0L
     si <- 0L
     move_sd <- log(cfg$scale_move_initial_sd)
     accepted <- proposed <- 0L
     for (iter in seq_len(cfg$n_iter)) {
         H <- build_network_array(X, pairs, L, r, k)
-        base <- baseline_general(alpha, gamma, Q)
+        base <- baseline_general(alpha, gamma, Q) + static_network(X, pairs, B)
+        discount_update <- update_discount(Y, H, base, beta, cfg)
+        discount <- discount_update$discount; ref <- discount_update$ref
         eta <- base + network_contribution(H, beta)
         zeta <- as.numeric(eta) - log(as.numeric(RNB))
         omega <- matrix(BayesLogit::rpg(length(zeta), h = as.numeric(Y) + as.numeric(RNB), z = zeta), TT, k)
         omega <- pmax(omega, 1e-10)
         ystar <- log(RNB) + (Y - RNB)/(2 * omega)
-        prior_var <- pmax(v * u * pairs$affinity^2, 1e-12)
+        prior_var <- v * u * pairs$affinity^2
+        if (any(!is.finite(prior_var) | prior_var <= 0)) stop("Non-finite shrinkage variance.")
         for (ss in seq_len(cfg$state_block_substeps)) {
             H <- build_network_array(X, pairs, L, r, k)
-            beta <- ffbs_factor_identified(ystar - baseline_general(alpha, gamma, Q), H, omega)
+            offset <- baseline_general(alpha, gamma, Q) + static_network(X, pairs, B)
+            beta <- ffbs_factor_identified(ystar - offset, H, omega, W = ref$W)
             block <- update_general_block(ystar, X, Q, beta, omega, pairs, prior_var, means, cfg)
-            alpha <- block$alpha
-            gamma <- block$gamma
-            L <- block$L
+            proposed_H <- build_network_array(X, pairs, block$L, r, k)
+            proposed_offset <- baseline_general(block$alpha, block$gamma, Q) + static_network(X, pairs, block$B)
+            correction <- accept_reference(Y, proposed_H, proposed_offset, beta, discount, ref, cfg)
+            covariance_proposed <- covariance_proposed + 1L
+            if (correction$accepted) {
+                alpha <- block$alpha; gamma <- block$gamma; L <- block$L; B <- block$B
+                ref <- correction$ref
+                covariance_accepted <- covariance_accepted + 1L
+            }
         }
-        L2 <- rowSums(L^2)
+        L2 <- B^2 + rowSums(L^2)/dynamic_scale(cfg)^2
         for (ss in seq_len(cfg$shrinkage_substeps)) {
-            u <- clamp(rinvgamma(P, (r + 1)/2, 1/nu + L2/(2 * v * pairs$affinity^2)), 1e-12, 1e+12)
-            nu <- clamp(rinvgamma(P, 1, 1 + 1/u), 1e-12, 1e+12)
-            v <- clamp(rinvgamma(1, (r * P + 1)/2, 1/xi + 0.5 * sum(L2/(u * pairs$affinity^2))), 1e-12, 1e+06)
-            xi <- clamp(rinvgamma(1, 1, 1/tau_prior_scale^2 + 1/v), 1e-12, 1e+12)
+            u <- rinvgamma(P, (qdim + 1)/2, 1/nu + L2/(2 * v * pairs$affinity^2))
+            nu <- rinvgamma(P, 1, 1 + 1/u)
+            v <- rinvgamma(1, (qdim * P + 1)/2, 1/xi + 0.5 * sum(L2/(u * pairs$affinity^2)))
+            xi <- rinvgamma(1, 1, 1/tau_prior_scale^2 + 1/v)
         }
         move <- joint_horseshoe_scale_move(v, u, tau_prior_scale, exp(move_sd), cfg$scale_move_steps)
         v <- move$v
         u <- move$u
         accepted <- accepted + move$accepted
         proposed <- proposed + cfg$scale_move_steps
-        nu <- clamp(rinvgamma(P, 1, 1 + 1/u), 1e-12, 1e+12)
-        xi <- clamp(rinvgamma(1, 1, 1/tau_prior_scale^2 + 1/v), 1e-12, 1e+12)
+        nu <- rinvgamma(P, 1, 1 + 1/u)
+        xi <- rinvgamma(1, 1, 1/tau_prior_scale^2 + 1/v)
         if (iter <= cfg$burn_mcmc) {
             gain <- cfg$scale_move_adapt_rate/sqrt(iter)
             move_sd <- clamp(move_sd + gain * (move$accepted/cfg$scale_move_steps - cfg$scale_move_target_acceptance), log(cfg$scale_move_min_sd), 
@@ -144,16 +167,20 @@ fit_general_chain <- function(Y, X, Q, pairs, means, chain_id, signal, cfg = CFG
             beta_save[si, , ] <- beta
             final_beta[si, ] <- beta[TT, ]
             L_save[si, , ] <- L
-            th <- L %*% t(beta)
+            B_save[si, ] <- B
+            discount_save[si] <- discount
+            reference_mean[si] <- ref$m; reference_variance[si] <- ref$C
+            initial_beta[si] <- attr(beta, "initial")
+            th <- B + L %*% t(beta)
             amplitude[si, ] <- sqrt(rowMeans(th^2))
             theta_average[si, ] <- rowMeans(th)
             tau_save[si] <- sqrt(v)
-            network_rms[si] <- sqrt(mean(network_contribution(build_network_array(X, pairs, L, r, k), beta)^2))
+            network_rms[si] <- sqrt(mean((static_network(X, pairs, B) + network_contribution(build_network_array(X, pairs, L, r, k), beta))^2))
         }
         if (iter == 1L || iter%%cfg$progress_every == 0L || iter == cfg$n_iter) 
             progress_with_eta(sprintf("general BDCN; q=%.2f; chain %d", signal, chain_id), iter, cfg$n_iter, start)
     }
-    list(chain_id = chain_id, alpha = alpha_save, gamma = gamma_save, beta_path = beta_save, final_beta = final_beta, L = L_save, 
+    list(B = B_save, discount = discount_save, initial_beta = initial_beta, reference_mean = reference_mean, reference_variance = reference_variance, covariance_acceptance = covariance_accepted/covariance_proposed, chain_id = chain_id, alpha = alpha_save, gamma = gamma_save, beta_path = beta_save, final_beta = final_beta, L = L_save, 
         amplitude = amplitude, theta_average = theta_average, tau = tau_save, network_rms = network_rms, r_nb_t = r_nb_t, 
         tau_initial = tau_initial, tau_prior_scale = tau_prior_scale, scale_move_acceptance = accepted/proposed, elapsed = as.numeric(difftime(Sys.time(), 
             start, units = "secs")))
@@ -167,7 +194,7 @@ fit_general_bdcn <- function(Y, X, Q, pairs, means, signal, cfg = CFG) {
     chains <- if (cfg$parallel_chains && .Platform$OS.type != "windows") 
         parallel::mclapply(ids, worker, mc.cores = min(length(ids), cores))
     else lapply(ids, worker)
-    list(label = "BDCN continuous, all ordered pairs", pairs = pairs, chains = chains, chain_id = unlist(lapply(chains, function(z) rep(z$chain_id, 
+    list(label = "BDCN continuous, all ordered pairs", B = do.call(rbind, lapply(chains, `[[`, "B")), discount = unlist(lapply(chains, `[[`, "discount")), initial_beta = unlist(lapply(chains, `[[`, "initial_beta")), reference_mean = unlist(lapply(chains, `[[`, "reference_mean")), reference_variance = unlist(lapply(chains, `[[`, "reference_variance")), covariance_acceptance = vapply(chains, `[[`, numeric(1), "covariance_acceptance"), factor_evolution = cfg$factor_evolution, static_network = cfg$static_network, discount_occupancy = discount_occupancy(chains, cfg), pairs = pairs, chains = chains, chain_id = unlist(lapply(chains, function(z) rep(z$chain_id, 
         nrow(z$alpha)))), alpha = do.call(rbind, lapply(chains, `[[`, "alpha")), gamma = bind_array3(lapply(chains, `[[`, 
         "gamma")), final_beta = do.call(rbind, lapply(chains, `[[`, "final_beta")), beta_path = bind_array3(lapply(chains, 
         `[[`, "beta_path")), L = bind_array3(lapply(chains, `[[`, "L")), amplitude = do.call(rbind, lapply(chains, `[[`, 
@@ -192,25 +219,23 @@ predict_general_bdcn <- function(fit, X, Q, Y, rows, conditioning_rows = integer
         if (ncol(Q) == 1L) 
             gamma <- matrix(gamma, ncol = 1L)
         beta <- fit$final_beta[s, ]
+        ref <- stored_reference(fit, s)
         L <- fit$L[s, , , drop = TRUE]
         if (r == 1L) 
             L <- matrix(L, ncol = 1L)
         for (tt in sequential) {
-            prior <- beta
-            bp <- prior + rnorm(r)
             Ht <- factor_design_one_time(X[tt, ], fit$pairs, L, k, d)
             base <- alpha + if (ncol(Q)) 
                 as.numeric(gamma %*% Q[tt, ])
             else 0
-            eta <- base + as.numeric(Ht %*% bp)
+            base <- base + as.numeric(static_network(X[tt, , drop = FALSE], fit$pairs, if (is.null(fit$B)) NULL else fit$B[s, ], d))
+            step <- forecast_factor_step(beta, ref, stored_discount(fit, s), stored_evolution(fit), Ht, base,
+                Y[tt, ], r_nb_from_previous(Y[max(1L, tt - 1L), ], cfg))
+            eta <- step$eta
+            beta <- step$beta; ref <- step$ref
             h <- match(tt, rows)
             if (!is.na(h)) 
                 lam[h, , jj] <- exp(clamp(eta, -15, 12))
-            rn <- r_nb_from_previous(Y[max(1L, tt - 1L), ], cfg)
-            om <- pmax(BayesLogit::rpg(k, h = Y[tt, ] + rn, z = eta - log(rn)), 1e-10)
-            ys <- log(rn) + (Y[tt, ] - rn)/(2 * om)
-            precision <- diag(1, r) + crossprod(Ht, Ht * om)
-            beta <- rmvn_precision(precision, prior + crossprod(Ht, om * (ys - base)))
         }
     }
     set.seed(method_seed("general predictive counts", paste(label, signal), cfg))
@@ -228,23 +253,22 @@ validation_general_deviance <- function(fit, X, Q, Y, rows, d, draw_ids, seed, c
         if (ncol(Q) == 1L) 
             gamma <- matrix(gamma, ncol = 1L)
         beta <- fit$final_beta[s, ]
+        ref <- stored_reference(fit, s)
         L <- fit$L[s, , , drop = TRUE]
         if (r == 1L) 
             L <- matrix(L, ncol = 1L)
         for (h in seq_along(rows)) {
             tt <- rows[h]
-            prior <- beta
-            bp <- prior + rnorm(r)
             Ht <- factor_design_one_time(X[tt, ], fit$pairs, L, k, d)
             base <- alpha + if (ncol(Q)) 
                 as.numeric(gamma %*% Q[tt, ])
             else 0
-            eta <- base + as.numeric(Ht %*% bp)
+            base <- base + as.numeric(static_network(X[tt, , drop = FALSE], fit$pairs, if (is.null(fit$B)) NULL else fit$B[s, ], d))
+            step <- forecast_factor_step(beta, ref, stored_discount(fit, s), stored_evolution(fit), Ht, base,
+                Y[tt, ], r_nb_from_previous(Y[max(1L, tt - 1L), ], cfg))
+            eta <- step$eta
+            beta <- step$beta; ref <- step$ref
             mu[h, ] <- mu[h, ] + exp(clamp(eta, -15, 12))
-            rn <- r_nb_from_previous(Y[max(1L, tt - 1L), ], cfg)
-            om <- pmax(BayesLogit::rpg(k, h = Y[tt, ] + rn, z = eta - log(rn)), 1e-10)
-            ys <- log(rn) + (Y[tt, ] - rn)/(2 * om)
-            beta <- rmvn_precision(diag(1, r) + crossprod(Ht, Ht * om), prior + crossprod(Ht, om * (ys - base)))
         }
     }
     mean(poisson_deviance(Y[rows, , drop = FALSE], mu/length(draw_ids)))
@@ -265,7 +289,7 @@ run_general_dss <- function(fit, Xtrain, Qtrain, Xall, Qall, Y, validation, sign
         for (s in draws) {
             beta <- matrix(fit$beta_path[s, , , drop = TRUE], nrow(Xtrain), ncol(fit$final_beta))
             Ls <- matrix(fit$L[s, ii, , drop = TRUE], m, ncol(fit$final_beta))
-            U <- (beta %*% t(Ls)) * Xtrain[, src, drop = FALSE]
+            U <- sweep(beta %*% t(Ls), 2L, if (is.null(fit$B)) rep(0, m) else fit$B[s, ii], "+") * Xtrain[, src, drop = FALSE]
             ynet <- rowSums(U)
             gamma <- fit$gamma[s, a, , drop = TRUE]
             base <- fit$alpha[s, a] + if (ncol(Qtrain)) 
@@ -339,6 +363,8 @@ basic_convergence <- function(fit, signal, cfg = CFG) {
         types[name] <<- type
     }
     add_matrix <- function(x, type, labels) for (j in seq_len(ncol(x))) add_vector(labels[j], type, x[, j])
+    if (!is.null(fit$B)) add_matrix(fit$B, "static_propagation", paste0("B[", fit$pairs$pair, "]"))
+    if (!is.null(fit$discount) && all(is.finite(fit$discount))) add_vector("discount", "discount", fit$discount)
     add_vector("tau", "tau", fit$tau)
     add_vector("network_RMS", "network_RMS", fit$network_rms)
     add_matrix(fit$alpha, "alpha", paste0("alpha[e", seq_len(ncol(fit$alpha)), "]"))

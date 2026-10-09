@@ -1,3 +1,5 @@
+# Fits use static-plus-dynamic propagation and learned constant discount by default.
+# See bdcn_control() for static_network/factor_evolution comparison switches.
 # Packaged Divvy bike example.
 #
 # BDCN_BIKE_PROFILE may be smoke, analysis, or long. The default smoke profile
