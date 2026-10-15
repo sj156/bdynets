@@ -1,0 +1,65 @@
+---
+title: "LargeST: reproduce the two regional flow maps"
+output: html_document
+params:
+  snapshot: "../../data/LargeST Data/processed/largest-visualization.json.gz"
+---
+
+This tutorial reproduces the Los Angeles and Bay Area **data layers** in the
+repository's LargeST visualization for July 31, 2019. The standalone dataset, extracted losslessly from the HTML, contains actual
+saved sensor and display-link series for 288 five-minute frames. No original
+HDF5 download, synthetic replacement, fitting or browser execution is needed.
+
+## Read the standalone visualization dataset
+
+Install `bdynets` and `jsonlite`; rendering also requires `rmarkdown` and `knitr`.
+The reader loads standalone JSON and records its MD5 and original HTML SHA-256.
+
+```{r setup, message=FALSE}
+library(bdynets)
+snapshot <- read_traffic_data(params$snapshot)
+snapshot$provenance
+lapply(snapshot$data$regions, function(region) region$summary)
+```
+
+Sensor observations and display links are separate. The original visualization
+constructed links between selected sensors and assigned endpoint-averaged flow
+values. The importer retains those saved links and rounded values; it does not
+promote them to physical connectivity or model adjacency. Null values remain
+missing and use the original gray color.
+
+## Reproduce the original default time
+
+The original viewer opens at 16:10, JavaScript index 194. The corresponding
+one-based R index is 195. Both regions use their own saved quantile thresholds,
+so identical colors do **not** imply identical flow across regions.
+
+```{r reproduce, fig.width=9, fig.height=7}
+frames <- traffic_figures(params$snapshot, "largest", time_index=195L)
+```
+
+The maps retain the source seven-color scale, geographic link geometry and
+opposite-direction offsets at each region's source zoom. Flow values are those
+saved in the viewer. Geometry is projected to Web Mercator. Remote basemap tiles,
+place labels and browser controls are omitted; static line widths are adapted
+to the graphics device. These are data-layer reproductions, not pixel-identical
+screenshots or a reconstruction of the full road network.
+
+## Choose a region, time and export destination
+
+```{r options, eval=FALSE}
+frame <- traffic_frame(snapshot, time_index=97L, region="Bay Area")
+plot(frame) # 08:00
+traffic_figures(params$snapshot, "largest", time_index=97L,
+                output_dir="/path/to/new/largest-0800")
+```
+
+The export writes both regional maps as PDF/PNG, source identity, frame selection
+and session information. It refuses existing named outputs. For statistical
+analysis, use the sensor-level series and documented graph construction rather
+than treating display-link averages as independent count observations.
+
+```{r thresholds}
+lapply(snapshot$data$regions, function(region) unlist(region$breaks))
+sessionInfo()
+```

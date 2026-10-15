@@ -133,3 +133,15 @@ are unchanged. `beijing_panel()` and `largest_panel()` feed the same
 `network_view_data()` payload and `plot()` method. See the
 [collaborator guide](../examples/shared-data/README.md) for migration examples
 and the synthetic, no-fitting demonstration.
+
+## Reproduce existing traffic visualizations
+
+Standalone extracted real datasets live in `data/Beijing Data/processed/` and
+`data/LargeST Data/processed/` at repository level. `read_traffic_data()` loads
+them; `traffic_frame()` prepares a selected time and `plot()` renders its data
+layer. `traffic_figures()` is the common batch/report workflow. No model is fitted.
+See the [Beijing tutorial](../examples/beijing/README.md) and
+[LargeST tutorial](../examples/largest/README.md). Source geometry, thresholds
+and saved values are retained; remote basemap tiles and controls are excluded.
+`extract_traffic_data()` supports one-time extraction of compatible HTML sources;
+ordinary tutorials read standalone data files directly.

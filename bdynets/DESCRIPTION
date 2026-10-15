@@ -17,6 +17,7 @@ Imports:
     stats,
     utils
 Suggests:
+    jsonlite,
     posterior,
     BayesLogit,
     beepr,
