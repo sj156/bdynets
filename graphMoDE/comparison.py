@@ -222,7 +222,9 @@ def supervise(out):
         active[p.pid]=dict(process=p,stream=stream,job={'id':'summary'},path=path,started=time.monotonic())
         while p.poll() is None:resources(reg,out,started);time.sleep(5)
         stream.close();active.clear()
-        publish(out/'completion.json',dict(scientific_jobs_terminated=True,failed=[k for k,v in done.items() if v],summary_exit_code=p.returncode,
+        # Reporting only: retain precision failures, timings and unavailable rows.
+        report=subprocess.run([sys.executable,str(ROOT/'report.py'),'--supplement',str(out),'--output',str(out/'reporting')],env=ENV)
+        publish(out/'completion.json',dict(scientific_jobs_terminated=True,failed=[k for k,v in done.items() if v],summary_exit_code=p.returncode,report_exit_code=report.returncode,
                 target=4000,automatic8000=False,seconds=time.monotonic()-started,finished=time.time()))
     except BaseException as error:
         pause(active,out,error);raise

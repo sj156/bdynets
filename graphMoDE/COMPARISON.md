@@ -60,3 +60,29 @@ For a custom comparison fit use `gm$graphmode_extra_fit(x, coordinates, "EucMoDE
 ## Test status
 
 Python syntax and the two focused plan/concurrency tests passed. The R transition test passed for EucMoDE, MoDE and PottsMoDE, including original Potts selection/failure cases. The pinned STGNN import/shape preflight passed without model initialization or training. The tests used one naturally released slot; running scientific chains were not paused. At actual launch the queued controller repeats its bounded runtime preflight before registration. The previously published core small example and core tests passed as recorded in TESTING.md. No new eight-method scientific result or convergence claim is made by this code handoff.
+
+
+Reporting contract (2026-10-15): a failed MCMC precision gate never suppresses ARI,
+Khat, mean occupied groups, boundary/PSM or predictive RMSE from completed fits.
+The unified `all-methods.csv` always has 16 data-method rows, with
+`diagnostic_status`, `result_status` and `provisional` beside those metrics.
+All results from this two-dataset exploratory run remain provisional; a failed
+precision gate is explicitly `provisional_precision_failed`. PNAR has no partition,
+so its ARI/group-count cells are NA rather than invented clusters. Missing execution
+results remain rows with `metrics_unavailable`.
+
+`comparison.py` writes this table in `reporting/`; `all_methods.py` writes the combined
+table at its output root. To annotate an already finished split continuation without
+sampling or recomputing diagnostics, run `python3 report.py --supplement /path/to/supplement
+--output /path/to/new-report` (on one shell line). For a portable core plus supplement,
+add `--core /path/to/core`. This reads CSV/JSON only and never changes original summaries.
+
+Timing columns separately sum final-fit, validation and selection process durations,
+including failed tuning attempts. W continuations also include the retained prefix's
+original process duration (including startup and uncheckpointed work before stop).
+These are sums of monotonic per-process elapsed seconds, not parallel end-to-end wall
+time, CPU time or accepted-draw-only time. `timing_complete` and missing-record counts
+prevent partial durations from masquerading as complete timings. Queue waiting,
+registration, diagnostics and report assembly are excluded. The report manifest lists
+the timing records and hashes of input tables. No threshold, draw, prior or iteration
+budget is changed by reporting.

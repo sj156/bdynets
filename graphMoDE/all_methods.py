@@ -32,21 +32,12 @@ def configure(output,core,external,runtime):
     path=output/'comparison-config.json';write(path,cfg);return path
 
 def merge_tables(core,supplement,out):
-    sources=[core/'summary-4000/fits.csv',supplement/'summary/fits.csv'];rows=[]
-    for source in sources:
-        if source.exists():
-            with source.open() as f:
-                for row in csv.DictReader(f):row['source_table']=str(source);rows.append(row)
-    fields=list(dict.fromkeys(k for row in rows for k in row))
-    if rows:
-        with (out/'all-methods.csv').open('x',newline='') as f:
-            writer=csv.DictWriter(f,fieldnames=fields);writer.writeheader();writer.writerows(rows)
-    # Preserve an explicit incomplete status when a core or summary failed.
-    observed={(r['dataset'],r['method']) for r in rows}
-    expected={(d,m) for d in ('D01','D02') for m in ('Exp-W','SE-W','C','EucMoDE','MoDE','PottsMoDE','STGNN','PNAR')}
-    write(out/'completion.json',dict(finished=time.time(),rows=len(rows),all_method_rows_present=observed==expected,
-          missing=[list(k) for k in sorted(expected-observed)],automatic8000=False,
-          interpretation='Read each method status and diagnostics; row availability does not establish convergence.'))
+    spec=importlib.util.spec_from_file_location('result_report',ROOT/'report.py')
+    report=importlib.util.module_from_spec(spec);spec.loader.exec_module(report)
+    result=report.assemble(supplement,out,core)
+    write(out/'completion.json',dict(finished=time.time(),rows=result['rows'],
+          all_method_rows_present=result['rows']==16,metrics_unavailable=result['metrics_unavailable'],
+          automatic8000=False,interpretation='All rows are provisional; failed diagnostics never suppress metrics.'))
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
