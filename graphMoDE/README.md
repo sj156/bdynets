@@ -32,7 +32,7 @@ python3 graphMoDE/run.py core --output "$HOME/graphmode-core-pilot"
 - 真值 5 组，拟合 `K=10`。四链初始占用数为 `1/3/7/10`，初始化仅用训练输入与独立种子；不向拟合传入真实标签，不强制最终占用 5。
 - W 使用全物理边的 `exp(-d/h)` 或 `exp(-(d/h)^2)`，每次 h 提议都把正边权归一为均值 1。`h=d_ref*eta`，`eta~Gamma(shape=4,rate=4)`，`d_ref` 为固定物理边长中位数。不使用 NN 删除边、低秩近似、权重裁剪或固定 h 的 W。
 - κ、q、类特异指导强度 a 均继续学习。两个 W 的 κ 对数先验中心共用固定的 Exp-reference（`h=d_ref`），不会随 h 重新校准；C 保留按自身 0/1 邻接的边上相关中位数 .5 校准，本轮道路对应 κ₀=2.0000。保留原 `q~Gamma(2,rate=20000)`、κ 对数标准差 1 和既有采样核、提议尺度、4 次 gate scan、42 时刻 expert block、contrast ESS 与 factor cache。
-- 每链先运行总 4000 步，前 2000 为预热，不适应或重调。若任一核心拟合未通过诊断，所有六个拟合从原状态及 RNG 继续到总 8000 步，仍仅丢弃原前 2000 步。原 4000 步轨迹、诊断、receipt 保留。
+- 每链先运行总 4000 步，前 2000 为预热，不适应或重调。控制器在 4000 步诊断后停止，**不自动启动 8000 步**。诊断可建议延长，但须另有明确决定；若决定延长，所有六个拟合从原状态及 RNG 继续到总 8000 步，仍仅丢弃原前 2000 步。原轨迹、诊断与 receipt 保留。
 - rank/folded Rhat ≤1.01、bulk/tail ESS ≥400，所有链对 PSM RMS ≤.05。诊断含占用数、排序组比例、排序指导强度、节点均值、似然、log q、log κ，以及 W 的 log h。与旧标准一致，同值离散常数标记为不可提供混合信息；不同链常数或连续常数不能通过。
 - 总 8000 步仍不达标则停止，不扩批、不换种子、不删除失败、不调整先验。诊断门槛与哪个方法胜出无关。完整 Exp-W、SE-W、C、EucMoDE、MoDE、PottsMoDE、STGNN、PNAR 的五份新数据批量需另作决定。
 
@@ -67,6 +67,8 @@ fit <- gm$graphmode_make_fit(x, "Exp-W") # 或 "SE-W", "C"
 对这类候选，`core_34_underflow_audit.R` 记录下溢边、完整 log 权重、解析扰动量级和常规残差。固定检查为：解析下溢对 gate log-likelihood 的贡献 ≤`1e-12`；独立 Cholesky 逆及主平方根路径的 gate 目标差 ≤`1e-8`；谱残差与正交残差 ≤`256*n*.Machine$double.eps`，协方差重建相对残差 ≤`1024*n*.Machine$double.eps`。后两项是按矩阵规模留余量的工程诊断，前两项约束 log-target 误差；均不修改 Rhat/ESS/PSM 标准。这是受控浮点近似，**不是严格 interval-MH 认证**。检查失败抛出异常、保存故障，不自动拒绝 MH 提议或截断先验。
 
 数值审计默认以 `NUMERICAL_AUDIT` JSON 行写入链日志；API 使用者也可设置 `gm$graphmode_h_numerical_sink <- function(record) ...` 保存单独审计文件，sink 不得调用随机数。主控制器保留失败链记录，正常同伴继续完成，不再因单链失败而终止它们。
+
+资源或控制器异常有不同处理：可用空间低于 12 GiB、输出超过 30 GiB、达到 72 小时时限，或控制器失去正常监督时，停止派发并以 SIGSTOP 暂停所属写入进程，不再等待长链写完。记录 `emergency-TARGET.json`、`suspended-TARGET.json`、PID 和最近已接受的 checkpoint。暂停保留进程内存；只有带有效 SHA256 receipt 的文件才是已落盘 checkpoint，不能把部分文件当作成功保存。恢复需要检查资源及明确决定，不自动 SIGCONT。采样和最终诊断阶段均受资源保护。正常的单链数值失败不会触发同伴暂停。
 
 `progress.json` 仅表示运行进度；`completion.json` 或 `failure.json` 才是控制器终态。每条链每 100 步保存全部状态（含预热）、RNG、数值诊断与 SHA256；各阶段独立日志、进程退出码、receipt 均保留。意外中断不会自动重试；8000 步继续只接受本轮完整 4000 步 receipt，不能接入旧实验 checkpoint。
 
