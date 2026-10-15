@@ -8,7 +8,8 @@ traffic_frame(
   x,
   time_index = 1L,
   region = NULL,
-  mode = c("current", "delta", "duration")
+  mode = c("current", "delta", "duration"),
+  metric = c("congestion", "volume")
 )
 }
 \arguments{
@@ -19,6 +20,8 @@ traffic_frame(
 \item{region}{LargeST region name, defaulting to its first region.}
 
 \item{mode}{Beijing current load, change from previous frame, or duration.}
+
+\item{metric}{Metropolis congestion or volume.}
 }
 \value{
 A traffic_frame with geographic polylines, values, exact source color

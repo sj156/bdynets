@@ -420,7 +420,7 @@ pixel-identical screenshots.</p>
 <pre class="r"><code>frame &lt;- traffic_frame(snapshot, time_index=97L, mode=&quot;current&quot;)
 plot(frame) # 08:00–08:05
 traffic_figures(params$snapshot, &quot;beijing&quot;, time_index=97L,
-                output_dir=&quot;/path/to/new/beijing-0800&quot;)</code></pre>
+                output_dir=&quot;output/beijing-0800&quot;)</code></pre>
 <p>The export writes PDF and PNG figures, a source-file MD5/selection
 record and session information. Existing named outputs are refused. To
 reuse these data for inference, obtain the underlying counts and

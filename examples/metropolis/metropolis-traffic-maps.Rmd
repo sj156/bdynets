@@ -1,0 +1,96 @@
+---
+title: "Metropolis traffic figures: schema-compatible simulated example"
+output: html_document
+params:
+  dataset: "../../data/Metropolis-Scale Road Network Datasets/processed/metropolis-simulated.json.gz"
+---
+
+**These figures use simulated data, not the original Metropolis observations.**
+Unlike the Beijing and LargeST maps, the checked-in Metropolis HTML does not
+embed its observations. It references `city_traffic_M_osm_congestion_sample.js`,
+which is absent from this checkout. No matching companion data were found in
+local project copies or Git history. Consequently, the original city figures
+cannot currently be reproduced numerically.
+
+This tutorial uses the agreed fallback: a seeded dataset with the same segment,
+frame and measurement fields. It reproduces the viewer's two map styles and two
+whole-day trends through package functions. The original HTML is unchanged.
+
+## Load standalone data
+
+Install `bdynets` and `jsonlite`. Rendering also requires `rmarkdown` and `knitr`.
+Rendering loads the saved dataset; it does not resimulate, download or fit models.
+
+```{r setup, message=FALSE}
+library(bdynets)
+x <- read_traffic_data(params$dataset)
+x$provenance
+x$data$metadata
+```
+
+The example has a synthetic rectangular road layout and 96 fifteen-minute
+frames. The volume and speed frames average three simulated five-minute
+observations. Coordinates are artificial and do not identify the original city.
+Seed 20261015 fixes the example; the generator restores the caller's RNG state.
+
+Congestion follows the source construction: nonnegative slowdown relative to
+each segment's 90th-percentile speed, multiplied by a clipped log-volume weight.
+The volume map instead normalizes volume by the sample's 95th percentile.
+These are descriptive visualization metrics, not posterior model estimates.
+
+## Reproduce both map modes and trend panels
+
+The common workflow selects the frame with greatest total congestion, matching
+the source viewer's selection rule. Maps use the green–amber–red interpolation,
+line-width scaling and dark road casing from the viewer. Trends use the saved
+aggregate values; a vertical marker shows the selected frame.
+
+```{r figures, fig.width=9, fig.height=7}
+figures <- traffic_figures(params$dataset, "metropolis")
+```
+
+Remote OpenStreetMap tiles, place labels and browser controls are omitted.
+The map geometry uses Web Mercator; line widths are adapted to the static device.
+Colors saturate at one for congestion and at the saved volume scale for volume.
+The different metric definitions mean the same color does not represent the
+same quantity between modes. The trend line is descriptive of this simulation
+only; it establishes nothing about real metropolitan traffic.
+
+## Select a frame and export figures
+
+```{r options, eval=FALSE}
+plot(traffic_frame(x, time_index=33L, metric="volume"))
+plot(traffic_trend(x, metric="congestion", time_index=33L))
+traffic_figures(params$dataset, "metropolis", time_index=33L,
+                output_dir="/path/to/new/metropolis-figures")
+```
+
+The batch script calls the same workflow. Export produces four PDF/PNG figures,
+provenance and session information; existing output files are refused.
+
+## Recreate the simulation or import the missing real payload
+
+Simulation is a separate, explicit preparation step, not part of rendering:
+
+```{r prepare, eval=FALSE}
+simulate_metropolis_data("/path/to/new/metropolis-simulated.json.gz", seed=20261015L)
+```
+
+**TODO for real-data reproduction:** restore the companion JavaScript file from
+the original visualization run. Then extract its JSON assignment without
+executing any JavaScript:
+
+```{r real-data, eval=FALSE}
+extract_traffic_data("/path/to/city_traffic_M_osm_congestion_sample.js",
+                     "metropolis", "/path/to/new/metropolis-real.json.gz")
+real <- read_traffic_data("/path/to/new/metropolis-real.json.gz")
+traffic_figures("/path/to/new/metropolis-real.json.gz", "metropolis")
+```
+
+The real payload uses the same plotting API. Do not rename the simulated file
+as real data or remove its simulation label. When making a real-data report,
+update the input and narrative to describe the actual source and provenance.
+
+```{r session}
+sessionInfo()
+```

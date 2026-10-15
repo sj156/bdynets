@@ -1,19 +1,25 @@
-# LargeST figure reproduction
+# LargeST traffic maps with offline OpenStreetMap context
 
-From the repository root, install `bdynets` (`R CMD INSTALL bdynets`). The reader
-needs jsonlite; rendering needs rmarkdown and knitr. No fitting or downloads occur.
+Install `bdynets`, `jsonlite`, `rmarkdown` and `knitr`, then from the repository root:
 
 ```sh
-Rscript examples/largest/run.R "data/LargeST Data/processed/largest-visualization.json.gz" /tmp/new-largest-figures
-Rscript -e 'rmarkdown::render("examples/largest/report.Rmd")'
+Rscript -e 'rmarkdown::render("examples/largest/largest-traffic-maps.Rmd")'
 ```
 
-Read `report.html` for the tutorial and both regional maps. `run.R` and
-`report.Rmd` call the same `bdynets::traffic_figures()` workflow. The source HTML
-is unchanged. Optional render parameters accept another compatible standalone dataset;
-use an absolute path when supplying one. Outputs record the input MD5 and frame.
+Open `largest-traffic-maps.html` for both regional maps at 08:00. Rendering is
+offline. The local `data/` directory contains all 288 traffic frames, OSM-derived
+road/city extracts and download provenance. `osm-figures.R` draws both layers in
+Web Mercator. The OSM background is contemporary; traffic is from July 31, 2019.
+Display links are retained rather than map-matched to OSM roads.
 
-For a new compatible HTML snapshot, run `extract_traffic_data(path, source,
-file="/path/to/new-data.json.gz")` once. Subsequent analyses read that standalone
-file. Extraction preserves decoded JSON values and records source identity;
-it neither downloads raw data nor reconstructs unrounded measurements.
+The R Markdown creates `output/largest-0800/` with PDF/PNG figures, selected frame
+RDS, input checksums and session information. Re-rendering replaces these named
+exports. Set `time_index` and `output_dir` render parameters for other runs.
+
+`download_osm.py` refreshes missing OSM extracts explicitly; it is never run by
+the tutorial. Data © OpenStreetMap contributors, ODbL 1.0:
+https://www.openstreetmap.org/copyright. Source archive, tile checksums and retrieval dates are
+stored in `data/*-osm-provenance.json`.
+
+For batch plotting, `run.R` accepts a snapshot and output directory and uses
+this same OSM plotting workflow at 08:00.

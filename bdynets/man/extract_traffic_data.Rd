@@ -4,12 +4,17 @@
 \alias{extract_traffic_data}
 \title{Extract embedded visualization data once into a standalone data file}
 \usage{
-extract_traffic_data(path, source = c("beijing", "largest"), file)
+extract_traffic_data(
+  path,
+  source = c("beijing", "largest", "metropolis"),
+  file
+)
 }
 \arguments{
 \item{path}{Existing source HTML visualization.}
 
-\item{source}{Beijing or LargeST schema.}
+\item{source}{Beijing, LargeST or Metropolis schema. For Metropolis, path
+must be the companion JS file assigning window.CITY_TRAFFIC_OSM_SAMPLE.}
 
 \item{file}{New .json.gz output file; existing files are refused.}
 }

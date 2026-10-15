@@ -1,0 +1,91 @@
+---
+title: "LargeST traffic flow over OpenStreetMap roads"
+output:
+  html_document:
+    self_contained: true
+params:
+  snapshot: "data/largest-visualization.json.gz"
+  time_index: 97
+  output_dir: "output/largest-0800"
+---
+
+This example is an **offline reproduction bundle**: the `data/` folder contains
+the complete saved traffic snapshot (288 five-minute frames), downloaded OSM
+roads, water and place labels, and the source archive, tile checksums, dates and provenance of the downloads.
+Keep this folder, `osm-figures.R` and this R Markdown together. Install `bdynets`,
+`jsonlite`, `knitr` and `rmarkdown` once. Knitting requires no network, original
+HTML, HDF5 files, model fitting or browser execution.
+
+```{r setup, message=FALSE}
+library(bdynets)
+source("osm-figures.R")
+stopifnot(file.exists(params$snapshot))
+snapshot <- read_traffic_data(params$snapshot)
+stopifnot(snapshot$source == "largest")
+```
+
+## Morning traffic in geographic context
+
+The default is **08:00 on July 31, 2019** (one-based frame 97). Thin gray lines
+show downloaded OSM major roads from the zoom-9 basemap. Colored lines retain the original traffic display links, source quantile
+thresholds and directional offsets; these links are **not map-matched road
+segments or inferred network adjacency**. The background is a contemporary OSM
+extract, not a reconstruction of the road network in 2019. Both layers use Web
+Mercator. Labels are thinned for readability.
+
+```{r maps, fig.width=c(10,7), fig.height=c(8,9), out.width='100%'}
+frames <- largest_osm_figures(snapshot, time_index=params$time_index)
+```
+
+Each region uses its own saved quantile thresholds: the same color need not
+mean the same flow in the two regions. Missing flow is gray. Values retain the
+source visualization's saved precision; display-link values are endpoint
+averages and should not be treated as independent sensor counts.
+
+## Export figures and retain the selected data
+
+This executable chunk creates a real relative directory, including parents,
+and checks that it is writable before opening graphics devices. Re-knitting
+replaces this example's named exports. Change `output_dir` to preserve a run.
+
+```{r export}
+largest_osm_figures(snapshot, time_index=params$time_index,
+                    output_dir=params$output_dir)
+list.files(params$output_dir)
+```
+
+Exports include PDF, high-resolution PNG, selected frames as RDS, input checksums
+and session information. The full traffic time series and OSM-derived responses stay
+in `data/`, so other time frames can be reproduced offline.
+
+```{r other-time, eval=FALSE}
+# Original viewer default: 16:10, one-based frame 195.
+largest_osm_figures(snapshot, time_index=195L,
+                    output_dir="output/largest-1610")
+```
+
+## Data provenance
+
+Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright),
+available under ODbL 1.0. The cached display geometry comes from the October 12, 2026
+[Protomaps build](https://docs.protomaps.com/basemaps/downloads), an OSM-derived
+basemap distributed as an ODbL Produced Work. Geometry is simplified at zoom 9
+and split at tile boundaries; it is suitable for map context, not routing or
+raw OSM network analysis. Water and place labels are cached too.
+`download_osm.py` documents the one-time download and skips existing extracts;
+normal rendering never calls it. To refresh deliberately, archive the old OSM
+files and run the script with Python 3, `pmtiles`, `mapbox-vector-tile`, `requests` and
+internet access. Daily upstream archives may expire; the committed local extracts
+are the reproducible source for these figures.
+
+```{r provenance}
+snapshot$provenance
+lapply(list.files("data",pattern="osm-provenance.json$",full.names=TRUE),
+       function(path) {
+         p <- jsonlite::fromJSON(path)
+         p[c("source_url", "build_date", "retrieved_utc", "zoom",
+             "sha256_uncompressed", "attribution", "limitations")]
+       })
+lapply(snapshot$data$regions,function(region) unlist(region$breaks))
+sessionInfo()
+```

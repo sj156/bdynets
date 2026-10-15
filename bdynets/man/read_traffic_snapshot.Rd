@@ -4,7 +4,7 @@
 \alias{read_traffic_snapshot}
 \title{Read embedded traffic data from an existing visualization snapshot}
 \usage{
-read_traffic_snapshot(path, source = c("beijing", "largest"))
+read_traffic_snapshot(path, source = c("beijing", "largest", "metropolis"))
 }
 \arguments{
 \item{path}{Local HTML visualization file. Only JSON literals are parsed;

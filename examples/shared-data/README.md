@@ -7,7 +7,7 @@ After obtaining this revision, reinstall the package from the repository root:
 ```sh
 R CMD INSTALL bdynets
 Rscript examples/shared-data/run.R /tmp/my-new-shared-data-example
-Rscript -e 'rmarkdown::render("examples/shared-data/report.Rmd")'
+Rscript -e 'rmarkdown::render("examples/shared-data/network-data-schemas.Rmd")'
 ```
 
 The R Markdown report needs rmarkdown and knitr. Both entrypoints call package

@@ -145,3 +145,10 @@ See the [Beijing tutorial](../examples/beijing/README.md) and
 and saved values are retained; remote basemap tiles and controls are excluded.
 `extract_traffic_data()` supports one-time extraction of compatible HTML sources;
 ordinary tutorials read standalone data files directly.
+
+The [Metropolis tutorial](../examples/metropolis/README.md) covers congestion and
+volume maps plus daily trends through the same workflow. Its bundled example is
+explicitly simulated because the original HTML's companion JS data file is
+missing. `simulate_metropolis_data()` prepares this fallback separately;
+`extract_traffic_data(..., source="metropolis")` can import the real companion
+JS when restored. Original-city numerical reproduction remains pending.

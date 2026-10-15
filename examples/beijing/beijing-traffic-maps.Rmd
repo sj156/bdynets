@@ -58,7 +58,7 @@ device. The figures are therefore not pixel-identical screenshots.
 frame <- traffic_frame(snapshot, time_index=97L, mode="current")
 plot(frame) # 08:00–08:05
 traffic_figures(params$snapshot, "beijing", time_index=97L,
-                output_dir="/path/to/new/beijing-0800")
+                output_dir="output/beijing-0800")
 ```
 
 The export writes PDF and PNG figures, a source-file MD5/selection record and

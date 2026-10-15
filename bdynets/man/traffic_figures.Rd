@@ -6,7 +6,7 @@
 \usage{
 traffic_figures(
   path,
-  source = c("beijing", "largest"),
+  source = c("beijing", "largest", "metropolis"),
   time_index = NULL,
   output_dir = NULL
 )

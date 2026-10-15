@@ -1,6 +1,6 @@
 # Read only a JSON literal on a single assignment line, never execute JavaScript.
 .traffic_literal <- function(lines, name) {
-  pattern <- paste0('^\\s*const ',name,'\\s*=\\s*')
+  pattern <- if(name=='metropolis_payload') '^\\s*window\\.CITY_TRAFFIC_OSM_SAMPLE\\s*=\\s*' else paste0('^\\s*const ',name,'\\s*=\\s*')
   line <- grep(pattern,lines,value=TRUE)
   literal <- sub(pattern,'',line)
   literal <- sub(';\\s*$','',literal)
@@ -24,16 +24,18 @@
 #'   styling metadata and source-file MD5. This is a visualization artifact, not
 #'   raw inference data. LargeST display links are not model adjacency.
 #' @export
-read_traffic_snapshot <- function(path,source=c('beijing','largest')) {
+read_traffic_snapshot <- function(path,source=c('beijing','largest','metropolis')) {
   source <- match.arg(source)
   if(!requireNamespace('jsonlite',quietly=TRUE)) stop('Install jsonlite to read visualization snapshots')
   lines <- readLines(path,warn=FALSE,encoding='UTF-8')
-  get <- function(n) .traffic_literal(lines,n)
+  get <- function(n) .traffic_literal(lines,if(source=='metropolis') 'metropolis_payload' else n)
   .traffic_decode(get,source,list(file=basename(path),md5=unname(tools::md5sum(path)),representation='saved HTML display precision'))
 }
 
 .traffic_decode <- function(get,source,provenance) {
-  if(source=='beijing') {
+  if(source=='metropolis') {
+    out <- .metropolis_decode(get('data'))
+  } else if(source=='beijing') {
     out <- list(network=get('network'),flow=get('flowByBin'),duration=get('durationByBin'),
       time_meta=get('timeMeta'),bins=unlist(get('timeBins')),bounds=get('bounds'),
       stops=get('congestionStops'),bin_minutes=get('timeBinMinutes'),metric=get('metricKey'))
@@ -70,16 +72,21 @@ read_traffic_snapshot <- function(path,source=c('beijing','largest')) {
 #' @param time_index One-based frame index (1 through 288 for bundled snapshots).
 #' @param region LargeST region name, defaulting to its first region.
 #' @param mode Beijing current load, change from previous frame, or duration.
+#' @param metric Metropolis congestion or volume.
 #' @return A traffic_frame with geographic polylines, values, exact source color
 #'   classes, line widths and provenance. Duration values are minutes. Beijing
 #'   absent entries follow the source viewer's zero convention; LargeST nulls
 #'   remain NA. First-frame changes are relative to zero, as in the source viewer.
 #' @export
-traffic_frame <- function(x,time_index=1L,region=NULL,mode=c('current','delta','duration')) {
+traffic_frame <- function(x,time_index=1L,region=NULL,mode=c('current','delta','duration'),metric=c('congestion','volume')) {
   if(!inherits(x,'traffic_snapshot')) stop('Invalid snapshot')
   mode <- match.arg(mode)
-  n <- if(x$source=='beijing') length(x$bins) else 288L
+  n <- if(x$source=='beijing') length(x$bins) else if(x$source=='metropolis') length(x$data$frames) else 288L
   if(length(time_index)!=1 || !is.finite(time_index) || time_index!=floor(time_index) || time_index<1 || time_index>n) stop('Invalid time_index')
+  if(x$source=='metropolis') {
+    if(mode!='current') stop('Metropolis uses metric, not delta/duration modes')
+    return(.metropolis_frame(x,time_index,match.arg(metric)))
+  }
   if(x$source=='beijing') {
     key <- as.character(x$bins[time_index]); current <- .traffic_sparse(x$flow[[key]],x$ids)
     previous <- if(time_index>1) .traffic_sparse(x$flow[[as.character(x$bins[time_index-1])]],x$ids) else current*0
@@ -136,7 +143,7 @@ read_traffic_data <- function(path) {
   con <- if(grepl('\\.gz$',path)) gzfile(path,'rt') else file(path,'rt')
   on.exit(close(con))
   artifact <- jsonlite::fromJSON(paste(readLines(con,warn=FALSE,encoding='UTF-8'),collapse='\n'),simplifyVector=FALSE)
-  if(!identical(artifact$schema_version,1L) || !artifact$source %in% c('beijing','largest') || !is.list(artifact$payload)) stop('Unsupported traffic data schema')
+  if(!identical(artifact$schema_version,1L) || !artifact$source %in% c('beijing','largest','metropolis') || !is.list(artifact$payload)) stop('Unsupported traffic data schema')
   get <- function(name) {
     if(!name %in% names(artifact$payload)) stop('Missing payload field: ',name)
     artifact$payload[[name]]
@@ -147,18 +154,19 @@ read_traffic_data <- function(path) {
 
 #' Extract embedded visualization data once into a standalone data file
 #' @param path Existing source HTML visualization.
-#' @param source Beijing or LargeST schema.
+#' @param source Beijing, LargeST or Metropolis schema. For Metropolis, path
+#'   must be the companion JS file assigning window.CITY_TRAFFIC_OSM_SAMPLE.
 #' @param file New .json.gz output file; existing files are refused.
 #' @return Invisibly the output path. JSON data only are saved, with source MD5;
 #'   scripts are never executed. Normal tutorials use read_traffic_data().
 #' @export
-extract_traffic_data <- function(path,source=c('beijing','largest'),file) {
+extract_traffic_data <- function(path,source=c('beijing','largest','metropolis'),file) {
   source <- match.arg(source)
   if(!requireNamespace('jsonlite',quietly=TRUE)) stop('Install jsonlite')
   if(file.exists(file) || !grepl('\\.json\\.gz$',file)) stop('Supply a new .json.gz output file')
   lines <- readLines(path,warn=FALSE,encoding='UTF-8')
-  keys <- if(source=='beijing') c('network','flowByBin','durationByBin','timeMeta','timeBins','bounds','congestionStops','timeBinMinutes','metricKey') else c('data','colors','initialTimeIndex')
-  payload <- stats::setNames(lapply(keys,function(k).traffic_literal(lines,k)),keys)
+  keys <- if(source=='metropolis') 'data' else if(source=='beijing') c('network','flowByBin','durationByBin','timeMeta','timeBins','bounds','congestionStops','timeBinMinutes','metricKey') else c('data','colors','initialTimeIndex')
+  payload <- stats::setNames(lapply(keys,function(k).traffic_literal(lines,if(source=='metropolis') 'metropolis_payload' else k)),keys)
   .traffic_decode(function(k)payload[[k]],source,list())
   artifact <- list(schema_version=1L,source=source,provenance=list(source_html=basename(path),
     source_md5=unname(tools::md5sum(path)),representation='saved HTML display precision; extracted without recalculation'),payload=payload)

@@ -33,7 +33,8 @@ plot.traffic_frame <- function(x,sensors=FALSE,...) {
   graphics::plot.new(); graphics::plot.window(xlim=xr,ylim=c(yr[1],yr[2]+.23*dy),asp=1)
   graphics::title(main=x$title,cex.main=.95)
   if(x$source=='beijing') for(g in geometry) graphics::lines(g,col='#d4d8dc',lwd=.35)
-  for(i in which(x$active)) graphics::lines(geometry[[i]],col=x$color[i],lwd=x$width[i]*.55)
+  if(x$source=='metropolis') for(i in which(x$active)) graphics::lines(geometry[[i]],col=grDevices::adjustcolor('#151a1f',alpha.f=x$halo_opacity[i]),lwd=(x$width[i]+4)*.55)
+  for(i in which(x$active)) graphics::lines(geometry[[i]],col=if(x$source=='metropolis') grDevices::adjustcolor(x$color[i],alpha.f=x$opacity[i]) else x$color[i],lwd=x$width[i]*.55)
   if(sensors && x$source=='largest') {
     xy <- do.call(rbind,lapply(x$sensors,function(s)c(s$lng,s$lat)))
     xy <- .traffic_mercator(xy)
@@ -59,11 +60,15 @@ plot.traffic_frame <- function(x,sensors=FALSE,...) {
 #' @return Named list of frames. Without output_dir, draw on the current device.
 #'   The same workflow is used by batch scripts and R Markdown tutorials.
 #' @export
-traffic_figures <- function(path,source=c('beijing','largest'),time_index=NULL,output_dir=NULL) {
+traffic_figures <- function(path,source=c('beijing','largest','metropolis'),time_index=NULL,output_dir=NULL) {
   source <- match.arg(source); snapshot <- read_traffic_data(path)
   if(snapshot$source!=source) stop('Source does not match dataset')
   if(is.null(time_index)) time_index <- if(source=='beijing') 107L else snapshot$initial_index
-  frames <- if(source=='beijing') stats::setNames(lapply(c('current','delta','duration'),function(m)
+  frames <- if(source=='metropolis') list(
+    congestion=traffic_frame(snapshot,time_index,metric='congestion'),
+    volume=traffic_frame(snapshot,time_index,metric='volume'),
+    congestion_trend=traffic_trend(snapshot,'congestion',time_index),
+    volume_trend=traffic_trend(snapshot,'volume',time_index)) else if(source=='beijing') stats::setNames(lapply(c('current','delta','duration'),function(m)
     traffic_frame(snapshot,time_index,mode=m)),c('current','delta','duration')) else
     stats::setNames(lapply(names(snapshot$data$regions),function(r) traffic_frame(snapshot,time_index,region=r)),
       c('los-angeles','bay-area'))
