@@ -66,7 +66,7 @@ Poisson/static graphMoDE, dynamic experts and prediction are later milestones.
 | [`BDCN/`](BDCN/README.md) | Standalone BDCN package and sparse multi-hop simulation example |
 | [`graphMoDE/`](graphMoDE/readme.md) | Historical research snapshot, provenance, data attribution and debugging guides |
 | [`docs/legacy-litr/`](docs/legacy-litr) | Archived package-generation instructions, retained as text |
-| Root `.Rmd` files | Documentation, historical derivations and analysis examples |
+| Root `.Rmd` files | Development guide and historical simulation example; obsolete litr chapters are archived under `docs/legacy-litr/retired-chapters/` |
 
 ## Validation status
 
@@ -105,7 +105,9 @@ R CMD check --no-manual bdynets_0.1.0.tar.gz
 R CMD INSTALL bdynets
 ```
 
-The root `*.Rmd` chapters are historical explanations and analysis examples.
+The root `index.Rmd` and `5simulations.Rmd` are the development guide and a
+historical simulation example. Obsolete litr source chapters and placeholder
+chapters are preserved as inert text in `docs/legacy-litr/retired-chapters/`.
 `index.Rmd` is now an ordinary R Markdown development guide. The original
 package-generation setup is preserved as inert text in `docs/legacy-litr/`.
 Do not regenerate the maintained package with litr. Existing paper-specific

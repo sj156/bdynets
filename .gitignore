@@ -5,3 +5,8 @@
 *.Rcheck/
 bdynets_*.tar.gz
 graphMoDE_*.tar.gz
+
+# Retired root litr/bookdown build output
+/_book/
+/_main_files/
+/_bookdown_files/

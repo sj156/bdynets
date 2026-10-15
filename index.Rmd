@@ -42,5 +42,7 @@ The historical `gibbs_sampler()` remains available as a separate experimental
 count-mixture engine. The newer module does not call its approximate PG or
 jittered covariance helpers. See `bdynets/README.md` for a complete example.
 
-The remaining root R Markdown chapters retain mathematical explanations and
-old experiments. They are reference material, not the package build inputs.
+The root `5simulations.Rmd` retains a historical simulation example. Retired
+litr source chapters are archived as inert text under
+`docs/legacy-litr/retired-chapters/`. Neither is a package build input.
+Dataset and project R Markdown tutorials remain in their existing directories.
