@@ -5,11 +5,11 @@ needs jsonlite; rendering needs rmarkdown and knitr. No fitting or downloads occ
 
 ```sh
 Rscript examples/beijing/run.R "data/Beijing Data/processed/beijing-visualization.json.gz" /tmp/new-beijing-figures
-Rscript -e 'rmarkdown::render("examples/beijing/report.Rmd")'
+Rscript -e 'rmarkdown::render("examples/beijing/beijing-traffic-maps.Rmd")'
 ```
 
-Read `report.html` for the tutorial and three saved-data figures. `run.R` and
-`report.Rmd` call the same `bdynets::traffic_figures()` workflow. The source HTML
+Read `beijing-traffic-maps.html` for the tutorial and three saved-data figures. `run.R` and
+`beijing-traffic-maps.Rmd` call the same `bdynets::traffic_figures()` workflow. The source HTML
 is unchanged. Optional render parameters accept another compatible standalone dataset;
 use an absolute path when supplying one. Outputs record the input MD5 and frame.
 
