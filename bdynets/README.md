@@ -124,3 +124,12 @@ Implement graphMoDE Poisson/static with exact integer-shape PG and whole-block
 MH, validated against quadrature; then stable Gaussian FFBS and Poisson PG-FFBS.
 Prediction and posterior calibration follow. No formal experiments were run
 during this package migration.
+
+## Shared network data
+
+The optional `network_data()` and `network_panel()` interfaces provide explicit
+IDs, time-by-unit observations, exposure and missingness. Existing model APIs
+are unchanged. `beijing_panel()` and `largest_panel()` feed the same
+`network_view_data()` payload and `plot()` method. See the
+[collaborator guide](../examples/shared-data/README.md) for migration examples
+and the synthetic, no-fitting demonstration.

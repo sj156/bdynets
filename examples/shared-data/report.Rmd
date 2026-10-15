@@ -1,0 +1,31 @@
+---
+title: "Shared network data: Beijing and LargeST schemas"
+output: html_document
+---
+
+These small **synthetic** examples demonstrate the processed source schemas.
+They are not traffic observations or model results. No models are fitted.
+Both sources use the same visualization payload and plot method. Beijing has
+edge observations; LargeST has sensor observations and no inferred adjacency.
+Coordinates below are displayed directly without a projected basemap.
+
+```{r setup, message=FALSE}
+library(bdynets)
+```
+
+```{r examples, fig.width=7, fig.height=5}
+for (source in c("beijing", "largest")) {
+  x <- network_example(source)
+  print(panel_long(x))
+  plot(x, time_index=2)
+}
+```
+
+Missing observations remain gray. Observed zeros retain their numeric value.
+Color limits are computed across all frames, so switching time does not change
+the scale. Synthetic timestamps use UTC; real imports should supply their
+actual time zone and interval convention.
+
+```{r session}
+sessionInfo()
+```
