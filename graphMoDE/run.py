@@ -45,16 +45,13 @@ def pilot(out,smoke):
                         done+=1;del active[pid]
                         if rc: failed.append(path.name)
                     publish(out/'progress.json',dict(phase='sampling',target=target,completed=done,total=len(jobs),active=len(active),failed=failed,seconds=time.monotonic()-start))
-                    if failed: raise RuntimeError('Execution failure; retain evidence and stop without retry: '+','.join(failed))
                     if time.monotonic()-start>72*3600: raise RuntimeError('72-hour operational ceiling reached; no retry.')
                     if active: time.sleep(2)
             finally:
                 for process,stream,path,t0 in active.values():
-                    process.terminate()
-                for process,stream,path,t0 in active.values():
-                    try: process.wait(timeout=30)
-                    except subprocess.TimeoutExpired: process.kill();process.wait()
-                    stream.close();publish(path/f'process-{target}.json',dict(exit_code=process.returncode,status='stopped_after_peer_failure',seconds=time.monotonic()-t0))
+                    process.wait()
+                    stream.close();publish(path/f'process-{target}.json',dict(exit_code=process.returncode,status='completed_after_supervisor_exception',seconds=time.monotonic()-t0))
+            if failed: raise RuntimeError('Execution failures retained; valid peers were allowed to finish: '+','.join(failed))
             if smoke:
                 decision=dict(status='smoke_completed',chains=len(jobs),iterations=4,convergence_certified=False)
                 break

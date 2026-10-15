@@ -11,4 +11,12 @@
 
 Formal core-pilot execution is separate from these checks. Read its external `completion.json` and stage diagnostic files; repository code availability does not imply the pilot passed or even finished. No eight-method batch was run by this release validation.
 
-C calibration correction: the focused tests now explicitly require the two W centers to match and C to retain its own binary-adjacency center (2 on the path). All ten groups pass. The initial pilot later stopped on an SE edge-weight underflow guard; this is an unresolved numerical limitation, not convergence failure or successful completion. No failed records were removed.
+C calibration correction: the focused tests explicitly require the two W centers to match and C to retain its own binary-adjacency center (2 on the path). The initial pilot stopped on an SE edge-weight underflow guard; its failure records remain retained.
+
+Controlled-underflow update (2026-10-15):
+
+- All ten existing groups and two additional underflow groups passed: logical support/finite log weights, genuine binary64 boundary, covariance/target diagnostics, and stopping on exceeded bounds.
+- Normal-range weights and principal roots match the predecessor bit-for-bit. An actual saved Exp-W step1001 reproduces the predecessor state, MH updates, utilities and RNG bit-for-bit.
+- The original SE-W step1209 proposal was reproduced from the exact recovered step1208 state/RNG, including the RNG state at the old failure. Relative spectral residual was about 1.52e-15, covariance residual 1.09e-14, and alternate gate-target difference 9.77e-15. The unchanged MH test rejected that candidate and the full transition completed.
+- The continuation plumbing was separately checked with real Exp transitions: uninterrupted and checkpoint-recovered states/RNG were identical. Capacity, diagnostic reservation, exclusive supervisor and peer-failure isolation checks passed. Those checks do not establish posterior convergence.
+- Strict interval-MH certification was neither implemented nor claimed. No full eight-method batch was started.

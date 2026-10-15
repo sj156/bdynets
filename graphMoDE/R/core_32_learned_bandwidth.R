@@ -42,11 +42,14 @@ graphmode_h_weight <- function(geometry, family=c("exp", "se"), log_eta=0) {
         log_w <- log_w-largest-log(mean(exp(log_w-largest)))
     }
     values <- exp(log_w)
-    if(any(!is.finite(values) | values<=0))
-        stop("Bandwidth edge-weight underflow; preserve failure, no clipping or edge removal.")
+    if(any(!is.finite(values) | values<0))
+        stop("Invalid bandwidth edge weight; preserve failure.")
+    numerical <- NULL
+    if(any(values==0)) numerical <- graphmode_h_underflow_record(log_w,values,geometry)
     W <- matrix(0, length(geometry$ids), length(geometry$ids))
     W[geometry$edges] <- values; W <- W+t(W)
     graphmode_validate_weight(W)
+    if(!is.null(numerical)) attr(W,"graphmode_numerics") <- numerical
     W
 }
 
@@ -56,7 +59,10 @@ graphmode_h_spectrum <- function(fit, log_eta) {
     e <- eigen(L, symmetric=TRUE)
     tolerance <- 64*.Machine$double.eps*max(1,norm(L,"I"))
     if(min(e$values)< -tolerance) stop("Invalid learned-bandwidth graph spectrum.")
-    list(kind="graph",values=pmax(e$values,0),vectors=e$vectors,nu=1,tau=1)
+    result <- list(kind="graph",values=pmax(e$values,0),vectors=e$vectors,nu=1,tau=1)
+    numerical <- attr(W,"graphmode_numerics")
+    if(!is.null(numerical)) result$numerics <- graphmode_h_spectrum_audit(numerical,L,e)
+    result
 }
 
 graphmode_h_root <- function(context, log_scale) {
@@ -65,6 +71,8 @@ graphmode_h_root <- function(context, log_scale) {
     spectral <- graphmode_c8_kernel(context, log_scale)
     Phi <- spectral %*% t(context$vectors)
     if(any(!is.finite(Phi))) stop("Invalid covariance root.")
+    if(!is.null(context$numerics)) attr(Phi,"graphmode_numerics") <-
+        graphmode_h_root_audit(context,Phi,log_scale)
     Phi
 }
 
@@ -120,7 +128,10 @@ graphmode_h_logprior <- function(log_eta, bandwidth) {
 
 graphmode_h_gate_target <- function(core_state, Phi, config) {
     candidate <- config; candidate$Phi <- Phi
-    graphmode_gate_loglik(graphmode_gate_utilities(core_state$x,core_state$v,candidate),core_state$Z)
+    value <- graphmode_gate_loglik(graphmode_gate_utilities(core_state$x,core_state$v,candidate),core_state$Z)
+    if(!is.null(attr(Phi,"graphmode_numerics")))
+        graphmode_h_target_audit(value,core_state,Phi,config)
+    value
 }
 
 graphmode_h_step <- function(state, fit, base_step=graphmode_compare_step,

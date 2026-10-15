@@ -118,3 +118,4 @@ check('complete diagnostic/report path retains failures and applies frozen exten
     unlink(tmp,recursive=TRUE)
 })
 cat(count,'final test groups passed.\n')
+source(file.path(root,'tests/underflow.R'),local=TRUE)

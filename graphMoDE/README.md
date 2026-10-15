@@ -1,6 +1,6 @@
 # graphMoDE：当前可运行核心代码
 
-本目录提供 Exp-direct W、SE-direct W（均学习带宽 h）和 C 的可复现核心试跑，以及自定义图与计数序列接口。当前验证范围是代码与运行入口；短示例不是收敛证据，也不是论文结论。完整八方法批量尚未启动。初轮核心试跑触发 SE 边权下溢保护而停止；该数值问题尚未解决，详见 [KNOWN_ISSUES.md](KNOWN_ISSUES.md)。
+本目录提供 Exp-direct W、SE-direct W（均学习带宽 h）和 C 的可复现核心试跑，以及自定义图与计数序列接口。短示例不是收敛证据，也不是论文结论。完整八方法批量尚未启动。初轮 SE 边权下溢现采用经用户批准、有误差诊断的 double 数值近似；完整核心模拟与统计诊断尚未完成，详见 [KNOWN_ISSUES.md](KNOWN_ISSUES.md)。
 
 ## 快速开始
 
@@ -62,6 +62,12 @@ fit <- gm$graphmode_make_fit(x, "Exp-W") # 或 "SE-W", "C"
 
 ## 结果与审计
 
+带宽计算保留全部逻辑物理边及其有限归一化 log 权重。只有 `exp(log_weight)` 实际为零且 log 权重不高于 double 最小正 subnormal 的一半所对应的边界时，数值矩阵允许舍入为零；没有另设较大的截断阈值，不做 NN 删边，不改变 h 先验。权重仍按所有物理边的正权均值归一化。
+
+对这类候选，`core_34_underflow_audit.R` 记录下溢边、完整 log 权重、解析扰动量级和常规残差。固定检查为：解析下溢对 gate log-likelihood 的贡献 ≤`1e-12`；独立 Cholesky 逆及主平方根路径的 gate 目标差 ≤`1e-8`；谱残差与正交残差 ≤`256*n*.Machine$double.eps`，协方差重建相对残差 ≤`1024*n*.Machine$double.eps`。后两项是按矩阵规模留余量的工程诊断，前两项约束 log-target 误差；均不修改 Rhat/ESS/PSM 标准。这是受控浮点近似，**不是严格 interval-MH 认证**。检查失败抛出异常、保存故障，不自动拒绝 MH 提议或截断先验。
+
+数值审计默认以 `NUMERICAL_AUDIT` JSON 行写入链日志；API 使用者也可设置 `gm$graphmode_h_numerical_sink <- function(record) ...` 保存单独审计文件，sink 不得调用随机数。主控制器保留失败链记录，正常同伴继续完成，不再因单链失败而终止它们。
+
 `progress.json` 仅表示运行进度；`completion.json` 或 `failure.json` 才是控制器终态。每条链每 100 步保存全部状态（含预热）、RNG、数值诊断与 SHA256；各阶段独立日志、进程退出码、receipt 均保留。意外中断不会自动重试；8000 步继续只接受本轮完整 4000 步 receipt，不能接入旧实验 checkpoint。
 
 `summary-4000/` 与必要时的 `summary-8000/` 保存每拟合标量诊断、PSM、代表划分、占用数、边界误并与内部误切、预测矩阵、RMSE、W-minus-C 配对差异和诊断决定。真值与测试数据放在 `evaluation-only.rds`，worker 只读 `blind.rds`。ARI/RMSE 是有诊断状态的试跑描述；未过精度门槛时不能据此给出方法优劣结论。
@@ -70,6 +76,6 @@ fit <- gm$graphmode_make_fit(x, "Exp-W") # 或 "SE-W", "C"
 
 ## 源码整理与删除范围
 
-`R/core_*.R` 是从本地冻结源提取的必要定义，原函数体及参数保持相同；`SOURCE_MAP.csv` 给出原模块、源文件哈希和保留符号。部分内部函数名仍含 c8/c9，用于保持核与状态校验一致，它们不代表再次运行旧实验。`R/api.R` 提供本轮配置和通用输入，`R/execution.R` 提供可审计的分阶段执行。
+`R/core_01` 至 `core_33` 最初从本地冻结源提取；`SOURCE_MAP.csv` 记录提取时的源模块、哈希和符号。当前版本只在 `core_32` 的权重、谱、平方根和目标函数中增加受控数值近似与审计入口，新增 `core_34`；正常范围回归保持逐位一致，MH、先验及其余采样核未改。部分内部函数名仍含 c8/c9，用于保持核与状态校验一致，并不代表再次运行旧实验。`R/api.R` 提供本轮配置和通用输入，`R/execution.R` 提供分阶段执行。
 
 从当前 `graphMoDE/` 删除历史快照目录、旧文稿/图示、旧调试数据、OSM 北京派生示例、重复旧入口和不再使用的说明；它们仍可从普通 Git 历史恢复。保留当前必要数学核、许可证、合成示例、测试和此说明。不包含北京原始数据、论文、PNARM 源码、密钥、个人绝对路径或大链文件。其他仓库项目不受影响。
