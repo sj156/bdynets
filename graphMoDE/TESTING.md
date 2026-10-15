@@ -22,3 +22,7 @@ Controlled-underflow update (2026-10-15):
 - Strict interval-MH certification was neither implemented nor claimed. No full eight-method batch was started.
 
 Resource-boundary correction (2026-10-15): `python3 tests/controller.py` uses mocks only; it launches no R process or simulation. It verifies that an individual chain failure allows its valid peer to finish, a resource exception pauses owned writers without waiting, failure to write the initial emergency record cannot bypass pausing, the72-hour limit uses the same emergency exception class, and a failed4000-stage statistical diagnostic does not launch8000. All checks passed. No statistical kernel, prior, seed or diagnostic threshold changed in this correction.
+
+Eight-method supplementary plumbing: Python syntax and two plan/capacity tests passed. Focused R sampler transitions and original Potts selection/failure tests passed in about1 second. Pinned STGNN author import/shape preflight passed in about13 seconds without model initialization/training. Supplementary registration and fits remain queued. See COMPARISON.md. No additional scientific kernel was rewritten.
+
+Portable `all_methods.py`: dependency-hash verification and real configuration-only invocation passed using the existing external environment; a synthetic16-row merge retained failed statuses, and a duplicate configuration was refused. This verifies packaging/dispatch interfaces, not completion of all scientific fits.

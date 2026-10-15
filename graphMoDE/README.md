@@ -1,6 +1,8 @@
 # graphMoDE：当前可运行核心代码
 
-本目录提供 Exp-direct W、SE-direct W（均学习带宽 h）和 C 的可复现核心试跑，以及自定义图与计数序列接口。短示例不是收敛证据，也不是论文结论。完整八方法批量尚未启动。初轮 SE 边权下溢现采用经用户批准、有误差诊断的 double 数值近似；完整核心模拟与统计诊断尚未完成，详见 [KNOWN_ISSUES.md](KNOWN_ISSUES.md)。
+本目录提供 Exp-direct W、SE-direct W（均学习带宽 h）和 C 的可复现核心试跑，以及自定义图与计数序列接口。短示例不是收敛证据，也不是论文结论。已加入同两份冻结数据上的五种补充方法入口，详见 [COMPARISON.md](COMPARISON.md)；补充 R 数值入口与 STGNN 导入测试已通过，完整八方法结果尚未完成。初轮 SE 边权下溢现采用经用户批准、有误差诊断的 double 数值近似；完整核心模拟与统计诊断尚未完成，详见 [KNOWN_ISSUES.md](KNOWN_ISSUES.md)。
+
+完整八方法的单命令入口及固定第三方依赖见 [COMPARISON.md](COMPARISON.md#one-command-full-entry)。
 
 ## 快速开始
 

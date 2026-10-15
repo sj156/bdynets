@@ -3,7 +3,7 @@ check <- function(name,expr) {force(expr);count <<- count+1L;cat('PASS',name,'\n
 fails <- function(expr) stopifnot(inherits(tryCatch({force(expr);NULL},error=identity),'error'))
 p <- api$graphmode_plan()
 check('frozen plan and unique role seeds',stopifnot(nrow(p$jobs)==24L,length(p$seeds)==64L,!anyDuplicated(p$seeds),
-    all(table(p$jobs$dataset,p$jobs$method)==4L),p$warmup==2000L,p$initial_iterations==4000L,p$max_iterations==8000L,p$max_workers==6L))
+    all(table(p$jobs$dataset,p$jobs$method)==4L),p$warmup==2000L,p$initial_iterations==4000L,p$max_iterations==4000L,p$max_workers==6L))
 road <- api$graphmode_c9_road()
 check('121 nodes, 120 physical edges and approved gaps',{
     stopifnot(nrow(road$coordinates)==121,nrow(road$physical_edges)==120,identical(tabulate(road$partition),c(30L,20L,21L,20L,30L)))
@@ -87,7 +87,7 @@ check('checkpoint continuation preserves exact state/RNG and warmup boundary',{
     fails(api$graphmode_chain(tmp,plan$jobs,r,4L,fit));unlink(tmp,recursive=TRUE)
 })
 cat(count,'total test groups passed.\n')
-check('complete diagnostic/report path retains failures and applies frozen extension/stop',{
+check('complete diagnostic/report path retains failures and holds at4000 for a separate extension decision',{
     tmp <- tempfile('summary-test-');dir.create(tmp)
     e <- graphmode_load(root,FALSE)
     e$graphmode_guard <- function(...) TRUE
@@ -107,12 +107,11 @@ check('complete diagnostic/report path retains failures and applies frozen exten
         s <- if(is.null(fit$bandwidth)) e$graphmode_c8_common_start(fit,raw,1L) else e$graphmode_h_common_start(fit,raw,1L)
         list(draws=rep(list(s),4))
     }
-    for(target in c(4000,8000)) e$graphmode_summary(tmp,target)
+    e$graphmode_summary(tmp,4000L)
     first <- jsonlite::read_json(file.path(tmp,'summary-4000','decision.json'))
-    last <- jsonlite::read_json(file.path(tmp,'summary-8000','decision.json'))
-    rows <- read.csv(file.path(tmp,'summary-8000','fits.csv'))
-    pairs <- read.csv(file.path(tmp,'summary-8000','paired.csv'))
-    stopifnot(!first$all_passed,grepl('extend',first$decision),!last$all_passed,grepl('STOP',last$decision),
+    rows <- read.csv(file.path(tmp,'summary-4000','fits.csv'))
+    pairs <- read.csv(file.path(tmp,'summary-4000','paired.csv'))
+    stopifnot(!first$all_passed,grepl('explicit decision',first$decision),!dir.exists(file.path(tmp,'summary-8000')),
         nrow(rows)==6L,nrow(pairs)==6L,all(!rows$valid),all(rows$boundary_errors==4),all(rows$internal_cuts==0),
         all(rows$boundary_merge_probability==1),all(rows$internal_cut_probability==0))
     unlink(tmp,recursive=TRUE)

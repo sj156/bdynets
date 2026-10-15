@@ -156,7 +156,6 @@ graphmode_summary <- function(directory,target) {
     }))
     write.csv(pairs,file.path(path,'paired.csv'),row.names=FALSE)
     graphmode_joint_run_json(list(target=target,all_passed=all(table$valid),
-        decision=if(all(table$valid)) 'core precision gate passed; full batch still requires user decision' else
-            if(target<r$plan$max_iterations) 'extend all six fits to 8000 with original warmup' else 'STOP: mixing/precision gate failed; no expansion'),
+        decision=if(all(table$valid)) '4000 precision gate passed; no automatic extension' else '4000 precision gate failed; any extension needs an explicit decision'),
         file.path(path,'decision.json'),TRUE)
 }
