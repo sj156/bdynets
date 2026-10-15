@@ -9,6 +9,59 @@ def put(path,value):
     path.parent.mkdir(parents=True,exist_ok=True);path.write_text(json.dumps(value))
 
 class Reporting(unittest.TestCase):
+    def test_failed_placeholder_cannot_overwrite_completed_core(self):
+        for valid in ('FALSE', 'TRUE'):
+            with self.subTest(valid=valid), tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp);core=root/'core';supp=root/'supp'
+                complete=dict(dataset='D01',method='Exp-W',valid=valid,ARI='.61',Khat='7',
+                              Kocc_mean='6.8',RMSE='5.4',status='precision_failed' if valid=='FALSE' else 'precision_passed')
+                placeholder=dict(complete,valid='FALSE',ARI='NA',Khat='NA',Kocc_mean='NA',RMSE='NA',status='failed')
+                for path,row in ((core/'summary-4000/fits.csv',complete),(supp/'summary/fits.csv',placeholder)):
+                    path.parent.mkdir(parents=True)
+                    with path.open('w') as stream:
+                        writer=csv.DictWriter(stream,fieldnames=list(row));writer.writeheader();writer.writerow(row)
+                error=supp/'summary/D01-Exp-W-unavailable.json'
+                put(error,dict(error='fixture: core receipt read failed'))
+                manifest=r.assemble(supp,root/'report',core)
+                row=r.read_csv(root/'report/all-methods.csv')[0]
+                self.assertEqual((row['ARI'],row['RMSE'],row['Kocc_mean']),('.61','5.4','6.8'))
+                self.assertEqual(row['source_table'],str(core/'summary-4000/fits.csv'))
+                self.assertEqual(row['diagnostic_status'],'failed' if valid=='FALSE' else 'passed')
+                self.assertEqual(row['source_error'],'True')
+                self.assertNotIn(['D01','Exp-W'],manifest['metrics_unavailable'])
+                sources=manifest['merge_evidence']['D01-Exp-W']['sources']
+                self.assertEqual(len(sources),2)
+                self.assertEqual(sources[1]['error']['error'],'fixture: core receipt read failed')
+                self.assertEqual(sources[1]['row']['status'],'failed')
+
+    def test_full_later_metrics_keep_earlier_precision_failure(self):
+        entries=[dict(table='core',row=dict(dataset='D01',method='C',valid='FALSE',failed_scalars='23')),
+                 dict(table='supplement',row=dict(dataset='D01',method='C',valid='TRUE',status='precision_passed',
+                      ARI='.5',Khat='7',Kocc_mean='6.5',RMSE='5'))]
+        row,evidence=r.merge_rows(entries)
+        self.assertEqual(row['source_table'],'supplement')
+        self.assertEqual(row['ARI'],'.5')
+        self.assertEqual(row['valid'],'FALSE')
+        self.assertTrue(row['diagnostic_failure_recorded'])
+        self.assertTrue(row['diagnostic_conflict'])
+        self.assertEqual(row['status'],'precision_failed')
+        self.assertEqual(len(evidence['sources']),2)
+
+    def test_execution_failure_is_not_a_failed_diagnostic(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);supp=root/'supp';path=supp/'summary/fits.csv';path.parent.mkdir(parents=True)
+            row=dict(dataset='D01',method='C',status='failed',valid='FALSE',ARI='NA',RMSE='NA')
+            with path.open('w') as stream:
+                writer=csv.DictWriter(stream,fieldnames=list(row));writer.writeheader();writer.writerow(row)
+            manifest=r.assemble(supp,root/'report')
+            row=next(x for x in r.read_csv(root/'report/all-methods.csv') if x['dataset']=='D01' and x['method']=='C')
+            self.assertEqual(row['status'],'failed')
+            self.assertEqual(row['diagnostic_status'],'not_available')
+            self.assertEqual(row['diagnostic_failure_recorded'],'False')
+            self.assertEqual(row['result_status'],'metrics_unavailable')
+            self.assertEqual(row['source_error'],'True')
+            self.assertIn(['D01','C'],manifest['metrics_unavailable'])
+
     def test_failed_precision_retains_metrics_and_missing_rows(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);supp=root/'supp';(supp/'summary').mkdir(parents=True)

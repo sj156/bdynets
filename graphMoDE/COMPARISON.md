@@ -86,3 +86,12 @@ prevent partial durations from masquerading as complete timings. Queue waiting,
 registration, diagnostics and report assembly are excluded. The report manifest lists
 the timing records and hashes of input tables. No threshold, draw, prior or iteration
 budget is changed by reporting.
+
+Report merging preserves a complete result row when another source contains only
+an execution/read-failure placeholder. Selection does not require a passed precision
+gate. `source_table` identifies the selected metric row; `source_tables`, `source_error`
+and `source_issues` retain alternate sources and errors. The manifest records every
+input row and any unavailable-result error detail. Execution-failure placeholders
+have `diagnostic_status=not_available`, not `failed`. An actual failed precision gate
+from any completed/diagnostic source stays failed; contradictory diagnostic flags are
+explicitly marked by `diagnostic_conflict`. No metrics are filled from an NA placeholder.

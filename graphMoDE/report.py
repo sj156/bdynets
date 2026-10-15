@@ -17,6 +17,46 @@ def read_csv(path):
 def truth(value):
     return str(value).lower() == 'true'
 
+def finite(value):
+    try: return math.isfinite(float(value))
+    except (TypeError, ValueError): return False
+
+def merge_rows(entries):
+    """Select a whole result row; an unavailable later source cannot erase metrics.
+
+    Completeness is independent of precision: a completed, nonconverged fit is
+    retained. All source rows and read failures remain auditable in the manifest.
+    """
+    def score(entry):
+        row = entry['row']
+        required = ('RMSE',) if row['method'] == 'PNAR' else ('RMSE', 'ARI', 'Khat', 'Kocc_mean')
+        usable = row.get('status') not in ('failed', 'unavailable')
+        return (usable and all(finite(row.get(k)) for k in required),
+                usable and finite(row.get('RMSE')),
+                sum(finite(row.get(k)) for k in METRICS) if usable else -1)
+    # Stable ties retain the earlier complete result rather than replacing it.
+    selected = max(entries, key=score)
+    row = dict(selected['row'], source_table=selected['table'])
+    diagnostic_rows = [e['row'] for e in entries
+                       if e['row'].get('status') not in ('failed', 'unavailable')
+                       and str(e['row'].get('valid')).lower() in ('true', 'false')]
+    row['diagnostic_failure_recorded'] = any(not truth(r['valid']) for r in diagnostic_rows)
+    row['diagnostic_observed'] = bool(diagnostic_rows)
+    row['diagnostic_conflict'] = len({truth(r['valid']) for r in diagnostic_rows}) > 1
+    if diagnostic_rows:
+        # Contradictory later flags must never turn an observed failed gate into a pass.
+        row['valid'] = 'FALSE' if row['diagnostic_failure_recorded'] else 'TRUE'
+        if row.get('status') in ('precision_passed', 'precision_failed'):
+            row['status'] = 'precision_failed' if row['diagnostic_failure_recorded'] else 'precision_passed'
+    issues = [dict(table=e['table'], status=e['row'].get('status'),
+                   failed_jobs=e['row'].get('failed_jobs'), error_file=e.get('error_file'))
+              for e in entries if e['row'].get('status') in ('failed', 'unavailable') or e.get('error_file')]
+    row['source_error'] = bool(issues)
+    row['source_issues'] = json.dumps(issues, separators=(',', ':'))
+    row['source_tables'] = json.dumps([e['table'] for e in entries], separators=(',', ':'))
+    return row, dict(selected_table=selected['table'], sources=entries,
+                     policy='whole completed row preferred; stable ties; observed precision failures retained')
+
 def timing(directory, dataset, method, continuation=False):
     """Sum monotonic process durations, including failed tuning cells and retained prefixes.
 
@@ -66,21 +106,27 @@ def assemble(supplement, output, core=None):
         tables.append(folder/'summary-4000/fits.csv')
     # The supplementary evaluator contains full metrics for split core continuations.
     tables.append(supplement/'summary/fits.csv')
-    indexed = {}; sources = {}
+    indexed = {}; sources = {}; merge_evidence = {}
     for path in dict.fromkeys(tables):
         if path.exists(): sources[str(path)] = hashlib.sha256(path.read_bytes()).hexdigest()
         for row in read_csv(path):
             key = (row['dataset'], row['method'])
-            indexed.setdefault(key, {}).update(row)
-            indexed[key]['source_table'] = str(path)
+            entry = dict(table=str(path), row=row)
+            error_file = path.parent/(row['dataset']+'-'+row['method']+'-unavailable.json')
+            if error_file.exists():
+                entry.update(error_file=str(error_file), error=read_json(error_file))
+            indexed.setdefault(key, []).append(entry)
     rows = []; time_sources = {}; unavailable = []
     for dataset in ('D01', 'D02'):
         for method in METHODS:
-            row = dict(indexed.get((dataset, method), {}), dataset=dataset, method=method)
+            entries = indexed.get((dataset, method), [])
+            row, evidence = merge_rows(entries) if entries else ({}, dict(sources=[]))
+            merge_evidence[dataset+'-'+method] = evidence
+            row.update(dataset=dataset, method=method)
             for name in METRICS: row.setdefault(name, '')
-            available = row['RMSE'] not in ('', 'NA', 'NaN')
+            available = finite(row['RMSE'])
             bayes = method not in ('STGNN', 'PNAR')
-            diagnostic = ('passed' if truth(row['valid']) else 'failed') if bayes and 'valid' in row else 'not_available' if bayes else 'not_applicable'
+            diagnostic = ('failed' if row['diagnostic_failure_recorded'] else 'passed') if bayes and row.get('diagnostic_observed') else 'not_available' if bayes else 'not_applicable'
             row['diagnostic_status'] = diagnostic
             row['result_status'] = 'metrics_unavailable' if not available else 'provisional_precision_failed' if diagnostic == 'failed' else 'provisional_exploratory'
             row['provisional'] = True
@@ -98,7 +144,8 @@ def assemble(supplement, output, core=None):
     with (output/'all-methods.csv').open('x', newline='') as stream:
         writer = csv.DictWriter(stream, fieldnames=fields); writer.writeheader(); writer.writerows(rows)
     manifest = dict(created=time.time(), rows=len(rows), expected_rows=16, metrics_unavailable=unavailable,
-                    input_tables_sha256=sources, timing_sources=time_sources, automatic8000=False,
+                    input_tables_sha256=sources, merge_evidence=merge_evidence,
+                    timing_sources=time_sources, automatic8000=False,
                     precision_filter_applied=False, fitting_or_diagnostic_rerun=False,
                     reporter_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
     with (output/'report-manifest.json').open('x') as stream: json.dump(manifest, stream, indent=2)
