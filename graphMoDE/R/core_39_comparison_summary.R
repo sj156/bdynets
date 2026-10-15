@@ -1,4 +1,37 @@
 # Reporting only: evaluation labels and held-out counts enter here, after fitting.
+graphmode_report_psm_rms <- function(a,b) {
+    # Repeated averaging can exceed one by a few ulps. Repair report copies only;
+    # the chain diagnostic validator and its precision gates remain unchanged.
+    clean <- function(x) {
+        graphmode_matrix(x,'PSM')
+        if(nrow(x)!=ncol(x) || nrow(x)<2L ||
+           any(x < -1e-12 | x > 1+1e-12) ||
+           any(abs(diag(x)-1)>1e-12) || max(abs(x-t(x)))>1e-12)
+            stop('Invalid report PSM beyond roundoff tolerance.')
+        x <- (x+t(x))/2;x[x<0] <- 0;x[x>1] <- 1;diag(x) <- 1;x
+    }
+    graphmode4_psm_rms(clean(a),clean(b))
+}
+
+graphmode_extra_pairs <- function(path,destination=path) {
+    table <- read.csv(file.path(path,'fits.csv'),stringsAsFactors=FALSE)
+    target <- file.path(destination,'paired-core.csv')
+    if(file.exists(target)) stop('Paired report already exists; preserve it.')
+    pairs <- list()
+    for(d in sprintf('D%02d',1:2)) for(pair in list(c('Exp-W','C'),c('SE-W','C'),c('SE-W','Exp-W'))) {
+        a <- table[table$dataset==d & table$method==pair[1],];b <- table[table$dataset==d & table$method==pair[2],]
+        if(nrow(a)!=1L || nrow(b)!=1L || a$status=='failed' || b$status=='failed') next
+        ra <- graphmode_read(file.path(path,paste0(d,'-',pair[1],'.rds')))
+        rb <- graphmode_read(file.path(path,paste0(d,'-',pair[2],'.rds')))
+        pairs[[length(pairs)+1L]] <- data.frame(dataset=d,contrast=paste(pair,collapse=' minus '),precision_passed=a$valid & b$valid,
+            ARI=a$ARI-b$ARI,Khat=a$Khat-b$Khat,Kocc_mean=a$Kocc_mean-b$Kocc_mean,RMSE=a$RMSE-b$RMSE,
+            boundary_errors=a$boundary_errors-b$boundary_errors,internal_cuts=a$internal_cuts-b$internal_cuts,
+            PSM_RMS=graphmode_report_psm_rms(ra$classification$PSM,rb$classification$PSM))
+    }
+    if(length(pairs)) write.csv(do.call(rbind,pairs),target,row.names=FALSE)
+    invisible(pairs)
+}
+
 graphmode_finished_core <- function(r,d,m) {
     out <- if(m=='C') r$core_results$C else r$core_results$W
     reg <- graphmode_read(file.path(out,'registration.rds'))
@@ -90,18 +123,7 @@ graphmode_extra_summary <- function(directory) {
         rows[[length(rows)+1L]] <- row
     }
     table <- do.call(rbind,rows);write.csv(table,file.path(path,'fits.csv'),row.names=FALSE)
-    pairs <- list()
-    for(d in sprintf('D%02d',1:2)) for(pair in list(c('Exp-W','C'),c('SE-W','C'),c('SE-W','Exp-W'))) {
-        a <- table[table$dataset==d & table$method==pair[1],];b <- table[table$dataset==d & table$method==pair[2],]
-        if(nrow(a)!=1L || nrow(b)!=1L || a$status=='failed' || b$status=='failed') next
-        ra <- graphmode_read(file.path(path,paste0(d,'-',pair[1],'.rds')))
-        rb <- graphmode_read(file.path(path,paste0(d,'-',pair[2],'.rds')))
-        pairs[[length(pairs)+1L]] <- data.frame(dataset=d,contrast=paste(pair,collapse=' minus '),precision_passed=a$valid & b$valid,
-            ARI=a$ARI-b$ARI,Khat=a$Khat-b$Khat,Kocc_mean=a$Kocc_mean-b$Kocc_mean,RMSE=a$RMSE-b$RMSE,
-            boundary_errors=a$boundary_errors-b$boundary_errors,internal_cuts=a$internal_cuts-b$internal_cuts,
-            PSM_RMS=graphmode4_psm_rms(ra$classification$PSM,rb$classification$PSM))
-    }
-    if(length(pairs)) write.csv(do.call(rbind,pairs),file.path(path,'paired-core.csv'),row.names=FALSE)
+    graphmode_extra_pairs(path)
     graphmode_joint_run_json(list(target=4000,automatic_extension=FALSE,
         decision='All supplementary jobs terminated; keep failures and compare only with reported uncertainty. Any 8000 stage needs a new explicit decision.'),file.path(path,'decision.json'),TRUE)
 }
