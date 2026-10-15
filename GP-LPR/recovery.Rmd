@@ -1,0 +1,55 @@
+---
+title: "Poisson inner-product latent-position recovery"
+output:
+  html_document:
+    self_contained: true
+params:
+  results_file: ""
+  output_dir: "reports"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+library(bdynets)
+if(!file.exists(params$results_file)) stop('Supply an existing RDS study. This report does not fit models.')
+study<-lpr_read(params$results_file)
+summary<-lpr_report(params$results_file,params$output_dir)
+```
+
+## Source and scope
+
+This report reads saved results and never calls MCMC. The source is
+**`r study$provenance$engine`**. The canonical result artifact is
+`r normalizePath(params$results_file)`.
+
+The model is Poisson with an intercept, centered endpoint effects, and centered
+bounded latent positions. No GP is included. Historical imports preserve their
+original four chains and 2,000 stored draws per chain; they are not relabeled as R
+fits. A `quick` R run is an execution check only, not convergence evidence.
+
+## Aligned position recovery
+
+```{r plot, out.width='100%'}
+knitr::include_graphics(file.path(params$output_dir,'aligned_positions.png'))
+```
+
+Circles are true centered positions and crosses are recovered posterior means.
+Each gray segment joins the same node. All posterior draws are first aligned to a fixed reference chosen
+without truth, then averaged. The resulting mean is aligned to truth for
+simulation evaluation by an orthogonal transformation allowing reflections.
+Neither stage rescales positions. Both panels use the same axes and aspect ratio.
+The plot shows point estimates, not credible regions.
+
+```{r scores}
+knitr::kable(summary,digits=3,row.names=FALSE)
+```
+
+```{r historical-caution, results='asis'}
+if(grepl('Python',study$provenance$engine)) cat('For these historical draws, the exposure-10 run has worst interaction Rhat 1.0121 (above 1.01), interval inclusion 0.906, and an intercept interval excluding truth. These limitations remain. Only one true configuration was simulated; point recovery does not establish interval calibration or sparse-road recovery. Historical imports lack raw endpoint and RNG checkpoints and cannot be continued.') else cat('This is a new R run. Inspect chain diagnostics and the recorded profile before drawing inferential conclusions. Historical manuscript metrics do not apply to these draws.')
+```
+
+## Reproducibility
+
+```{r environment}
+sessionInfo()
+```

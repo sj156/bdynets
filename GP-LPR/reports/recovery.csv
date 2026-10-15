@@ -1,0 +1,3 @@
+"regime","position_rmse","interaction_rmse","interaction_correlation"
+"Poisson, exposure 1",0.372469025232848,0.47794586918576,0.770882639277096
+"Poisson, exposure 10",0.148068499953892,0.20939860983834,0.960640733689967

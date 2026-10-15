@@ -117,3 +117,12 @@ Optional historical features use BayesLogit and beepr when installed. The
 Gaussian graphMoDE module does not require them. `dependencies = TRUE` also
 installs suggested packages; pak's default dependency selection is sufficient
 for the core Gaussian module.
+
+
+## Poisson latent-position regression pilot
+
+The no-GP GP-LPR study uses the `lpr_*` functions in the existing `bdynets`
+package. See [GP-LPR/README.md](GP-LPR/README.md) for the R batch scripts,
+checkpoint contract, external result-store configuration, and manuscript figure
+reproduction. The [HTML report](GP-LPR/reports/recovery.html) is generated from
+saved historical draws; it does not silently refit the model.
