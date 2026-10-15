@@ -19,8 +19,9 @@ A <- 1*(abs(outer(1:121,1:121,'-'))==1);L <- A*road$road_distance
 F <- api$graphmode_c8_profiles(.05)$Fmat
 input <- api$graphmode_input(matrix(25,121,168),A,L,F[1:168,],F[169:216,])
 fits <- lapply(c('Exp-W','SE-W','C'),function(m) api$graphmode_make_fit(input,m))
-check('overfit 10 and frozen common prior; full rank and support',{
-    stopifnot(all(vapply(fits,function(f) f$core$K==10L,TRUE)),length(unique(vapply(fits,function(f) f$kernel$log_center,0)))==1L)
+check('overfit 10, W common prior and C self calibration; full rank and support',{
+    stopifnot(all(vapply(fits,function(f) f$core$K==10L,TRUE)),identical(fits[[1]]$kernel$log_center,fits[[2]]$kernel$log_center),
+        abs(exp(fits[[3]]$kernel$log_center)-2)<1e-8)
     for(f in fits) stopifnot(qr(f$core$Phi)$rank==121,f$prior$q_shape==2,f$prior$q_rate==20000)
     for(f in fits[1:2]) for(z in c(-.5,0,.5)) {
         W <- api$graphmode_h_weight(f$bandwidth$geometry,f$bandwidth$family,z)

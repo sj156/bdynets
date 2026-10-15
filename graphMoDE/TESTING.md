@@ -10,3 +10,5 @@
 - The existing development repository's global verifier reports a pre-existing personal absolute path in an unrelated pilot module. That module is excluded from this portable closure. The original dirty worktree was not edited.
 
 Formal core-pilot execution is separate from these checks. Read its external `completion.json` and stage diagnostic files; repository code availability does not imply the pilot passed or even finished. No eight-method batch was run by this release validation.
+
+C calibration correction: the focused tests now explicitly require the two W centers to match and C to retain its own binary-adjacency center (2 on the path). All ten groups pass. The initial pilot later stopped on an SE edge-weight underflow guard; this is an unresolved numerical limitation, not convergence failure or successful completion. No failed records were removed.

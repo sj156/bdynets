@@ -38,8 +38,9 @@ graphmode_make_fit <- function(input, method=c('Exp-W','SE-W','C'), m0=NULL, C0=
     reference <- graphmode_h_weight(geometry,'exp',0)
     ref <- graphmode_c8_kernel_context('graph',reference)
     context <- if(method=='C') graphmode_c8_kernel_context('graph',x$adjacency) else ref
-    # All three arms share the frozen Exp-reference prior center in this round.
-    context$log_center <- ref$log_center
+    # Only the W families share the fixed Exp-reference center.
+    # C retains calibration on its own binary adjacency (median edge correlation .5).
+    if(method != 'C') context$log_center <- ref$log_center
     if(is.null(m0)) m0 <- c(log(max(.1,mean(x$Y))),rep(0,p-1L))
     if(is.null(C0)) C0 <- diag(c(1,rep(.5,p-1L)),p)
     core <- graphmode_config(x$Y,x$Fmat,m0,C0,method=if(method=='C') 'graphMoDE-C' else 'graphMoDE-W',
@@ -79,7 +80,7 @@ graphmode_plan <- function(smoke=FALSE) {
         extension='If any diagnostic fails at 4000, continue every chain of all six fits from saved state and RNG to 8000; discard only original first 2000. No adaptation, restart, retry or new seed.',
         thresholds=graphmode_c9_spec()$thresholds,base_policy=graphmode_c9_base_policy(),
         max_workers=6L,numeric_threads=1L,min_free_gib=12,output_cap_gib=30,
-        kappa_reference='fixed Exp-direct at h=d_ref; same log center for all three arms',
+        kappa_reference='W: common fixed Exp-direct at h=d_ref; C: its own binary-adjacency calibration',
         statistical_thresholds=list(rank_rhat=1.01,folded_rhat=1.01,bulk_ess=400,tail_ess=400,psm_rms=.05))
 }
 
