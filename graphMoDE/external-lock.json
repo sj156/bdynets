@@ -1,0 +1,28 @@
+{
+  "PNAR": {
+    "version": "1.8",
+    "license": "GPL (>= 2)",
+    "url": "https://cloud.r-project.org/src/contrib/Archive/PNAR/PNAR_1.8.tar.gz",
+    "archive_sha256": "810db46475a4a3200b857d7a275a0045b7b913240d570da447e177598d3dac1a",
+    "source": "R/lin_estimnarpq.R",
+    "sha256": "bf10bae0b173d543e845a3315161767f9b62ba7f7fa78d2d6364a6e2da79ac09"
+  },
+  "STGNN": {
+    "repository": "https://github.com/NGMLGroup/Time-Series-Clustering-with-GNNs",
+    "commit": "303c8cc6c5142aa1a4eab06677ce44104bd95355",
+    "license": "MIT",
+    "files": {
+      "source/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "source/data/__init__.py": "6ea8b351897e216879402200124167be414aed9166507024b24738ce3af82539",
+      "source/data/adj_construction.py": "d2e9f26b404dbf03507ed93359fb0c345074cb8ee0ff4dd5ec987fb2c5993d06",
+      "source/data/cer_data.py": "5bcfea091e1f6320b406f2888d40164959643e26094e9bc76b060b8adf6076c8",
+      "source/data/synth_data.py": "268d7be49ffdd7359934fbdf955bad2fb75a0f3e1b450f106ec0c641b890db38",
+      "source/modules/__init__.py": "66f533883fb53247787e2ef30fc37a95b1ab53d031df30c0474968c68284d23c",
+      "source/modules/layers.py": "f6d0cde8e6cb7f97a16bc5684bfe0072204b6676e34f6abe79afc972e6e00d6b",
+      "source/modules/model.py": "ea0fb540e24c89f930b9621461befa7f1b4955ef00ff9dc9e86ed7ba0c5091f9",
+      "source/modules/pooling_functions.py": "eff5a8766c70853db2c4a0a14618911be039142d82d41639e6bc9dca8e71e633",
+      "source/modules/predictor.py": "7ec3d971709c36527867f5ae82e62ee742003aa468b4be8df1e5abffcc4a231a",
+      "source/modules/utils.py": "bb46c26b1dba157d47a2c9e61f617cafce3fe742c69b9829415ce264090a5a07"
+    }
+  }
+}
