@@ -24,8 +24,9 @@ test_that('model adapters preserve numerical inputs and reject ambiguous convers
   adapted <- do.call(gmde_fit,c(as_gmde_inputs(b,g),list(K=1,expert=expert,mcmc=control)))
   expect_equal(adapted$draws,direct$draws)
   graph <- list(edges=data.frame(name=b$unit_ids),A=diag(2),W=diag(2))
-  expect_identical(as_bdcn_inputs(b,graph,b$unit_ids)$Y,b$values)
-  expect_error(as_bdcn_inputs(b,graph,rev(b$unit_ids)),'IDs')
+  expect_identical(as_gls_inputs(b,graph,b$unit_ids)$Y,b$values)
+  expect_identical(as_bdcn_inputs(b,graph,b$unit_ids),as_gls_inputs(b,graph,b$unit_ids))
+  expect_error(as_gls_inputs(b,graph,rev(b$unit_ids)),'IDs')
   expect_error(as_gmde_inputs(b,gmde_graph(matrix(c(0,1,1,0),2),rev(b$unit_ids))),'IDs')
   b$exposure[,] <- 2
   expect_error(as_gmde_inputs(b,g),'exposure')
