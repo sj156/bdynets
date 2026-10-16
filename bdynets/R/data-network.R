@@ -95,20 +95,20 @@ as_gmde_inputs <- function(x,graph) {
   list(Y=t(x$values),graph=graph)
 }
 
-#' Prepare existing BDCN inputs without fitting
+#' Prepare existing GLS inputs without fitting
 #' @param x Complete edge-count panel with unit exposure.
-#' @param graph Existing BDCN graph with edges, A and W.
-#' @param graph_unit_ids Explicit IDs in the BDCN graph edge order.
+#' @param graph Existing GLS graph with edges, A and W.
+#' @param graph_unit_ids Explicit IDs in the GLS graph edge order.
 #' @return List with Y (time by series) and graph. Pass other model arguments separately.
 #' @export
-as_bdcn_inputs <- function(x,graph,graph_unit_ids) {
+as_gls_inputs <- function(x,graph,graph_unit_ids) {
   .panel_complete(x,TRUE)
   ids <- .data_ids(graph_unit_ids,'graph_unit_ids')
-  if(x$unit_type!='edge' || !identical(ids,x$unit_ids)) stop('BDCN edge IDs must match panel order')
+  if(x$unit_type!='edge' || !identical(ids,x$unit_ids)) stop('GLS edge IDs must match panel order')
   n <- length(ids)
   if(!is.list(graph) || !is.data.frame(graph$edges) || nrow(graph$edges)!=n ||
       !is.matrix(graph$A) || !is.matrix(graph$W) ||
-      !identical(dim(graph$A),c(n,n)) || !identical(dim(graph$W),c(n,n))) stop('Invalid BDCN graph shape')
+      !identical(dim(graph$A),c(n,n)) || !identical(dim(graph$W),c(n,n))) stop('Invalid GLS graph shape')
   list(Y=x$values,graph=graph)
 }
 
@@ -129,4 +129,10 @@ as_lpr_data <- function(x,time_index,family=c('poisson','bernoulli')) {
                   x$exposure[time_index,keep],match.arg(family))
   out$node_ids <- x$network$nodes$node_id; out$edge_ids <- x$unit_ids[keep]; out$time <- x$time[time_index]
   out
+}
+
+#' @rdname as_gls_inputs
+#' @export
+as_bdcn_inputs <- function(x, graph, graph_unit_ids) {
+  as_gls_inputs(x, graph, graph_unit_ids)
 }
