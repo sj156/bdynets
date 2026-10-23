@@ -1,96 +1,218 @@
 ---
-title: "Metropolis traffic figures: schema-compatible simulated example"
-output: html_document
+title: "City-traffic-M: congestion and volume on 18 October 2024"
+lang: en
+output:
+  html_document:
+    self_contained: true
+    mathjax: null
 params:
-  dataset: "../../data/Metropolis-Scale Road Network Datasets/processed/metropolis-simulated.json.gz"
+  dataset: "data/metropolis-real.json.gz"
+  time_index: 55
 ---
+City-traffic-M contains 720 roads on 18 October 2024. The day has 96
+fifteen-minute intervals from 00:00 to 24:00, with the last interval starting
+at 23:45. Each road has volume, speed and a descriptive congestion index.
+The initial map interval starts at 13:30.
 
-**These figures use simulated data, not the original Metropolis observations.**
-Unlike the Beijing and LargeST maps, the checked-in Metropolis HTML does not
-embed its observations. It references `city_traffic_M_osm_congestion_sample.js`,
-which is absent from this checkout. No matching companion data were found in
-local project copies or Git history. Consequently, the original city figures
-cannot currently be reproduced numerically.
+## Map and data
 
-This tutorial uses the agreed fallback: a seeded dataset with the same segment,
-frame and measurement fields. It reproduces the viewer's two map styles and two
-whole-day trends through package functions. The original HTML is unchanged.
+The map supports pan, zoom, playback and interval selection. Congestion and
+volume have separate display modes. Road popups show the selected interval's
+values alongside the road's reference speed and static attributes. A daily
+trend accompanies the map, with a cursor at the selected interval.
 
-## Load standalone data
+The HTML embeds the traffic data, offline OSM geometry and Leaflet 1.9.4.
+The documentation panel contains the preparation method, field definitions,
+statistics and reference figures. The reference maps and summary below use
+13:30; the map readouts follow the selected interval.
 
-Install `bdynets` and `jsonlite`. Rendering also requires `rmarkdown` and `knitr`.
-Rendering loads the saved dataset; it does not resimulate, download or fit models.
+## Source and data preparation
 
-```{r setup, message=FALSE}
+The dataset metadata identifies `mightyneghbor/city-traffic-benchmarks`,
+version 4. Its source files are `city-traffic-M-raw-static-features.parquet`,
+`city-traffic-M-raw-volume.parquet` and `city-traffic-M-raw-speed.parquet`.
+The snapshot provenance identifies the export
+`city_traffic_M_osm_congestion_sample.html` and its companion JavaScript.
+
+Snapshot preparation validates the JSON value assigned to
+`window.CITY_TRAFFIC_OSM_SAMPLE` and places it in
+`data/metropolis-real.json.gz`. The object contains road attributes, ordered
+measurement arrays, frame summaries and metadata. The preparation code takes
+the JavaScript export as input:
+
+```{r preparation, eval=FALSE}
+source_js <- 'city_traffic_M_osm_congestion_sample.js'
+source_lines <- readLines(source_js, warn=FALSE, encoding='UTF-8')
+pattern <- '^\\s*window\\.CITY_TRAFFIC_OSM_SAMPLE\\s*=\\s*'
+payload <- sub(';\\s*$', '', sub(pattern, '',
+               grep(pattern, source_lines, value=TRUE)))
+stopifnot(length(payload)==1L, jsonlite::validate(payload))
+provenance <- jsonlite::toJSON(list(
+  source_html=sub('\\.js$','.html',basename(source_js)),
+  source_js=basename(source_js), source_md5=unname(tools::md5sum(source_js))),
+  auto_unbox=TRUE)
+artifact <- paste0('{"schema_version":1,"source":"metropolis","provenance":',
+                   provenance,',"payload":{"data":',payload,'}}')
+output_file <- 'data/metropolis-real.json.gz'
+stopifnot(!file.exists(output_file))
+dir.create(dirname(output_file), recursive=TRUE, showWarnings=FALSE)
+con <- gzfile(output_file, 'wt')
+tryCatch(writeLines(artifact, con, useBytes=TRUE), finally=close(con))
+```
+
+The HTML build reads this packaged snapshot and `data/osm-basemap.json.gz`.
+`map-template.html` defines the map interface and includes Leaflet's script,
+styles and license. `run.R` renders this R Markdown document in a temporary
+directory and embeds it with both datasets in `metropolis-traffic-maps.html`.
+
+The source construction uses volume ranking and a 34 by 22 spatial grid for
+road selection. Three five-minute observations form each fifteen-minute
+average. Interpolation in both directions and zero filling occur before the
+export. The per-road speed reference is the 90th percentile of nonzero speed
+over the source observation period. These construction choices define the
+snapshot's measurement and sampling conventions.
+
+## Fields and coverage
+
+```{r setup, include=FALSE}
+if (!requireNamespace('bdynets', quietly=TRUE)) {
+  package_file <- 'bdynets_0.1.0.tar.gz'
+  if (!file.exists(package_file)) stop('Bundled bdynets source package is absent')
+  package_library <- tempfile('traffic-r-library-')
+  dir.create(package_library)
+  .libPaths(c(package_library, .libPaths()))
+  install.packages(package_file, repos=NULL, type='source',
+                   lib=package_library, quiet=TRUE)
+  if (!requireNamespace('bdynets', quietly=TRUE))
+    stop('Bundled bdynets package installation failed')
+}
 library(bdynets)
+source('osm-figures.R')
+knitr::opts_chunk$set(fig.path=file.path(tempdir(),'metropolis-figure-'),message=FALSE)
+```
+
+```{r data}
 x <- read_traffic_data(params$dataset)
-x$provenance
-x$data$metadata
+meta <- x$data$metadata
+stopifnot(x$source=='metropolis', !isTRUE(meta$synthetic),
+          meta$sampleDay=='2024-10-18', length(x$data$frames)==96L,
+          meta$frameIntervalMinutes==15L,
+          x$data$frames[[1]]$time=='2024-10-18 00:00',
+          x$data$frames[[96]]$time=='2024-10-18 23:45')
+knitr::kable(data.frame(roads=length(x$data$segments), frames=length(x$data$frames),
+                       minutes_per_frame=meta$frameIntervalMinutes))
 ```
 
-The example has a synthetic rectangular road layout and 96 fifteen-minute
-frames. The volume and speed frames average three simulated five-minute
-observations. Coordinates are artificial and do not identify the original city.
-Seed 20261015 fixes the example; the generator restores the caller's RNG state.
+| Field | Definition |
+|---|---|
+| `schema_version`, `source`, `provenance` | Wrapper format, dataset identifier and source filename/checksums. |
+| `metadata` | Source, date, aggregation rule, road-selection method, speed reference and display scales. |
+| `bounds` | Minimum and maximum latitude/longitude values. |
+| `segments` | Road IDs, endpoint coordinates, length, region, category, edge type, speed-limit code/label, reference speed and selection volume statistic. |
+| `frames[].i`, `time` | Zero-based interval number and source-clock start label. |
+| `frames[].volume`, `speed`, `congestion` | Road arrays in `segments` order. Volume and speed have two decimal places; congestion has three. |
+| `congestionMean`, `congestionP95` | Per-frame congestion summaries across the 720 roads. |
+| `meanVolume` | Per-frame mean volume across the 720 roads. |
+| `meanSpeed`, `active` | Mean speed over positive-volume roads, and the number of those roads. |
 
-Congestion follows the source construction: nonnegative slowdown relative to
-each segment's 90th-percentile speed, multiplied by a clipped log-volume weight.
-The volume map instead normalizes volume by the sample's 95th percentile.
-These are descriptive visualization metrics, not posterior model estimates.
+`freeFlowSpeed` is the per-road speed reference. `maxVolume` is a column
+statistic from the volume file's first row group used during road selection;
+it is not the maximum for the displayed day.
 
-## Reproduce both map modes and trend panels
+The metadata leaves the formal volume unit, timezone and CRS unspecified.
+Speed labels use km/h. Interpreting the endpoint coordinates as longitude and
+latitude places the roads near Yekaterinburg; the source metadata does not
+provide a publisher-confirmed city name.
 
-The common workflow selects the frame with greatest total congestion, matching
-the source viewer's selection rule. Maps use the green–amber–red interpolation,
-line-width scaling and dark road casing from the viewer. Trends use the saved
-aggregate values; a vertical marker shows the selected frame.
+## Maps and daily trends
 
-```{r figures, fig.width=9, fig.height=7}
-figures <- traffic_figures(params$dataset, "metropolis")
+```{r figures, fig.width=9, fig.height=7, out.width='100%'}
+figures <- traffic_osm_figures(params$dataset, 'metropolis',
+                          time_index=params$time_index)
 ```
 
-Remote OpenStreetMap tiles, place labels and browser controls are omitted.
-The map geometry uses Web Mercator; line widths are adapted to the static device.
-Colors saturate at one for congestion and at the saved volume scale for volume.
-The different metric definitions mean the same color does not represent the
-same quantity between modes. The trend line is descriptive of this simulation
-only; it establishes nothing about real metropolitan traffic.
+R index 55 corresponds to JavaScript index 54 and 13:30, the interval with the
+highest total congestion in this day. Congestion uses the road-level index.
+Volume color intensity is `volume / 69.33`, clipped to one, where 69.33 is the
+whole-day volume p95. Both modes use green, amber and red, with line width
+increasing with intensity.
 
-## Select a frame and export figures
+The congestion definition is:
 
-```{r options, eval=FALSE}
-plot(traffic_frame(x, time_index=33L, metric="volume"))
-plot(traffic_trend(x, metric="congestion", time_index=33L))
-traffic_figures(params$dataset, "metropolis", time_index=33L,
-                output_dir="/path/to/new/metropolis-figures")
+```text
+congestion = clip(1 - speed / road_p90_speed, 0, 1)
+             * clip(log1p(volume) / log1p(day_volume_p95), 0, 1)
 ```
 
-The batch script calls the same workflow. Export produces four PDF/PNG figures,
-provenance and session information; existing output files are refused.
+The map reads `frames[].congestion`. Recalculation from rounded speed and
+volume can give different values. Daily trends use `congestionMean` and
+`meanVolume`. The congestion-p95 readout describes the selected interval;
+the volume-p95 readout is the whole-day display reference.
 
-## Recreate the simulation or import the missing real payload
+Traffic uses Web Mercator for display. Road geometry consists of the endpoint
+lines in `segments`. Dark casings distinguish the traffic lines from the
+background. The two daily trends cover all 96 intervals.
 
-Simulation is a separate, explicit preparation step, not part of rendering:
+## Selected-frame statistics
 
-```{r prepare, eval=FALSE}
-simulate_metropolis_data("/path/to/new/metropolis-simulated.json.gz", seed=20261015L)
+```{r summary}
+selected_frame <- x$data$frames[[params$time_index]]
+statistics <- unlist(selected_frame[c('congestionMean','congestionP95',
+                                     'meanSpeed','meanVolume','active')])
+knitr::kable(data.frame(statistic=names(statistics), value=unname(statistics)))
 ```
 
-**TODO for real-data reproduction:** restore the companion JavaScript file from
-the original visualization run. Then extract its JSON assignment without
-executing any JavaScript:
+The reference interval starts at `r selected_frame$time`. Its mean congestion
+is `r selected_frame$congestionMean`, mean volume is
+`r selected_frame$meanVolume`, and mean speed is `r selected_frame$meanSpeed`,
+with `r selected_frame$active` positive-volume roads. The table reads frame
+summary fields; it does not recompute them from rounded road arrays.
 
-```{r real-data, eval=FALSE}
-extract_traffic_data("/path/to/city_traffic_M_osm_congestion_sample.js",
-                     "metropolis", "/path/to/new/metropolis-real.json.gz")
-real <- read_traffic_data("/path/to/new/metropolis-real.json.gz")
-traffic_figures("/path/to/new/metropolis-real.json.gz", "metropolis")
+## Offline basemap
+
+`data/osm-basemap.json.gz` contains generalized roads, water polygons and place
+labels from the Protomaps OSM archive dated 20 October 2026. The extract uses
+zoom 11 and the traffic extent plus a 0.02-degree margin. `download_osm.py`
+contains the extraction procedure. Cache provenance includes the archive URL,
+retrieval time, tile hashes and a geometry checksum.
+
+OSM supplies geographic context. The congestion calculation uses the traffic
+attributes and reference speeds. Place labels are spaced to reduce overlap.
+The basemap date and traffic date refer to separate data sources.
+
+Map data: [OpenStreetMap contributors](https://www.openstreetmap.org/copyright),
+via [Protomaps](https://docs.protomaps.com/basemaps/downloads), ODbL Produced Work.
+
+## Build and figure export
+
+`Rscript run.R` builds the HTML from this folder. R dependencies are `jsonlite`,
+`rmarkdown`, `knitr`, `magrittr` and `bdynets`; HTML conversion uses Pandoc.
+`bdynets_0.1.0.tar.gz` contains the version 0.1.0 source package and license.
+The entrypoint uses that local archive in a temporary R library when the
+package is absent. Viewing the HTML requires a current browser.
+
+R indices run from 1 to 96. Index 55 starts at 13:30; index 33 starts at 08:00.
+Figure-export functions have the following form:
+
+```{r export-example, eval=FALSE}
+plot_traffic_osm(traffic_frame(x, time_index=33L, metric='volume'),
+                 read_osm_basemap())
+plot(traffic_trend(x, metric='congestion', time_index=33L))
+traffic_osm_figures(params$dataset, 'metropolis', time_index=33L,
+                output_dir='output/metropolis-0800')
 ```
 
-The real payload uses the same plotting API. Do not rename the simulated file
-as real data or remove its simulation label. When making a real-data report,
-update the input and narrative to describe the actual source and provenance.
+`osm-figures.R` provides PDF/PNG maps, trends and source records. Basemap
+preparation uses Python packages `requests`, `pmtiles` and
+`mapbox-vector-tile`. The HTML build and figure export use the packaged data
+and cache.
 
-```{r session}
-sessionInfo()
-```
+## Interpretation
+
+The maps and trends describe the selected 720 roads. Interpolation and zero
+filling mean that displayed zeros do not identify raw missing observations.
+The speed reference can include observations outside the displayed day, which
+matters when interpreting a retrospective congestion index as a predictor.
+This snapshot contains road-level measurements; individual vehicle paths and
+validated directed adjacency are absent. It does not identify causal
+congestion origins.
