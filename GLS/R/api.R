@@ -320,7 +320,7 @@ gls_fit <- function(
     Y, graph, train_rows = seq_len(nrow(Y)), pre_history = NULL, pairs = NULL,
     time_covariate = NULL, season_covariate = NULL, means = NULL, W = NULL,
     lag_reference_scale = NULL, signal = 0,
-    label = "GLS full dynamic nonlocal domain", control = gls_control()) {
+    label = "GLS dynamic nonlocal domain", control = gls_control()) {
   Y <- .validate_count_matrix(Y)
   graph <- .validate_gls_graph(graph)
   control <- .validate_gls_control(control)
@@ -412,6 +412,12 @@ gls_fit <- function(
 gls_diagnostics <- function(object, truth_pairs = NULL,
                              model_id = "GLS_continuous",
                              control = object$control) {
+  if (inherits(object, "gls_study_fit")) {
+    control <- .gls_study_validate_control(control)
+    out <- .gls_study_convergence(object, object$signal, control)
+    out$Converged <- out$PassRhat & out$PassESS
+    return(out)
+  }
   if (inherits(object, "gls_general_fit")) {
     control <- .validate_gls_control(control)
     out <- basic_convergence(object, object$signal, control)
@@ -419,7 +425,8 @@ gls_diagnostics <- function(object, truth_pairs = NULL,
     return(out)
   }
   if (!inherits(object, "gls_fit")) {
-    stop("object must be a gls_fit or gls_general_fit.", call. = FALSE)
+    stop("object must be a gls_fit, gls_general_fit, or gls_study_fit.",
+         call. = FALSE)
   }
   control <- .validate_gls_control(control)
   if (is.null(truth_pairs)) {
@@ -443,10 +450,15 @@ gls_diagnostics <- function(object, truth_pairs = NULL,
 #' @return A `gls_dss` object with the selected multipliers, support, and path.
 #' @export
 gls_dss <- function(object, validation_rows, control = object$control) {
-  if (!inherits(object, c("gls_fit", "gls_general_fit"))) {
-    stop("object must be a gls_fit or gls_general_fit.", call. = FALSE)
+  if (!inherits(object, c("gls_fit", "gls_general_fit", "gls_study_fit"))) {
+    stop("object must be a gls_fit, gls_general_fit, or gls_study_fit.",
+         call. = FALSE)
   }
-  control <- .validate_gls_control(control)
+  control <- if (inherits(object, "gls_study_fit")) {
+    .gls_study_validate_control(control)
+  } else {
+    .validate_gls_control(control)
+  }
   validation_rows <- sort(unique(as.integer(validation_rows)))
   if (!length(validation_rows) || anyNA(validation_rows) ||
       min(validation_rows) < 1L || max(validation_rows) > nrow(object$Y) ||
@@ -454,7 +466,15 @@ gls_dss <- function(object, validation_rows, control = object$control) {
     stop("validation_rows must be valid rows outside the training set.",
          call. = FALSE)
   }
-  ans <- if (inherits(object, "gls_general_fit")) {
+  ans <- if (inherits(object, "gls_study_fit")) {
+    .gls_study_run_dss(
+      object, object$X[object$train_rows, , drop = FALSE],
+      object$covariates[object$train_rows, , drop = FALSE],
+      object$Y[object$train_rows, , drop = FALSE], object$X,
+      object$covariates, object$Y, validation_rows, integer(),
+      object$signal, control
+    )
+  } else if (inherits(object, "gls_general_fit")) {
     run_general_dss(
       object, object$X[object$train_rows, , drop = FALSE],
       object$covariates[object$train_rows, , drop = FALSE], object$X,
@@ -571,11 +591,11 @@ gls_run_multihop_example <- function(profile = c("smoke", "quick", "default"),
   dss <- gls_dss(fit, design$split$validation, control)
   continuous <- predict(
     fit, design$split$test, design$split$validation,
-    label = "GLS continuous", control = control
+    label = "GLS", control = control
   )
   sparse <- predict(
     fit, design$split$test, design$split$validation, d = dss$d,
-    label = "GLS joint DSS", control = control
+    label = "GLSS", control = control
   )
   scores <- rbind(
     gls_score(continuous, sim$Y, sim$lambda, signal, control),
@@ -632,7 +652,7 @@ print.summary.gls_fit <- function(x, ...) {
 
 #' @export
 print.gls_dss <- function(x, ...) {
-  cat("GLS joint DSS selection\n")
+  cat("GLSS joint DSS selection\n")
   cat("  selected pairs:", sum(x$selected), "/", length(x$selected), "\n")
   cat("  validation loss:", format(x$validation_loss, digits = 5L), "\n")
   cat("  relative degradation:",

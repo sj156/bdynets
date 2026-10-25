@@ -1,311 +1,226 @@
-# GLS: Structured Global-Local Shrinkage and Selection
+# GLS: global-local shrinkage for dynamic count networks
 
-This directory is an installable R package for graph-shrinkage Bayesian
-dynamic count network models. It provides the posterior sampler, convergence
-diagnostics, joint decoupled shrinkage and selection (DSS), sequential one-step
-prediction, a sparse multi-hop simulation, and a frozen Divvy bike example.
+`GLS` is the canonical R implementation of the global-local shrinkage model
+used in the directed-network count study. The package contains the reusable
+graph, fitting, posterior-diagnostic, DSS, visualization, and
+sequential-prediction code. The simulation1 directed-grid data-generating
+process is kept in `R/simulation.R`.
 
-Loading `GLS` does not install packages, create output directories, or launch
-an experiment. Command-line parsing, plotting, and bulk output logic from the
-original research scripts are kept outside the package namespace. The model
-engines and reusable analysis interfaces are maintained directly under `R/`.
+The package does not start analyses or write files when loaded. Study output is
+written only when `gls_write_grid_study()` is called, or when an `output_dir` is
+passed to `gls_run_grid_study()`.
 
-## Name migration
+## Method names
 
-Version 0.3.0 renames the former `BDCN` package to `GLS`. Install `GLS`,
-use `library(GLS)`, and replace the `bdcn_` function prefix with `gls_`.
-New objects use `gls_` class names. Historical serialized BDCN fits retain
-their original classes and should be read with the original BDCN package;
-this rename does not rewrite saved results. Method labels retain their
-existing qualifiers (for example, `GLS full` and `GLS + DSS`).
+- **GLS** is the continuous all-pairs posterior model (formerly “GLS full”).
+- **GLSS** is the sparse predictor obtained by applying the joint DSS rule to
+  the GLS posterior (formerly “GLS DSS” or “GLS + DSS”).
+
+DSS remains the name of the selection procedure; GLSS is the resulting method.
+The implemented selector evaluates the DSS path on validation data and chooses
+the smallest support whose Poisson deviance is within the configured relative
+tolerance of GLS. The default tolerance is `0.01`.
 
 ## Installation
 
-For a local checkout, run this from the repository root:
+From the repository root:
 
 ```r
-install.packages("pak") # only if needed
-pak::pak("./GLS", dependencies = TRUE)
+install.packages("remotes")
+remotes::install_local("GLS", dependencies = TRUE, upgrade = "never")
 library(GLS)
 ```
 
-Alternatively, use base R:
+For a machine with the repository already checked out, base R also works:
 
 ```sh
 R CMD INSTALL GLS
 ```
 
-`BayesLogit` is a runtime dependency. `testthat` and `roxygen2` are used for
-development and package validation.
+## Simulation1: directed-grid propagation
 
-See the [repository overview](../README.md) for the broader `bdynets` project.
+The full design uses a 3 by 3 node grid, 24 directed road segments, and all
+24 squared ordered segment pairs. It injects sparse self, one-hop, two-hop, and
+far/unreachable effects. A static edge baseline and Fourier seasonality are
+shared by the DGP and fitted model. The network coefficient is the identifiable
+total trajectory
 
-## Sparse multi-hop simulation example
+```text
+theta_ab,t = theta_bar_ab + L_ab beta_t.
+```
 
-The packaged example constructs a directed road-segment grid, injects sparse
-heterogeneous two-hop propagation, fits the continuous GLS posterior, applies
-validation-selected joint DSS, and evaluates sequential one-step predictions.
+The affinity scale is learned from pair features, the covariance discount for
+`beta_t` is sampled on a discrete grid, and DSS selects one common sparse
+support using validation prediction. The resulting two proposed methods are
+reported as GLS and GLSS.
 
-The complete convenience workflow is:
+For the Appendix A.2 Graph-Laplace sensitivity specification, use one option:
+
+```r
+control <- gls_study_control(
+  "full",
+  shrinkage_spec = "graph_laplace_fixed_tau",
+  fixed_tau = 0.001,
+  graph_laplace_rho0 = 0.90
+)
+```
+
+This constructs the symmetric edge graph, sets
+`Q_E = D_E + I - rho0 * A_E`, uses its standardized correlation score as the
+single learned affinity feature, and fixes `tau` at the requested positive
+value. The local half-Cauchy
+scales and the positive Graph-Laplace feature coefficient remain learned. The
+legacy `tau = 1`, `tau = 0.025`, and current `tau = 0.001` settings are
+available as `sensitivity = "graph_laplace_tau1"`,
+`sensitivity = "graph_laplace_tau0025"`, and
+`sensitivity = "graph_laplace_tau0001"`, respectively.
+
+### Complete R example
+
+The following is a small end-to-end version of simulation1. It constructs the
+same model and output objects as the formal experiment, but uses the smoke
+profile so that the code can be checked quickly.
 
 ```r
 library(GLS)
 
-result <- gls_run_multihop_example(
-  profile = "smoke",
-  signal = 0.20,
-  side = 3
-)
-result$scores
-```
+control <- gls_study_control("smoke")
+design <- gls_study_design(control)
 
-The equivalent step-by-step workflow is:
+# Generate counts and latent intensities for q = 0.1.
+simulation <- gls_simulate_grid(0.1, design, control)
 
-```r
-control <- gls_control("smoke")
-design <- gls_simulate_multihop(signal = 0.20, side = 3, control = control)
-sim <- design$simulation
+# Fit the continuous all-pairs model (GLS).
+fit <- gls_fit_study(simulation, design, control)
 
-fit <- gls_fit(
-  sim$Y,
-  design$graph,
-  train_rows = design$split$train,
-  pre_history = sim$pre_history,
-  pairs = design$pairs,
-  time_covariate = sim$time_covariate,
-  season_covariate = sim$season_covariate,
-  means = sim$means,
-  lag_reference_scale = sim$scale,
-  signal = design$signal,
+# Select a sparse support on validation data and form GLSS.
+dss <- gls_dss(fit, fit$split$validation, control)
+glss_prediction <- predict(
+  fit,
+  rows = fit$split$test,
+  conditioning_rows = fit$split$validation,
+  d = dss$d,
+  label = "GLSS",
   control = control
 )
 
-diagnostics <- gls_diagnostics(fit, design$long_pairs)
-dss <- gls_dss(fit, design$split$validation)
-
-continuous <- predict(
-  fit,
-  rows = design$split$test,
-  conditioning_rows = design$split$validation,
-  label = "GLS continuous"
-)
-sparse <- predict(
-  fit,
-  rows = design$split$test,
-  conditioning_rows = design$split$validation,
-  d = dss$d,
-  label = "GLS joint DSS"
-)
-
-rbind(
-  gls_score(continuous, sim$Y, sim$lambda, design$signal, control),
-  gls_score(sparse, sim$Y, sim$lambda, design$signal, control)
-)
+sum(dss$selected)             # selected ordered pairs
+gls_diagnostics(fit)          # R-hat and effective sample size
+head(glss_prediction$mean)    # held-out predictive intensity
 ```
 
-The `smoke` and `quick` profiles are workflow checks, not inferential settings.
-The `default` profile uses three chains with 6,000 iterations per chain and
-discards the first 3,000. Iteration count alone does not establish convergence;
-inspect the split-Rhat and ESS output from `gls_diagnostics()`.
-
-The runnable script is also available at
-[`inst/examples/multihop.R`](inst/examples/multihop.R).
-
-## Divvy bike example
-
-The package includes the frozen aggregate Divvy data and the general all-pairs
-GLS engine needed for the bike analysis. The data contain 1,448 three-hour
-observations on 24 directed OD links, 13 known calendar covariates, and 576
-ordered source-target candidates. January--April are used for training, May for
-validation, and June for testing; the first 12 bins provide lag history.
-
-Load and inspect the bundled design:
+For the shortest reproducible workflow, the orchestration interface runs GLS,
+GLSS, PNAR(1), and PNAR(2) together and writes all standard outputs:
 
 ```r
-library(GLS)
-
-bike <- gls_bike_data()
-dim(bike$Y)          # 1448 x 24
-dim(bike$covariates) # 1448 x 13
-bike$split_table
-```
-
-Run the complete short-chain workflow check:
-
-```r
-smoke <- gls_run_bike_example("smoke")
-smoke$scores
-```
-
-Run the original 1,500-iteration, three-chain analysis and save its outputs:
-
-```r
-result <- gls_run_bike_example(
-  profile = "analysis",
-  output_dir = "bike_output_1500"
+study <- gls_run_grid_study(
+  gls_study_control("smoke"),
+  output_dir = "output/simulation1_smoke"
 )
-summary(result$fit)
-result$scores
+study$scenarios[[1]]$performance
 ```
 
-Run the 5,000-iteration sensitivity analysis:
+### Formal simulation1 run
+
+This is the manuscript configuration: signals `0`, `0.1`, and `0.2`; three
+chains; 5,000 iterations with the first 4,000 discarded. It saves tables,
+standard diagnostic figures, scenario objects, and benchmark inputs.
 
 ```r
-result <- gls_run_bike_example(
-  profile = "long",
-  output_dir = "bike_output_5000"
+control <- gls_study_control(
+  "full",
+  n_iter = 5000L,
+  burn_mcmc = 4000L,
+  n_chains = 3L,
+  signal_grid = c(0, 0.1, 0.2)
+)
+
+study <- gls_run_grid_study(
+  control,
+  output_dir = "output/simulation1_mcmc5000_burn4000"
 )
 ```
 
-The same analysis can be launched from a terminal:
+The main files are:
+
+```text
+output/simulation1_mcmc5000_burn4000/
+  configuration.R
+  GLS_simulation_summary.rds
+  tables/predictive_performance.csv
+  tables/pair_selection.csv
+  signal_0.00/scenario_results.rds
+  signal_0.10/scenario_results.rds
+  signal_0.20/scenario_results.rds
+```
+
+The package writer also creates per-signal convergence, shrinkage, DSS, and
+prediction diagnostics. Manuscript composite figures are built by the
+post-processing scripts in `simulation1_GLS_directed_grid`; these scripts read
+saved posterior draws and do not rerun MCMC:
 
 ```sh
-Rscript -e 'library(GLS); gls_run_bike_example("analysis", output_dir="bike_output_1500")'
+Rscript postprocess_prediction_figures.R \
+  --result-dir=output/simulation1_mcmc5000_burn4000
+
+Rscript postprocess_all_benchmark_predictions.R \
+  --result-dir=output/simulation1_mcmc5000_burn4000 \
+  --benchmark-result-dir=output/simulation1_mcmc5000_burn4000
+
+Rscript make_manuscript_validation_figures.R \
+  --result-dir=output/simulation1_mcmc5000_burn4000 \
+  --benchmark-result-dir=output/simulation1_mcmc5000_burn4000 \
+  --paper-figure-dir=/path/to/paper/figure
 ```
 
-When `output_dir` is supplied, the workflow writes the fit checkpoint, MCMC
-diagnostics, DSS validation path, dependence-selection table, June rolling
-predictions, scores, and frozen configuration. A subsequent run reuses the fit
-only when the control settings, counts, covariates, and graph are identical.
+Sensitivity settings are available but never run automatically:
 
-The runnable script is available at [`inst/examples/bike.R`](inst/examples/bike.R),
-and the bundled data contract is documented in
-[`inst/extdata/divvy/README.md`](inst/extdata/divvy/README.md).
+```r
+names(gls_study_sensitivity_presets())
+control <- gls_study_control("full", sensitivity = "tau_scale_2")
+```
 
 ## Main interfaces
 
-| Function | Responsibility |
-| --- | --- |
-| `gls_control()` | Simulation, MCMC, shrinkage, DSS, and prediction settings |
-| `gls_grid()` | Directed road-segment grid used by the simulation example |
-| `gls_pairs()` | Nonlocal ordered-pair dictionary with graph affinities |
-| `gls_all_pairs()` | Complete self and cross-series ordered-pair dictionary |
-| `gls_simulate_multihop()` | Sparse heterogeneous two-hop data generator |
-| `gls_fit()` | GLS with static self/W terms and a nonlocal dynamic domain |
-| `gls_fit_general()` | All-pairs GLS with an arbitrary known covariate matrix |
-| `gls_diagnostics()` | Parameter-level split-Rhat, ESS, intervals, and pass/fail checks |
-| `gls_dss()` | Validation-selected joint DSS projection of a continuous fit |
-| `predict()` | Sequential one-step prediction with observation assimilation |
-| `gls_score()` | Poisson deviance, intensity RMSE, log score, and interval metrics |
-| `gls_bike_data()` | Loader for the frozen 24-edge Divvy design |
-| `gls_bike_control()` | Smoke, 1,500-iteration, and 5,000-iteration bike settings |
-| `gls_run_bike_example()` | End-to-end Divvy fitting, DSS, and forecasting workflow |
+| Function | Purpose |
+|---|---|
+| `gls_grid()` | Build a directed square road-segment graph |
+| `gls_all_pairs()` | Build the complete ordered-pair candidate domain |
+| `gls_study_control()` | Configure the directed-grid study |
+| `gls_study_design()` | Freeze graph, pair features, and active truth |
+| `gls_simulate_grid()` | Generate one scenario from the study DGP |
+| `gls_fit_study()` | Fit the GLS study model |
+| `gls_diagnostics()` | Compute parameter-level R-hat and ESS |
+| `gls_dss()` | Select the joint sparse network |
+| `predict()` | Produce sequential one-step predictions |
+| `gls_run_grid_scenario()` | Run GLS, GLSS, and PNAR for one signal |
+| `gls_run_grid_study()` | Run every configured signal |
+| `gls_write_grid_study()` | Save reproducible tables, figures, and objects |
 
-See the generated help pages, especially `?gls_fit`, `?gls_fit_general`,
-`?gls_dss`, and `?gls_run_bike_example`, for complete argument contracts.
+The older `gls_fit()` and `gls_fit_general()` interfaces remain available for
+custom data analyses. The package contains only reusable methods and
+simulations, without an application-specific bundled dataset.
 
-## Scripts
+## Package layout
 
-| R script | Responsibility |
-| --- | --- |
-| `GLS-package.R` | Package documentation and imports |
-| `api.R` | Multi-hop API, validation, diagnostics, DSS dispatch, and S3 methods |
-| `engine-internal.R` | Internal nonlocal GLS sampler and simulation engine |
-| `general-api.R` | All-pairs API, arbitrary covariates, and Divvy workflow |
-| `general-engine-internal.R` | Internal all-pairs sampler, DSS, and prediction engine |
-
-All maintained package functions live under `R/`. Roxygen generates
-`NAMESPACE` and the help pages under `man/`. End-to-end scripts are stored under
-`inst/examples/`, bundled aggregate data under `inst/extdata/divvy/`, and
-module-specific tests under `tests/testthat/`.
-
-## Model contract and current scope
-
-The current release implements a rank-one graph-shrinkage GLS. Dynamic
-source-target coefficients are products of pair-specific loadings and a common
-unit-innovation latent factor. The Poisson likelihood is handled through the
-established finite-shape negative-binomial approximation and Pólya--Gamma
-augmentation. The time-specific approximation sequence is fixed from training
-data before MCMC.
-
-The multi-hop interface estimates static own-lag and physical-network effects
-separately from the nonlocal dynamic dictionary. This prevents a local effect
-from competing in both static and dynamic channels. The general interface used
-by the bike example instead places all 24 x 24 ordered pairs, including self
-pairs, in the graph-informed dynamic shrinkage model and gives each target its
-own coefficients for the known calendar design.
-
-Joint DSS does not refit the generative model. It constructs a sparse path from
-the continuous posterior and selects a common network sparsity level using
-one-step Poisson deviance on validation data. The test period is not used for
-DSS selection.
-
-Prediction is sequential and one-step ahead: the model predicts time `t`, then
-assimilates `Y[t, ]` before predicting `t + 1`. It is not an unconditional
-long-horizon forecast. Missing histories, new network units, higher-rank factor
-identification, and automatic calendar selection are not currently part of the
-public package API.
-
-Smoke and quick profiles validate software execution only. They do not establish
-chain convergence, posterior calibration, support recovery, or scientific
-performance.
-
-## Development and validation
-
-From the repository root:
-
-```r
-roxygen2::roxygenise("GLS")
-testthat::test_local("GLS")
+```text
+GLS/
+  R/
+    api.R                       core public API
+    general-api.R               arbitrary-covariate all-pairs API
+    study-api.R                 directed-grid study orchestration
+    simulation.R                current study DGP
+    study-control.R             profiles and sensitivity presets
+    study-sampler.R             learned-affinity MCMC engine
+    study-dss.R                 joint DSS and study prediction
+    study-diagnostics.R         convergence summaries and figures
+    benchmark-pnar.R                PNAR benchmark and benchmark export
+    study-utils.R               study-specific numerical utilities
+  inst/examples/
+    multihop.R                  legacy compact example
+  tests/testthat/               package tests
 ```
 
-```sh
-R CMD build GLS
-R CMD check --no-manual GLS_0.1.0.tar.gz
-```
-
-The current package passes its unit and end-to-end smoke tests and
-`R CMD check --no-manual` with **Status: OK**. These checks cover package
-structure, input contracts, deterministic simulation, posterior execution,
-joint DSS, and sequential prediction for both the multi-hop and Divvy workflows.
-They do not replace substantive convergence assessment.
-
-`R/engine-internal.R` was migrated from
-`TrafficFlowNTS_section6_grid_long_range.R`.
-`R/general-engine-internal.R` was migrated from
-`section6_general_extension/run_general_gls_extension.R`. Future algorithmic
-changes should update the corresponding internal engine, public contracts,
-tests, and reproducibility notes together.
-
-
-## Static propagation plus discounted dynamics (0.2.0)
-
-The fitted coefficient is now `B_ab + L_ab * beta_t`. Each pair shares a
-horseshoe scale, with the dynamic loading prior standard deviation multiplied
-by the fixed `dynamic_loading_scale = 0.25`. The factor starts with mean zero
-and variance one. This anchors the decomposition through the prior; the static
-and dynamic components are not separately identified by the observation
-likelihood. Report total trajectories and predictions, with prior sensitivity.
-
-```r
-control <- gls_control("smoke", static_network = TRUE,
-                        factor_evolution = "discount",
-                        discount_grid = c(.90, .95, .98, .995))
-# Controlled dynamic-only, unit-innovation comparison:
-legacy <- gls_control("smoke", static_network = FALSE,
-                       factor_evolution = "unit")
-```
-
-Each retained draw has one constant `discount`, its `B` coefficients, and terminal
-`reference_mean` and `reference_variance`. The reference covariance is a
-Poisson Laplace recursion; the actual augmented FFBS covariance is different.
-Every proposal changing a loading or offset includes the evolution-density
-Metropolis correction; `covariance_acceptance` records acceptance by chain.
-Discount frequencies estimate grid probabilities only after MCMC convergence.
-Inspect occupancy across chains, endpoint mass, and total-trajectory diagnostics.
-The engine version in controls invalidates earlier workflow caches.
-
-Forecasts and DSS use both static and dynamic propagation. Rolling prediction
-retains the existing one-PG-sweep assimilation approximation and intensity
-clipping to `exp(c(-15,12))`; it is not exact sequential Bayesian filtering.
-DSS weights multiply both components and use the retained terminal reference
-state for projected forecasts, followed by reference updates with projected
-loadings/offsets. This is a post-fit projection, not a posterior refit.
-
-This package implements the rank-one, fixed-affinity, static-baseline/covariate
-special case. The manuscript also describes learned affinities and dynamic
-nonnetwork states, which are not implemented here. The bundled 24-edge,
-three-hour Divvy example remains its original frozen dataset. Existing
-simulation generators and published results have not been changed into
-experiments for the new model. Smoke checks are not convergence evidence or
-evidence of superiority to STGCN or Graph WaveNet.
+`full` runs are intended for scientific reporting. Always inspect the
+parameter-level convergence table and trace plots before interpreting
+coefficient recovery or shrinkage scales.

@@ -16,6 +16,6 @@ A data frame with one row per ordered source-target pair.
 }
 \description{
 Unlike \code{\link[=gls_pairs]{gls_pairs()}}, this dictionary includes self, one-hop, two-hop, and
-unreachable ordered pairs. It is the candidate domain used by the packaged
-Divvy bike example and by \code{\link[=gls_fit_general]{gls_fit_general()}}.
+unreachable ordered pairs. It is the candidate domain used by
+\code{\link[=gls_fit_general]{gls_fit_general()}} and the directed-grid simulation study.
 }

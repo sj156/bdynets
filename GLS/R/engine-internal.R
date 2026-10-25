@@ -462,7 +462,7 @@ update_common_time_effects <- function(ystar, X, WX, net, omega, alpha, self_coe
     draw
 }
 
-fit_chain <- function(Y, X, time_covariate, season_covariate, W, pairs, means, chain_id, signal, model_label = "GLS full dynamic nonlocal domain", 
+fit_chain <- function(Y, X, time_covariate, season_covariate, W, pairs, means, chain_id, signal, model_label = "GLS dynamic nonlocal domain", 
     cfg = CFG) {
     set.seed(method_seed("MCMC", paste(model_label, signal, chain_id), cfg))
     start <- Sys.time()
@@ -632,7 +632,7 @@ bind_array3 <- function(xs) {
     out
 }
 
-fit_gls <- function(Y, X, time_covariate, season_covariate, W, pairs, means, signal, model_label = "GLS full dynamic nonlocal domain", 
+fit_gls <- function(Y, X, time_covariate, season_covariate, W, pairs, means, signal, model_label = "GLS dynamic nonlocal domain", 
     cfg = CFG) {
     start <- Sys.time()
     ids <- seq_len(cfg$n_chains)

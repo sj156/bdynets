@@ -1,8 +1,8 @@
 #' Build the all-pairs GLS candidate dictionary
 #'
 #' Unlike [gls_pairs()], this dictionary includes self, one-hop, two-hop, and
-#' unreachable ordered pairs. It is the candidate domain used by the packaged
-#' Divvy bike example and by [gls_fit_general()].
+#' unreachable ordered pairs. It is the candidate domain used by
+#' [gls_fit_general()] and the directed-grid simulation study.
 #'
 #' @param graph A GLS graph containing `edges`, `A`, and `W`.
 #' @param control A [gls_control()] object.
@@ -16,8 +16,8 @@ gls_all_pairs <- function(graph, control = gls_control()) {
 
 #' Fit all-pairs GLS with an arbitrary known covariate matrix
 #'
-#' This is the general GLS engine used by the Divvy bike example. Each target
-#' has its own coefficients for the columns of `covariates`. All ordered lagged
+#' Each target has its own coefficients for the columns of `covariates`. All
+#' ordered lagged
 #' source-target pairs enter the graph-informed shrinkage model; there are no
 #' separate unpenalized self or physical-network lag terms.
 #'
@@ -36,7 +36,7 @@ gls_all_pairs <- function(graph, control = gls_control()) {
 gls_fit_general <- function(
     Y, graph, covariates, train_rows = seq_len(nrow(Y)), pre_history = NULL,
     pairs = NULL, means = NULL, signal = 0,
-    label = "GLS continuous, all ordered pairs", control = gls_control()) {
+    label = "GLS, all ordered pairs", control = gls_control()) {
   Y <- .validate_count_matrix(Y)
   graph <- .validate_gls_graph(graph)
   control <- .validate_gls_control(control)
@@ -131,231 +131,6 @@ predict.gls_general_fit <- function(
   ans$conditioning_rows <- conditioning_rows
   class(ans) <- c("gls_prediction", "list")
   ans
-}
-
-#' Load the packaged Divvy bike example
-#'
-#' The bundled data are the frozen January--June 2026, 24-edge, three-hour
-#' aggregation used by the existing real-data analysis. The first 12 bins are
-#' context, January--April are training, May is validation, and June is test.
-#'
-#' @param data_dir Optional directory containing `counts.csv`, `A.csv`,
-#'   `W.csv`, `edges.csv`, `calendar.csv`, and `split.csv`. By default, the
-#'   copies bundled with GLS are used.
-#' @return A `gls_bike_data` list containing counts, timestamps, graph,
-#'   calendar covariates, and split indices.
-#' @export
-gls_bike_data <- function(data_dir = NULL) {
-  if (is.null(data_dir)) {
-    data_dir <- system.file("extdata", "divvy", package = "GLS")
-  }
-  if (!nzchar(data_dir) || !dir.exists(data_dir)) {
-    stop("Cannot locate the Divvy example data directory.", call. = FALSE)
-  }
-  required <- c("counts.csv", "A.csv", "W.csv", "edges.csv",
-                "calendar.csv", "split.csv")
-  missing <- required[!file.exists(file.path(data_dir, required))]
-  if (length(missing)) {
-    stop("Missing bike data file(s): ", paste(missing, collapse = ", "),
-         call. = FALSE)
-  }
-  counts <- utils::read.csv(file.path(data_dir, "counts.csv"),
-                            check.names = FALSE)
-  timestamps <- as.POSIXct(counts[[1L]], tz = "UTC")
-  Y <- as.matrix(counts[-1L])
-  storage.mode(Y) <- "double"
-  edges <- utils::read.csv(file.path(data_dir, "edges.csv"),
-                           check.names = FALSE)
-  A <- as.matrix(utils::read.csv(file.path(data_dir, "A.csv"), header = FALSE))
-  W <- as.matrix(utils::read.csv(file.path(data_dir, "W.csv"), header = FALSE))
-  graph <- .validate_gls_graph(list(
-    A = A, W = W, edges = data.frame(name = edges$Edge),
-    edge_metadata = edges
-  ))
-  class(graph) <- c("gls_graph", "list")
-  Q <- as.matrix(utils::read.csv(file.path(data_dir, "calendar.csv"),
-                                 check.names = FALSE))
-  storage.mode(Q) <- "double"
-  split_table <- utils::read.csv(file.path(data_dir, "split.csv"),
-                                 stringsAsFactors = FALSE)
-  split <- setNames(lapply(seq_len(nrow(split_table)), function(i) {
-    seq.int(split_table$start[i], split_table$end[i])
-  }), split_table$block)
-  if (nrow(Y) != nrow(Q) || ncol(Y) != nrow(edges) || anyNA(timestamps)) {
-    stop("The bundled bike data files have inconsistent dimensions.", call. = FALSE)
-  }
-  structure(list(
-    Y = Y, timestamps = timestamps, graph = graph, covariates = Q,
-    split = split, split_table = split_table, data_dir = normalizePath(data_dir)
-  ), class = c("gls_bike_data", "list"))
-}
-
-#' Control settings for the Divvy bike example
-#'
-#' @param profile `"smoke"` for a workflow check, `"analysis"` for the original
-#'   1,500-iteration analysis, or `"long"` for the 5,000-iteration sensitivity
-#'   run.
-#' @param ... Named replacements passed to [gls_control()].
-#' @return A validated GLS control object.
-#' @export
-gls_bike_control <- function(profile = c("smoke", "analysis", "long"), ...) {
-  profile <- match.arg(profile)
-  base_profile <- if (profile == "smoke") "smoke" else "default"
-  settings <- switch(profile,
-    smoke = list(
-      seed = 20260922L, n_iter = 6L, burn_mcmc = 2L, n_chains = 1L,
-      parallel_chains = FALSE, progress_every = 100L,
-      predictive_draws = 2L, dss_validation_draws = 2L,
-      dss_max_draws = 2L, dss_n_lambda = 3L,
-      shrinkage_substeps = 1L, state_block_substeps = 1L,
-      scale_move_steps = 1L, expected_active_pairs = 48L
-    ),
-    analysis = list(
-      seed = 20260922L, n_iter = 1500L, burn_mcmc = 750L,
-      n_chains = 3L, parallel_chains = TRUE, progress_every = 100L,
-      predictive_draws = 300L, dss_validation_draws = 100L,
-      dss_max_draws = 200L, dss_n_lambda = 40L,
-      expected_active_pairs = 48L
-    ),
-    long = list(
-      seed = 20260922L, n_iter = 5000L, burn_mcmc = 2500L,
-      n_chains = 3L, parallel_chains = TRUE, progress_every = 100L,
-      predictive_draws = 300L, dss_validation_draws = 100L,
-      dss_max_draws = 200L, dss_n_lambda = 40L,
-      expected_active_pairs = 48L
-    )
-  )
-  replacements <- list(...)
-  if (length(replacements) &&
-      (is.null(names(replacements)) || any(!nzchar(names(replacements))))) {
-    stop("All replacement bike settings must be named.", call. = FALSE)
-  }
-  settings[names(replacements)] <- replacements
-  do.call(gls_control, c(list(profile = base_profile), settings))
-}
-
-.bike_prediction_frame <- function(prediction, data) {
-  mu <- apply(prediction$lambda, c(1L, 2L), mean)
-  lo <- apply(prediction$y, c(1L, 2L), stats::quantile, 0.025)
-  hi <- apply(prediction$y, c(1L, 2L), stats::quantile, 0.975)
-  data.frame(
-    Model = prediction$label,
-    Time = rep(prediction$rows, ncol(data$Y)),
-    Timestamp = rep(data$timestamps[prediction$rows], ncol(data$Y)),
-    Edge = rep(colnames(data$Y), each = length(prediction$rows)),
-    Observed = as.vector(data$Y[prediction$rows, , drop = FALSE]),
-    Prediction = as.vector(mu), Lower95 = as.vector(lo), Upper95 = as.vector(hi)
-  )
-}
-
-#' Run the packaged Divvy bike example
-#'
-#' This function fits the general all-pairs GLS, applies validation-selected
-#' joint DSS, and produces rolling one-step June predictions. Set `output_dir`
-#' to save reusable fit and result files. The smoke profile validates execution
-#' only; use the analysis or long profile for substantive runs and inspect
-#' convergence before interpretation.
-#'
-#' @param profile Bike profile passed to [gls_bike_control()].
-#' @param data_dir Optional external prepared-data directory; defaults to the
-#'   bundled example data.
-#' @param output_dir Optional result directory. Nothing is written when `NULL`.
-#' @param control Optional explicit bike control object.
-#' @param reuse Reuse a matching package-generated fit checkpoint when present.
-#' @return A `gls_bike_result` with data, fit, diagnostics, DSS, predictions,
-#'   observed-data scores, selection table, and prediction table.
-#' @export
-#' @examples
-#' bike <- gls_bike_data()
-#' dim(bike$Y)
-#' bike$split_table
-#' if (interactive()) {
-#'   result <- gls_run_bike_example("smoke")
-#'   result$scores
-#' }
-gls_run_bike_example <- function(
-    profile = c("smoke", "analysis", "long"), data_dir = NULL,
-    output_dir = NULL, control = NULL, reuse = TRUE) {
-  profile <- match.arg(profile)
-  if (is.null(control)) control <- gls_bike_control(profile)
-  control <- .validate_gls_control(control)
-  data <- gls_bike_data(data_dir)
-  pairs <- gls_all_pairs(data$graph, control)
-  fit_file <- if (!is.null(output_dir)) {
-    dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
-    file.path(output_dir, sprintf("gls_bike_fit_%d.rds", control$n_iter))
-  } else NULL
-  fit <- NULL
-  if (isTRUE(reuse) && !is.null(fit_file) && file.exists(fit_file)) {
-    candidate <- readRDS(fit_file)
-    if (inherits(candidate, "gls_general_fit") &&
-        identical(candidate$control, control) &&
-        identical(candidate$Y, data$Y) &&
-        identical(candidate$covariates, data$covariates) &&
-        identical(candidate$graph$A, data$graph$A)) fit <- candidate
-  }
-  if (is.null(fit)) {
-    fit <- gls_fit_general(
-      data$Y, data$graph, data$covariates,
-      train_rows = data$split$training, pairs = pairs,
-      means = colMeans(data$Y[data$split$training, , drop = FALSE]),
-      control = control
-    )
-    if (!is.null(fit_file)) saveRDS(fit, fit_file, compress = FALSE)
-  }
-  diagnostics <- gls_diagnostics(fit, control = control)
-  dss <- gls_dss(fit, data$split$validation, control)
-  continuous <- predict(
-    fit, data$split$test, data$split$validation,
-    label = "GLS continuous", control = control
-  )
-  sparse <- predict(
-    fit, data$split$test, data$split$validation, d = dss$d,
-    label = "GLS + DSS", control = control
-  )
-  predictions <- list(continuous = continuous, dss = sparse)
-  scores <- do.call(rbind, lapply(predictions, function(pred) {
-    z <- gls_score(pred, data$Y, data$Y, control = control)
-    data.frame(
-      Model = z$Model, PoissonDeviance = z$PoissonDeviance,
-      ObservedRMSE = z$RMSEIntensity, MAECount = z$MAECount,
-      LogScore = z$LogScore, Coverage95 = z$Coverage95, Width95 = z$Width95
-    )
-  }))
-  selection <- pairs
-  selection$posterior_amplitude <- colMeans(fit$amplitude)
-  selection$probability_above_delta <- colMeans(
-    fit$amplitude > control$delta_A
-  )
-  selection$DSS_d <- dss$d
-  selection$DSS_selected <- dss$selected
-  prediction_table <- do.call(rbind, lapply(predictions,
-                                             .bike_prediction_frame,
-                                             data = data))
-  result <- structure(list(
-    data = data, fit = fit, diagnostics = diagnostics, dss = dss,
-    predictions = predictions, scores = scores, selection = selection,
-    prediction_table = prediction_table, control = control
-  ), class = c("gls_bike_result", "list"))
-  if (!is.null(output_dir)) {
-    utils::write.csv(diagnostics, file.path(output_dir, "mcmc_convergence.csv"),
-                     row.names = FALSE)
-    utils::write.csv(dss$path, file.path(output_dir, "dss_validation_path.csv"),
-                     row.names = FALSE)
-    utils::write.csv(selection, file.path(output_dir, "dependence_selection.csv"),
-                     row.names = FALSE)
-    utils::write.csv(prediction_table,
-                     file.path(output_dir, "bike_predictions.csv"),
-                     row.names = FALSE)
-    utils::write.csv(scores, file.path(output_dir, "bike_scores.csv"),
-                     row.names = FALSE)
-    saveRDS(list(control = control, split = data$split,
-                 scaler = fit$scaler),
-            file.path(output_dir, "configuration.rds"))
-    saveRDS(result, file.path(output_dir, "bike_results.rds"),
-            compress = FALSE)
-  }
-  result
 }
 
 #' @export

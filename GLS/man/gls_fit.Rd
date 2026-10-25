@@ -16,7 +16,7 @@ gls_fit(
   W = NULL,
   lag_reference_scale = NULL,
   signal = 0,
-  label = "GLS full dynamic nonlocal domain",
+  label = "GLS dynamic nonlocal domain",
   control = gls_control()
 )
 }

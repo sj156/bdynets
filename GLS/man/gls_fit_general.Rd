@@ -13,7 +13,7 @@ gls_fit_general(
   pairs = NULL,
   means = NULL,
   signal = 0,
-  label = "GLS continuous, all ordered pairs",
+  label = "GLS, all ordered pairs",
   control = gls_control()
 )
 }
@@ -42,8 +42,8 @@ gls_fit_general(
 A \code{gls_general_fit} object with posterior draws and frozen inputs.
 }
 \description{
-This is the general GLS engine used by the Divvy bike example. Each target
-has its own coefficients for the columns of \code{covariates}. All ordered lagged
+Each target has its own coefficients for the columns of \code{covariates}. All
+ordered lagged
 source-target pairs enter the graph-informed shrinkage model; there are no
 separate unpenalized self or physical-network lag terms.
 }

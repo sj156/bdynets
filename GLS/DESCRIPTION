@@ -1,20 +1,19 @@
 Package: GLS
 Title: Structured Global-Local Shrinkage and Selection
-Version: 0.3.0
+Version: 0.4.1
 Authors@R: c(
     person("Ying", "Wu", role = "aut"),
     person("Sheng", "Jiang", email = "jiangsheng@cuhk.edu.cn",
            role = c("aut", "cre"))
   )
-Description: Implements structured global-local shrinkage and selection for edge-indexed
+Description: Implements global-local shrinkage and selection for edge-indexed
     multivariate count time series. The implementation combines a finite-shape
     negative-binomial approximation, Polya-Gamma augmentation, dynamic latent
-    factors with learned constant discount, static propagation coefficients,
-    graph-informed global-local shrinkage, posterior diagnostics,
-    joint decoupled shrinkage and selection, and sequential one-step
-    prediction. A reproducible sparse multi-hop propagation simulation is
-    included, together with a frozen 24-edge Divvy bike example supporting
-    arbitrary known calendar covariates and an all-pairs candidate domain.
+    factors with a learned covariance discount, static propagation
+    coefficients, learned graph-affinity scales, posterior diagnostics, joint
+    decoupled shrinkage and selection, and sequential one-step prediction. A
+    reproducible directed-grid simulation uses all ordered source-target pairs,
+    periodic covariates, and PNAR benchmarks.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Depends: R (>= 4.1.0)
@@ -24,6 +23,7 @@ Imports:
     stats,
     utils
 Suggests:
+    ggplot2,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
 Roxygen: list(markdown = TRUE)
