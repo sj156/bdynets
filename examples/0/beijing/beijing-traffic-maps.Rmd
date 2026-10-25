@@ -1,0 +1,72 @@
+---
+title: "Beijing: reproduce the saved traffic-map figures"
+output: html_document
+params:
+  snapshot: "../../data/Beijing Data/processed/beijing-visualization.json.gz"
+---
+
+This tutorial reproduces the **data layers** in the existing Beijing traffic
+visualization using `bdynets`. The standalone dataset was extracted losslessly from the HTML. It contains 288 five-minute frames,
+matched road polylines and rounded relative-load values. It is the actual
+repository visualization dataset, not a synthetic example. Raw trajectory files
+are not required. No model is fitted and no JavaScript or network request runs.
+
+## Read and inspect the standalone saved data
+
+Install `bdynets` from the repository package subdirectory and install `jsonlite`
+if needed. Rendering this tutorial additionally requires `rmarkdown` and `knitr`.
+
+```{r setup, message=FALSE}
+library(bdynets)
+snapshot <- read_traffic_data(params$snapshot)
+data.frame(edges=length(snapshot$ids), frames=length(snapshot$bins),
+           minutes_per_frame=snapshot$bin_minutes)
+snapshot$provenance
+```
+
+The source metric is `x_ijt / estimated capacity`; it is **relative load**, not
+an observed accident count or a probability. Values are preserved at the HTML's
+saved precision. An edge absent from a frame follows the original viewer's zero
+convention. That convention belongs to this visualization export and must not
+be generalized to missing observations in other datasets.
+
+## Reproduce the three views
+
+Frame 107 is 08:50–08:55 (R indexing starts at one). It has the highest saved
+mean relative load and highest saved count of high-load edges. This is a
+transparent descriptive selection, not evidence about a model's performance.
+The shared package workflow below is also called by `run.R`.
+
+```{r reproduce, fig.width=9, fig.height=7}
+frames <- traffic_figures(params$snapshot, "beijing", time_index=107L)
+```
+
+The first map uses the source's 0%, 20%, 40%, 60% and 80%+ classes. Gray roads
+have zero displayed load. The second map uses red for increases and blue for
+decreases relative to the preceding five-minute frame; width represents change
+magnitude. The third shows consecutive time above the viewer's 80% threshold,
+using the **saved duration records**, with bins converted to minutes.
+
+Matched road polylines and Web Mercator projection are retained. These are
+static data-layer reproductions: remote OpenStreetMap tiles, place labels and
+browser controls are omitted. Line widths are adapted to a static graphics
+device. The figures are therefore not pixel-identical screenshots.
+
+## Select another frame or export publication assets
+
+```{r selected-frame, eval=FALSE}
+frame <- traffic_frame(snapshot, time_index=97L, mode="current")
+plot(frame) # 08:00–08:05
+traffic_figures(params$snapshot, "beijing", time_index=97L,
+                output_dir="output/beijing-0800")
+```
+
+The export writes PDF and PNG figures, a source-file MD5/selection record and
+session information. Existing named outputs are refused. To reuse these data
+for inference, obtain the underlying counts and exposure: rounded ratios are
+not valid substitutes for count responses.
+
+```{r summary}
+frames$current$summary
+sessionInfo()
+```

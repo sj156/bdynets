@@ -1,72 +1,197 @@
 ---
-title: "Beijing: reproduce the saved traffic-map figures"
-output: html_document
+title: "Beijing traffic: relative load, change and duration"
+lang: en
+output:
+  html_document:
+    self_contained: true
+    mathjax: null
 params:
-  snapshot: "../../data/Beijing Data/processed/beijing-visualization.json.gz"
+  snapshot: "data/beijing-visualization.json.gz"
+  time_index: 107
 ---
+The Beijing example contains one simulation day on a directed road network:
+11,742 displayed edges and 288 five-minute intervals from 00:00 to 24:00.
+The map has relative-load, interval-change and high-load-duration views.
+The initial interval is 08:50 to 08:55.
 
-This tutorial reproduces the **data layers** in the existing Beijing traffic
-visualization using `bdynets`. The standalone dataset was extracted losslessly from the HTML. It contains 288 five-minute frames,
-matched road polylines and rounded relative-load values. It is the actual
-repository visualization dataset, not a synthetic example. Raw trajectory files
-are not required. No model is fitted and no JavaScript or network request runs.
+## Map and data
 
-## Read and inspect the standalone saved data
+The map supports pan, zoom, playback and interval selection. A road popup
+shows its edge ID, endpoints, road type, length and value for the selected
+interval. The frame summary reports active edges, high-load edges and load
+statistics. The highest-value edges appear beside the map.
 
-Install `bdynets` from the repository package subdirectory and install `jsonlite`
-if needed. Rendering this tutorial additionally requires `rmarkdown` and `knitr`.
+The HTML embeds the traffic data, offline OSM geometry and Leaflet 1.9.4.
+The documentation panel contains the field definitions, preparation method,
+reference figures and statistics. The figures and tables below describe
+08:50 to 08:55; the map readouts follow the selected interval.
 
-```{r setup, message=FALSE}
+## Source and data preparation
+
+The project document `个体轨迹数据拥堵溯源分析项目及数据说明.docx` identifies
+`output_agent.csv` and `output_LinkTDMOE.csv` as simulation outputs, with
+`input_node.csv` and `input_link.csv` defining the network. This example uses
+the road-level export `saturation_dynamic_leaflet_osm_osmgeom.html`, identified
+by filename and checksum in the data provenance.
+
+Snapshot preparation extracts nine JSON assignments from that export and
+serializes them into `data/beijing-visualization.json.gz`. The assignments
+supply road geometry, sparse relative loads, duration records, interval
+summaries and display metadata. Numeric values use the precision in the
+export. The preparation code takes a source export as its input:
+
+```{r preparation, eval=FALSE}
+source_html <- 'saturation_dynamic_leaflet_osm_osmgeom.html'
+source_lines <- readLines(source_html, warn=FALSE, encoding='UTF-8')
+keys <- c('network','flowByBin','durationByBin','timeMeta','timeBins',
+          'bounds','congestionStops','timeBinMinutes','metricKey')
+literal <- function(key) {
+  pattern <- paste0('^\\s*const ', key, '\\s*=\\s*')
+  candidates <- sub(';\\s*$', '', sub(pattern, '',
+                    grep(pattern, source_lines, value=TRUE)))
+  candidates <- candidates[vapply(candidates, jsonlite::validate, logical(1))]
+  stopifnot(length(candidates)==1L)
+  candidates
+}
+payload <- paste(paste0('"',keys,'":',vapply(keys,literal,'')),collapse=',')
+provenance <- jsonlite::toJSON(list(source_html=basename(source_html),
+  source_md5=unname(tools::md5sum(source_html))),auto_unbox=TRUE)
+artifact <- paste0('{"schema_version":1,"source":"beijing","provenance":',
+                   provenance,',"payload":{',payload,'}}')
+output_file <- 'data/beijing-visualization.json.gz'
+stopifnot(!file.exists(output_file))
+dir.create(dirname(output_file), recursive=TRUE, showWarnings=FALSE)
+con <- gzfile(output_file, 'wt')
+tryCatch(writeLines(artifact, con, useBytes=TRUE), finally=close(con))
+```
+
+The HTML build reads the packaged snapshot and `data/osm-basemap.json.gz`.
+`map-template.html` defines the map interface and includes Leaflet's script,
+styles and license. `run.R` renders this R Markdown document in a temporary
+directory and embeds it with both datasets in `beijing-traffic-maps.html`.
+
+## Fields and coverage
+
+```{r setup, include=FALSE}
+if (!requireNamespace('bdynets', quietly=TRUE)) {
+  package_file <- 'bdynets_0.1.0.tar.gz'
+  if (!file.exists(package_file)) stop('Bundled bdynets source package is absent')
+  package_library <- tempfile('traffic-r-library-')
+  dir.create(package_library)
+  .libPaths(c(package_library, .libPaths()))
+  install.packages(package_file, repos=NULL, type='source',
+                   lib=package_library, quiet=TRUE)
+  if (!requireNamespace('bdynets', quietly=TRUE))
+    stop('Bundled bdynets package installation failed')
+}
 library(bdynets)
+source('osm-figures.R')
+knitr::opts_chunk$set(fig.path=file.path(tempdir(),'beijing-figure-'),message=FALSE)
+```
+
+```{r data}
 snapshot <- read_traffic_data(params$snapshot)
-data.frame(edges=length(snapshot$ids), frames=length(snapshot$bins),
-           minutes_per_frame=snapshot$bin_minutes)
-snapshot$provenance
+stopifnot(snapshot$source=='beijing', length(snapshot$bins)==288L,
+          snapshot$bin_minutes==5L,
+          snapshot$time_meta[[as.character(snapshot$bins[1])]]$start_min==0,
+          snapshot$time_meta[[as.character(tail(snapshot$bins,1))]]$end_min==1440)
+knitr::kable(data.frame(edges=length(snapshot$ids), frames=length(snapshot$bins),
+                       minutes_per_frame=snapshot$bin_minutes))
 ```
 
-The source metric is `x_ijt / estimated capacity`; it is **relative load**, not
-an observed accident count or a probability. Values are preserved at the HTML's
-saved precision. An edge absent from a frame follows the original viewer's zero
-convention. That convention belongs to this visualization export and must not
-be generalized to missing observations in other datasets.
+| Field | Definition |
+|---|---|
+| `schema_version`, `source`, `provenance` | Wrapper format, dataset identifier and source filename/checksums. |
+| `network` | GeoJSON lines in longitude/latitude order. Edge attributes include index, ID, from/to node IDs, length in km, lanes, speed limit and road type. |
+| `flowByBin` | Sparse `[edge_index, relative_load]` pairs for each interval. Relative load is `x_ijt / estimated capacity`, rounded to three decimals. |
+| `durationByBin` | Sparse edge records giving consecutive high-load duration in five-minute bins. |
+| `timeBins`, `timeMeta` | Interval order, minute boundaries and frame summaries. |
+| `bounds` | Southwest and northeast corners in latitude/longitude order. |
+| `congestionStops` | Color thresholds at 0%, 20%, 40%, 60% and 80% load. |
+| `timeBinMinutes`, `metricKey` | Interval width of five minutes and the metric identifier `saturation`. |
 
-## Reproduce the three views
+An edge absent from a sparse interval has zero displayed load. The denominator
+in the load ratio is an empirical count estimate. The ratio measures simulated
+occupancy relative to that estimate; it does not measure speed or congestion
+probability.
 
-Frame 107 is 08:50–08:55 (R indexing starts at one). It has the highest saved
-mean relative load and highest saved count of high-load edges. This is a
-transparent descriptive selection, not evidence about a model's performance.
-The shared package workflow below is also called by `run.R`.
+## Relative load, change and duration
 
-```{r reproduce, fig.width=9, fig.height=7}
-frames <- traffic_figures(params$snapshot, "beijing", time_index=107L)
+```{r figures, fig.width=9, fig.height=7, out.width='100%'}
+frames <- traffic_osm_figures(params$snapshot, 'beijing',
+                          time_index=params$time_index)
 ```
 
-The first map uses the source's 0%, 20%, 40%, 60% and 80%+ classes. Gray roads
-have zero displayed load. The second map uses red for increases and blue for
-decreases relative to the preceding five-minute frame; width represents change
-magnitude. The third shows consecutive time above the viewer's 80% threshold,
-using the **saved duration records**, with bins converted to minutes.
+The load view uses five color classes. Gray traffic edges have zero displayed
+load. In the change view, red shows an increase from the preceding interval
+and blue a decrease; line width scales with the size of the change. The first
+interval has no preceding observation. The duration view expresses consecutive
+high-load bins in minutes.
 
-Matched road polylines and Web Mercator projection are retained. These are
-static data-layer reproductions: remote OpenStreetMap tiles, place labels and
-browser controls are omitted. Line widths are adapted to a static graphics
-device. The figures are therefore not pixel-identical screenshots.
+High load is defined by the source's 80% threshold before display rounding.
+A displayed value of 0.800 can therefore differ from a threshold test on the
+rounded array. Duration comes from `durationByBin`. Traffic lines use their
+stored polylines and Web Mercator projection. Reference-figure widths are
+scaled for static display; the interactive view uses browser pixel widths.
 
-## Select another frame or export publication assets
-
-```{r selected-frame, eval=FALSE}
-frame <- traffic_frame(snapshot, time_index=97L, mode="current")
-plot(frame) # 08:00–08:05
-traffic_figures(params$snapshot, "beijing", time_index=97L,
-                output_dir="output/beijing-0800")
-```
-
-The export writes PDF and PNG figures, a source-file MD5/selection record and
-session information. Existing named outputs are refused. To reuse these data
-for inference, obtain the underlying counts and exposure: rounded ratios are
-not valid substitutes for count responses.
+## Selected-frame statistics
 
 ```{r summary}
-frames$current$summary
-sessionInfo()
+statistics <- unlist(frames$current$summary)
+knitr::kable(data.frame(statistic=names(statistics), value=unname(statistics)))
 ```
+
+`active_edges` counts positive displayed loads. `congested_edges` is the
+high-load count from the frame record. The share fields divide these counts
+by all 11,742 displayed edges. `mean_metric`, `p95_metric` and `max_metric`
+describe the frame's active-edge load distribution. At 08:50 to 08:55, the
+mean is `r frames$current$summary$mean_metric` and the high-load count is
+`r frames$current$summary$congested_edges`.
+
+`total_xijt` is a sum of edge-interval occupancy counts. A vehicle can
+contribute to several edges or intervals, so this sum is not a count of
+unique vehicles.
+
+## Offline basemap
+
+`data/osm-basemap.json.gz` contains generalized roads, water polygons and place
+labels from the Protomaps OSM archive dated 20 October 2026. The extract uses
+zoom 11 and the traffic extent plus a 0.02-degree margin. `download_osm.py`
+contains the extraction procedure. Cache provenance includes the archive URL,
+retrieval time, tile hashes and a geometry checksum.
+
+OSM is geographic context. Traffic values and road connectivity come from
+the traffic dataset. Place labels are spaced to reduce overlap. The basemap's
+date describes the geographic extract, rather than the simulation date.
+
+Map data: [OpenStreetMap contributors](https://www.openstreetmap.org/copyright),
+via [Protomaps](https://docs.protomaps.com/basemaps/downloads), ODbL Produced Work.
+
+## Build and figure export
+
+`Rscript run.R` builds the HTML from this folder. R dependencies are `jsonlite`,
+`rmarkdown`, `knitr`, `magrittr` and `bdynets`; HTML conversion uses Pandoc.
+`bdynets_0.1.0.tar.gz` contains the version 0.1.0 source package and license.
+The entrypoint uses that local archive in a temporary R library when the
+package is absent. Viewing the HTML requires a current browser.
+
+The R plotting index runs from 1 to 288. Index 107 is 08:50 to 08:55; index 97
+is 08:00 to 08:05. A figure-export call has the following form:
+
+```{r export-example, eval=FALSE}
+traffic_osm_figures(params$snapshot, 'beijing', time_index=97L,
+                output_dir='output/beijing-0800')
+```
+
+`osm-figures.R` provides PDF/PNG figure export and source records. Basemap
+preparation uses Python packages `requests`, `pmtiles` and
+`mapbox-vector-tile`. The HTML build and figure export use the packaged data
+and cache.
+
+## Interpretation
+
+The example describes road-level simulated load. It contains display geometry,
+frame values and aggregate statistics. Vehicle trajectories and raw occupancy
+records are outside this snapshot. Rounded load ratios support descriptive
+maps; congestion-source attribution requires a separate analysis of vehicle
+movements and time alignment.
