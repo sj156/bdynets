@@ -1,0 +1,241 @@
+---
+title: "Divvy OD Data: Arbitrary-Radius Aggregation and Static Flow Mapping"
+author: "Reproducible R example"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+output:
+  html_document:
+    toc: false
+    theme: flatly
+    self_contained: true
+params:
+  data_dir: "data"
+  radius_m: 2500
+  start_time: "2026-01-05 06:00:00"
+  end_time: "2026-01-05 09:00:00"
+  top_n: 180
+  aggregation_output_dir: "output/aggregated"
+  map_file: "divvy_od_r2500_20260105_0600_0900.png"
+  street_file: "data/chicago_streets_divvy.rds"
+---
+
+<style>
+.main-container {
+  max-width: 1240px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  padding: 28px 48px 60px 48px;
+  font-size: 17px;
+  line-height: 1.62;
+}
+h1.title, h4.author, h4.date { text-align: center; }
+h1.title {
+  font-size: 36px;
+  margin-top: 18px;
+  margin-bottom: 16px;
+}
+h2 {
+  font-size: 27px;
+  margin-top: 42px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid #dbe3ea;
+}
+p, li, table { font-size: 17px; }
+pre, code { font-size: 14px; }
+pre {
+  border: 1px solid #cfd4da;
+  border-radius: 6px;
+  padding: 16px 20px;
+  margin-top: 10px;
+  margin-bottom: 18px;
+  background: #f7f7f7;
+}
+.sourceCode { margin-bottom: 12px; }
+table { margin-left: auto; margin-right: auto; }
+img { display: block; margin-left: auto; margin-right: auto; }
+@media (max-width: 768px) {
+  .main-container { padding: 18px 20px 40px 20px; }
+  h1.title { font-size: 29px; }
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = "center",
+  dpi = 150
+)
+library(bdynets)
+```
+
+## Purpose
+
+This report starts from `nodes_raw.csv` and the sparse hourly OD table and performs two tasks:
+
+1. Aggregate stations at a specified spatial radius and map every OD origin and destination to the new aggregate nodes.
+2. Summarize OD flows for a specified half-open time window `[start_time, end_time)` and draw a north-up directed-flow map over a Chicago street background.
+
+The worked example uses a **`r params$radius_m` m aggregation radius** and the time window **`r params$start_time` to `r params$end_time` in America/Chicago**. Change the YAML parameters to generate another radius or time window, such as 500 m or 1000 m.
+
+## Aggregation and mapping
+
+Every requested aggregation is built directly from the raw nodes. A 1000 m result is not created by aggregating an earlier 500 m result, so errors from one aggregation level do not propagate to the next. Representative nodes are selected in descending order of raw OD endpoint activity, with `node_idx` used to break ties. Each remaining raw node is assigned to its nearest representative.
+
+The first code block reads and validates the raw node and OD files. Its output describes the input that will be aggregated.
+
+```{r read-raw-data}
+raw <- read_divvy_raw(params$data_dir)
+
+data.frame(
+  raw_nodes = nrow(raw$nodes),
+  raw_OD_rows = nrow(raw$flows),
+  first_hour = format(min(raw$flows$timestamp_parsed), "%Y-%m-%d %H:%M"),
+  last_hour = format(max(raw$flows$timestamp_parsed), "%Y-%m-%d %H:%M"),
+  total_trips = sum(raw$flows$trip_count),
+  check.names = FALSE
+)
+```
+
+The next call performs the requested spatial aggregation and writes its node, OD, membership, and metadata files. The printed object directly below the code reports the size of the result.
+
+```{r aggregate-data}
+aggregation <- aggregate_divvy_radius(
+  data_dir = params$data_dir,
+  radius_m = params$radius_m,
+  output_dir = params$aggregation_output_dir,
+  overwrite = TRUE
+)
+
+data.frame(
+  radius_m = aggregation$metadata$radius_m,
+  aggregate_nodes = nrow(aggregation$nodes),
+  aggregate_OD_rows = nrow(aggregation$flows),
+  total_trips = sum(aggregation$flows$trip_count),
+  max_assignment_m = round(
+    max(aggregation$membership$distance_to_representative_m), 1
+  ),
+  check.names = FALSE
+)
+```
+
+## Conservation checks
+
+Aggregation may combine OD records, but it must not add or remove trips. The table below compares the raw and aggregated data and reports the maximum distance from a raw node to its assigned representative.
+
+```{r aggregation-summary}
+summary_table <- data.frame(
+  Metric = c(
+    "Aggregation radius (m)",
+    "Raw nodes",
+    "Aggregate nodes",
+    "Raw OD rows",
+    "Aggregated OD rows",
+    "Trips before aggregation",
+    "Trips after aggregation",
+    "Maximum assignment distance (m)"
+  ),
+  Value = c(
+    aggregation$metadata$radius_m,
+    aggregation$metadata$raw_nodes,
+    aggregation$metadata$aggregate_nodes,
+    aggregation$metadata$raw_flow_rows,
+    aggregation$metadata$aggregate_flow_rows,
+    aggregation$metadata$total_trips,
+    sum(aggregation$flows$trip_count),
+    round(aggregation$metadata$max_assignment_distance_m, 1)
+  )
+)
+knitr::kable(summary_table, align = c("l", "r"))
+```
+
+## `r params$radius_m` m OD map for the selected time window
+
+Each arrow points from origin to destination. Colour and line width represent the number of trips in the selected window. Curves separate opposite directions and do not represent observed bicycle routes. Trips whose aggregated origin and destination are the same are retained in the data and summary statistics but are not drawn as arrows.
+
+The following code filters the requested time window, prepares the OD routes, and draws the map. The map immediately below is the output of this exact call.
+
+```{r od-map, fig.width=11, fig.height=9, out.width="100%"}
+map_result <- plot_divvy_od_map(
+  nodes = aggregation$nodes,
+  flows = aggregation$flows,
+  start_time = params$start_time,
+  end_time = params$end_time,
+  radius_m = params$radius_m,
+  top_n = params$top_n,
+  street_file = params$street_file,
+  output_file = params$map_file
+)
+
+map_result$plot
+```
+
+The code below prints the numerical summary behind the plotted time window.
+
+```{r window-summary}
+window_table <- data.frame(
+  Metric = c(
+    "All trips in the selected window",
+    "Within-node trips",
+    "Nonloop trips",
+    "Active nonloop OD pairs",
+    "OD pairs displayed on the map",
+    "Trips covered by displayed OD pairs"
+  ),
+  Value = unlist(map_result$metadata[c(
+    "total_trips",
+    "within_node_trips",
+    "nonloop_trips",
+    "active_nonloop_routes",
+    "displayed_routes",
+    "displayed_route_trips"
+  )], use.names = FALSE)
+)
+knitr::kable(window_table, align = c("l", "r"))
+```
+
+## Changing the radius and time window
+
+The following is the minimum direct call. Because `end_time` is excluded, 06:00–09:00 reads the 06:00, 07:00, and 08:00 hourly observations.
+
+```{r usage-example, eval=FALSE}
+library(bdynets)
+
+x <- run_divvy_od_map(
+  data_dir = "data",
+  radius_m = 1000,
+  start_time = "2026-01-12 07:00:00",
+  end_time = "2026-01-12 10:00:00",
+  aggregation_output_dir = "output/aggregated",
+  street_file = "data/chicago_streets_divvy.rds",
+  output_file = "divvy_od_r1000.png",
+  top_n = 180
+)
+```
+
+The same parameterized R Markdown document can also be rendered from R:
+
+```{r render-example, eval=FALSE}
+rmarkdown::render(
+  "examples/DivvyBike/divvy-od-map.Rmd",
+  params = list(
+    radius_m = 500,
+    start_time = "2026-01-12 07:00:00",
+    end_time = "2026-01-12 10:00:00",
+    map_file = "divvy_od_r500.png"
+  )
+)
+```
+
+## Notes and limitations
+
+- The radius is the maximum permitted distance from a raw node to its assigned representative; it is not a fixed square grid.
+- The map shows direct links between aggregate nodes, not routes assigned to the street network.
+- `top_n` limits only the number of nonloop OD pairs drawn. Summary statistics still use all observations in the selected time window.
+- The background is a locally cached and clipped version of the City of Chicago street center lines, so the report does not require a live web-map tile service.
+
+## R environment
+
+```{r session-info}
+sessionInfo()
+```
