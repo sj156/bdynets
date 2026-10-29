@@ -1,0 +1,31 @@
+Package: bdynets
+Title: Bayesian Dynamic Network Analysis
+Version: 0.1.0
+Authors@R: 
+    person("Sheng", "Jiang", , "jiangsheng@cuhk.edu.cn", role = c("aut", "cre"))
+Description: Modular tools for Bayesian analysis of network-associated time
+    series. Provides graph-informed mixtures of static Gaussian experts with
+    adaptive graph guidance and posterior partition summaries, alongside the
+    existing experimental dynamic count-mixture sampler and clustering utilities.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+Depends: R (>= 4.1.0)
+Imports:
+    data.table,
+    ggplot2,
+    graphics,
+    grid,
+    jsonlite,
+    magrittr,
+    stats,
+    tools,
+    utils
+Suggests:
+    posterior,
+    BayesLogit,
+    beepr,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+Config/roxygen2/version: 8.0.0
+RoxygenNote: 7.3.3
