@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="data:,"><title>@@TITLE@@</title>
+<style>@@LEAFLET_CSS@@</style><style>@@STYLE@@</style></head>
+<body><main><header><h1 id="title"></h1><p>@@DESCRIPTION@@</p></header>
+<section id="interactive"><h2>Interactive map</h2><div class="map-shell"><div id="map" aria-label="Traffic and events map"></div><aside>
+<p class="clock" id="clock"></p><div class="field layer-options"><span>Layers</span><label><input type="checkbox" id="layerRoads" checked>Roads</label><label><input type="checkbox" id="layerEvents" checked>Events</label><label><input type="checkbox" id="layerContext" checked>Basemap</label><label><input type="checkbox" id="layerCasing" checked>Road casing</label></div><div id="regionField" class="field"><label for="region">Region</label><select id="region"></select></div>
+<div id="categoryField" class="field"><label for="category">Event category</label><select id="category"></select></div>
+<div class="field"><label for="time">Time</label><div class="controls"><button id="play">Play</button><button id="reset">Reset view</button><button id="extent">Full extent</button></div><input id="time" type="range" min="0" step="1"><strong id="timeLabel"></strong><p class="minor" id="frameLabel"></p></div>
+<div class="cards" id="cards"></div><div id="legend"></div><div id="flowTrendBox"><canvas id="flowTrend"></canvas><p class="minor">Mean of finite road values</p></div><div id="eventTrendBox"><canvas id="eventTrend"></canvas><p class="minor">Events by reported start interval</p></div>
+<div id="eventList"></div><p class="minor">Statistics cover the selected records, including locations outside the current view. Times and units retain their supplied meanings.</p>
+</aside></div><div id="mapError" role="alert"></div></section>
+@@BODY@@</main><script type="application/octet-stream" id="records">@@PAYLOAD@@</script>
+<script>/* @@LICENSE@@ */
+@@LEAFLET@@
+</script><script>@@APP@@</script></body></html>

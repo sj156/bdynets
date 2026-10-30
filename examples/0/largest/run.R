@@ -1,7 +1,0 @@
-args <- commandArgs(trailingOnly=TRUE)
-if(length(args)!=2L) stop('Usage: Rscript run.R snapshot.json.gz output-directory')
-script <- sub('^--file=', '', grep('^--file=',commandArgs(),value=TRUE)[1])
-base <- dirname(normalizePath(script))
-source(file.path(base,'osm-figures.R'))
-snapshot <- bdynets::read_traffic_data(args[1])
-largest_osm_figures(snapshot,time_index=97L,output_dir=args[2],data_dir=file.path(base,'data'))

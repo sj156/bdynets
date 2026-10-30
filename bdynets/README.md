@@ -134,21 +134,30 @@ are unchanged. `beijing_panel()` and `largest_panel()` feed the same
 [collaborator guide](../examples/shared-data/README.md) for migration examples
 and the synthetic, no-fitting demonstration.
 
-## Reproduce existing traffic visualizations
+## Traffic measurements and reported events
 
-Standalone extracted real datasets live in `data/Beijing Data/processed/` and
-`data/LargeST Data/processed/` at repository level. `read_traffic_data()` loads
-them; `traffic_frame()` prepares a selected time and `plot()` renders its data
-layer. `traffic_figures()` is the common batch/report workflow. No model is fitted.
-See the [Beijing tutorial](../examples/beijing/README.md) and
-[LargeST tutorial](../examples/largest/README.md). Source geometry, thresholds
-and saved values are retained; remote basemap tiles and controls are excluded.
-`extract_traffic_data()` supports one-time extraction of compatible HTML sources;
-ordinary tutorials read standalone data files directly.
+`traffic_data()` accepts travel-ordered road geometry, nonnegative flow records,
+timestamped event locations, or roads and events together. All inputs share one
+log1p classification, palette, geometry matcher and density-aware rendering rule.
+Caller-supplied values and unit labels are retained. Missing observations are gray.
 
-The [Metropolis tutorial](../examples/metropolis/README.md) covers congestion and
-volume maps plus daily trends through the same workflow. Its bundled example is
-explicitly simulated because the original HTML's companion JS data file is
-missing. `simulate_metropolis_data()` prepares this fallback separately;
-`extract_traffic_data(..., source="metropolis")` can import the real companion
-JS when restored. Original-city numerical reproduction remains pending.
+```r
+library(bdynets)
+x <- read_traffic("data/input.rds")
+plot(x)
+traffic_map(x, "map.html")
+traffic_report(x, "report.html")
+```
+
+`traffic_summary()` and `traffic_trend()` summarize the same observations.
+Reports contain the interactive map, offline figures, statistics, preparation
+steps and source metadata. The [traffic examples](../examples/README.md) document
+the common input format and shared runner. They cover Beijing, PeMS road flow
+with CHP events, metropolis, and a synthetic road/event fixture.
+
+This geographic interface is separate from the model-oriented `network_data()`
+and `network_panel()` interfaces. It does not fit a model. The former
+`read_traffic_data()`, `read_traffic_snapshot()`, `traffic_frame()`,
+`traffic_figures()`, `extract_traffic_data()` and `simulate_metropolis_data()`
+interfaces are replaced by the common input constructor and HTML writers.
+`traffic_trend()` now accepts the common traffic object and an optional region.
