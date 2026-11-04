@@ -12,6 +12,28 @@ test_that("directed-grid study design and DGP are reproducible", {
   expect_identical(first$lambda, second$lambda)
 })
 
+test_that("neighbor recovery figure respects source-to-target direction", {
+  skip_if_not_installed("ggplot2")
+  design <- gls_study_design(gls_study_control("smoke"))
+  selection <- design$pairs
+  selection$signal <- 0.1
+  selection$is_active <- selection$pair_id %in% design$active_pairs$pair_id
+  selection$DSS_selected <- selection$is_active
+  false_positive <- which(selection$target == 1L & !selection$is_active)[1L]
+  selection$DSS_selected[false_positive] <- TRUE
+
+  result <- gls_plot_neighbor_recovery(
+    selection, design$graph, target_edge = "e1"
+  )
+
+  expect_s3_class(result$plot, "ggplot")
+  expect_identical(result$target_edge, 1L)
+  expect_true(all(result$pairs$target == 1L))
+  expect_identical(result$summary$FP, 1L)
+  expect_equal(result$summary$true_neighbors,
+               sum(selection$target == 1L & selection$is_active))
+})
+
 test_that("Graph-Laplace tau-one option follows Appendix A.2", {
   control <- gls_study_control(
     "smoke", shrinkage_spec = "graph_laplace_tau1",
