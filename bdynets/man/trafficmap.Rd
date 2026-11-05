@@ -6,6 +6,7 @@
 \alias{traffic_trend}
 \alias{traffic_map}
 \alias{traffic_report}
+\alias{traffic_export}
 \alias{plot.trafficmap_data}
 \title{Traffic Measurements and Reported Events on One Geographic Interface}
 \description{Construct road measurements and timestamped geographic events, draw
@@ -20,7 +21,9 @@ flow_scale(values)
 traffic_summary(x, index = x$initial, region = NULL)
 traffic_trend(x, region = NULL)
 traffic_map(x, file)
-traffic_report(x, file)
+traffic_report(x, file, index = NULL, region = NULL)
+traffic_export(x, output_dir, index = NULL, region = NULL,
+  input_files = character())
 \method{plot}{trafficmap_data}(x, index = x$initial, region = NULL, ...)
 }
 \arguments{
@@ -67,7 +70,9 @@ shown as unspecified. Providers and licenses are not inferred.}
 report functions. Output parent directories exist. Existing output files are replaced.}
 \item{values}{Nonnegative numeric vector or matrix, with \code{NA} for missing.}
 \item{x}{A \code{trafficmap_data} object, or an input-bundle file for the HTML writers.}
-\item{index}{One-based frame index.}
+\item{output_dir}{New directory for a reproducible static export. Existing directories are refused.}
+\item{input_files}{Optional named character paths of the actual input and source files. Basenames, sizes and MD5 checksums are recorded without personal paths.}
+\item{index}{One-based frame index. NULL in the static report selects the first frame.}
 \item{region}{One exact geographic region label, or \code{NULL} for all records.}
 \item{...}{Reserved graphical arguments.}
 }
@@ -121,8 +126,7 @@ popups retain their supplied information.
 
 The first displayed frame is always the first supplied frame. All records are
 selected by default. Region selections match labels exactly; unassigned records
-remain in the all-record scope. The report uses all records and includes each
-applicable flow and event trend without automatic regional chapters.
+remain in the all-record scope. Static reports accept an explicit frame and region, show whole-period coverage separately from selected-interval distributions, and include each applicable flow and event trend. Executable case reports organize regional sections explicitly.
 
 Road and event locations both contribute to focus. Reset view uses the central
 15--85 percent spatial range, or the full range for fewer than five locations.
@@ -138,13 +142,17 @@ continue to use all records in the selected scope. Caches create no extra files.
 
 The trafficmap-input-v1 RDS bundle contains the named constructor arguments
 and a schema field. Input descriptions and source identities are rendered as
-provided. HTML embeds observations, context, Leaflet and report figures. A
-modern browser with DecompressionStream support displays it offline. Map generation uses jsonlite alongside base R graphics.
+provided. Interactive map HTML embeds observations, context and Leaflet and uses a modern browser with DecompressionStream support. Static report HTML embeds map and trend figures, whole-period coverage and selected-interval statistics, without browser map controls. Both outputs are offline. Only R and jsonlite are required for generation.
+}
+\section{Reproducible exports}{
+\code{traffic_export} uses the same plot method and regional/frame selection for all inputs. It writes PNG/PDF maps and each applicable flow/event trend, summary.csv, trend.csv, selected-frame.rds, provenance.json, inputs.csv, checksums.csv and session-info.txt. Output is staged and finalized as a new directory. Invalid selections and missing input files fail before output creation.
+
+The selection snapshot has schema trafficmap-selection-v1 and contains the exact selected road rows, geometry, values and event starts, title, clock interpretation, source-clock label, interval, unit and the complete input's frozen scale. It is an inspection artifact rather than a trafficmap-input-v1 bundle; plotting a newly constructed subset could otherwise recompute the scale or opposing relationships. The output checksum table covers every exported file except itself. Input and output identity tables use MD5 checksums.
 }
 \value{
 \code{traffic_data} and \code{read_traffic} return \code{trafficmap_data}.
 \code{flow_scale} returns computed boundaries and the fixed palette.
-Summary and trend functions return data frames. HTML writers return the output
+Summary and trend functions return data frames. HTML writers and the export function return the output
 path invisibly; the plot method returns the selected summary invisibly.
 }
 \examples{

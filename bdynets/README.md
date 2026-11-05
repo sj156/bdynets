@@ -136,28 +136,23 @@ and the synthetic, no-fitting demonstration.
 
 ## Traffic measurements and reported events
 
-`traffic_data()` accepts travel-ordered road geometry, nonnegative flow records,
-timestamped event locations, or roads and events together. All inputs share one
-log1p classification, palette, geometry matcher and density-aware rendering rule.
-Caller-supplied values and unit labels are retained. Missing observations are gray.
+The [traffic examples](../examples/flow/README.md) prepare different sources as
+one common road, flow and event format. Static maps, optional interactive maps,
+statistics and exports share one package implementation. Missing values remain
+missing, source units are retained, and one log1p algorithm defines flow colors.
 
 ```r
 library(bdynets)
 x <- read_traffic("data/input.rds")
-plot(x)
-traffic_map(x, "map.html")
-traffic_report(x, "report.html")
+plot(x, index = 1)
+traffic_summary(x, index = 1)
+traffic_export(x, "new-output", index = 1)
 ```
 
-`traffic_summary()` and `traffic_trend()` summarize the same observations.
-Reports contain the interactive map, offline figures, statistics, preparation
-steps and source metadata. The [traffic examples](../examples/README.md) document
-the common input format and shared runner. They cover Beijing, PeMS road flow
-with CHP events, metropolis, and a synthetic road/event fixture.
-
-This geographic interface is separate from the model-oriented `network_data()`
-and `network_panel()` interfaces. It does not fit a model. The former
-`read_traffic_data()`, `read_traffic_snapshot()`, `traffic_frame()`,
-`traffic_figures()`, `extract_traffic_data()` and `simulate_metropolis_data()`
-interfaces are replaced by the common input constructor and HTML writers.
-`traffic_trend()` now accepts the common traffic object and an optional region.
+Executable reports cover Beijing simulation flow, PeMS flow and CHP starts in
+separate Los Angeles and Bay Area sections, saved City-traffic-M volume, and a
+synthetic road/event fixture. Preparation uses the bundled source caches;
+reporting requires knitr, rmarkdown and Pandoc. The flow directory's run.R
+installs this repository package into a temporary library before rendering.
+The [original traffic examples](../examples/traffic-reference/) are historical
+reference materials for the retired interfaces, rather than current tutorials.

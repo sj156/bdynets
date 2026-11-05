@@ -443,6 +443,7 @@ traffic_summary <- function(x,index=x$initial,region=NULL) {
  c(paste0('0 to < ',b[1]),paste0(utils::head(b,-1),' to < ',utils::tail(b,-1)),paste0('>= ',utils::tail(b,1)))
 }
 
+#' @method plot trafficmap_data
 #' @export
 #' @noRd
 plot.trafficmap_data <- function(x,index=x$initial,region=NULL,...) {
@@ -510,49 +511,55 @@ plot.trafficmap_data <- function(x,index=x$initial,region=NULL,...) {
  tryCatch(draw(),finally=grDevices::dev.off())
  paste0('<img alt="Geographic observations or time trend" src="data:image/png;base64,',jsonlite::base64_enc(readBin(file,'raw',n=file.info(file)$size)),'">')
 }
-.tm_report <- function(x) {
- figure<-.tm_image(function()graphics::plot(x))
- trend<-traffic_trend(x)
- make_trend<-function(value,title,unit) .tm_image(function() {
-  graphics::par(mar=c(4,4,3,2))
-  limits<-range(c(0,value[is.finite(value)]));if(diff(limits)==0)limits<-limits+c(0,1)
-  graphics::plot(x$times,value,type='l',col='#365c70',lwd=2,xaxt='n',xlab='Source time',
-   ylab=unit,ylim=limits,main=title)
+.tm_report <- function(x,index=x$initial,region=NULL) {
+ s<-traffic_summary(x,index,region); selected<-.tm_select(x,region)
+ values<-x$values[,selected$roads,drop=FALSE]; trend<-traffic_trend(x,region)
+ scope<-if(is.null(region))'All records' else region
+ coverage<-data.frame(roads=length(selected$roads),frames=length(x$times),
+  road_time_cells=length(values),observed=sum(!is.na(values)),missing=sum(is.na(values)),
+  zero=sum(values==0,na.rm=TRUE),event_starts=length(selected$events))
+ figure<-.tm_image(function()graphics::plot(x,index=index,region=region))
+ draw_trend<-function(y,title,unit) .tm_image(function() {
+  graphics::par(mar=c(5,4,3,1))
+  limits<-range(c(0,y[is.finite(y)]));if(diff(limits)==0)limits<-limits+c(0,1)
+  graphics::plot(x$times,y,type='l',col='#365c70',lwd=2,xaxt='n',xlab='Source time',ylab=unit,ylim=limits,main=title)
   at<-unique(round(seq(1,length(x$times),length.out=min(7,length(x$times)))))
-  graphics::axis(1,at=x$times[at],labels=x$time_labels[at],cex.axis=.65)
+  graphics::axis(1,at=x$times[at],labels=x$time_labels[at],cex.axis=.65,las=2)
  })
- flow_trend<-if(nrow(x$roads))paste0('<h4>Flow trend</h4>',
-  make_trend(trend$mean,'Flow trend',paste('Mean [',x$unit,']'))) else ''
- event_trend<-if(nrow(x$events))paste0('<h4>Event trend</h4>',
-  make_trend(trend$events,'Event trend','Events')) else ''
- s<-traffic_summary(x)
- overview<-data.frame(frames=length(x$times),roads=nrow(x$roads),events=nrow(x$events),
-  first_time=x$time_labels[1],stringsAsFactors=FALSE)
- tables<-paste0(.tm_table(overview,'Dataset'),
-  .tm_table(s[,c('frame','time','roads','events'),drop=FALSE],'Displayed interval'),
-  if(nrow(x$roads))paste0(.tm_table(s[,c('available','missing','zero'),drop=FALSE],'Flow availability'),
-   .tm_table(s[,c('minimum','median','mean','p95','maximum'),drop=FALSE],'Flow distribution')) else '')
- paragraph<-function(values)paste0('<p>',.tm_escape(values),'</p>',collapse='')
- paste0('<section id="summary"><h2>Summary</h2><section><h3>All records</h3>',
-  figure,flow_trend,event_trend,tables,'</section>',
-  '<p>Statistics cover all input records. Means and distributions use finite road values; missing observations are counted separately. Reported events are counted by start interval. Road-value sums are not interpreted as distinct vehicle counts.</p></section>',
-  '<section id="preparation"><h2>Preparation</h2>',paragraph(x$preparation),
-  '<p>The input contains road_id and longitude/latitude geometry, road_id, time and flow records, and optional event time, lon and lat records. Zero is observed; omitted road-time records and explicit NA are missing. Events belong to half-open frame intervals.</p>',
-  '<p>One green-to-red seven-color palette and one log1p algorithm apply to every flow input. Exact thresholds use the global maximum across all times and records and remain fixed during interaction; class labels are rounded for display.</p>',
-  '<pre><code>library(bdynets)\nx &lt;- read_traffic("data/input.rds")\nplot(x)\ntraffic_map(x, "map.html")\ntraffic_report(x, "report.html")</code></pre></section>',
+ paragraph<-function(v)paste0('<p>',.tm_escape(v),'</p>',collapse='')
+ paste0('<section><h2>Summary</h2><h3>',.tm_escape(scope),'</h3>',
+  '<p>Source clock: ',.tm_escape(x$time_labels[1]),' through ',.tm_escape(utils::tail(x$time_labels,1)),
+  '. Numeric clocks do not establish a timezone. Flow unit: ',.tm_escape(x$unit),'.</p>',
+  .tm_table(coverage,'Whole-period coverage'),
+  '<p>Road-time cells cover every supplied frame and selected road. Zero is an observed value. Missing cells include omitted records and explicit NA. Event starts cover the complete supplied period.</p>',
+  '<h3>Selected interval</h3>',paragraph(paste('Frame',index,'starts at',x$time_labels[index],
+   'and spans',x$interval_seconds[index],'seconds.')),figure,
+  .tm_table(s[,c('time','roads','events','available','missing','zero'),drop=FALSE],'Selected-interval availability'),
+  if(length(selected$roads)).tm_table(s[,c('minimum','median','mean','p95','maximum'),drop=FALSE],'Selected-interval flow distribution') else '',
+  '<p>Distribution statistics describe finite road values in this interval only. They are not whole-period statistics. Link-value sums are not interpreted as distinct vehicle counts.</p>',
+  if(length(selected$roads))paste0('<h3>Flow trend</h3>',draw_trend(trend$mean,'Mean road value by interval',x$unit),
+   '<p>Each point is the arithmetic mean of available road values in one frame. Missing observations are excluded.</p>') else '',
+  if(length(selected$events))paste0('<h3>Event trend</h3>',draw_trend(trend$events,'Reported event starts by interval','Events'),
+   '<p>Events are counted by reported start in half-open frame intervals. No duration or causal relationship is inferred.</p>') else '',
+  '</section><section><h2>Preparation</h2>',paragraph(x$preparation),
+  '<pre><code>library(bdynets)\nx &lt;- read_traffic("data/input.rds")\nplot(x, index = ',index,
+  if(!is.null(region))paste0(', region = &quot;',.tm_escape(region),'&quot;') else '',
+  ')\ntraffic_report(x, "report.html", index = ',index,')</code></pre></section>',
   '<section><h2>Fields and scope</h2>',paragraph(x$notes),
-  '<p>Units are supplied labels; an omitted unit is shown as unit unspecified. Values and source road coordinates are retained without inferred conversions. Geometry vertices follow travel direction. Optional opposite_id values declare reciprocal relationships between existing road IDs. Without a declaration, unique exact reverse paths or sustained mutual nearest geometry matches are used. Automatic matching uses reverse headings within 15 degrees, proximity within 30 ground metres, and at least 60 percent probe support per segment. Competing alternatives within 2 metres and substantial lateral side changes are ambiguous. Ambiguous records retain source geometry. Explicit partners still need overlapping reversed geometry. Descriptive attributes do not control pairing.</p>',
-  '<p>Every input opens at its first frame with all records selected. Region and category controls filter only after an explicit selection. Named region selections match provided labels exactly; unassigned records remain in the all-record scope. The report summarizes all records and shows each applicable flow and event trend.</p>',
-  '<p>Display offsets do not represent physical road positions. Existing separation contributes to the gap. Coincident paths use the right side of each directed path as a drawing convention; other paths move apart. Adjacent segment shifts are averaged at vertices. Line width, opposing edge gap and white casing adapt continuously to zoom and local visible road-length density. Panning, zooming and resizing recompute layout. Static figures use 1/96-inch graphics line-width units and interactive maps use pixels. Event locations remain as supplied.</p>',
-  '<p>Roads and events both contribute to geographic focus across the supplied times. Reset view uses the central spatial range; Full extent includes all road vertices and event locations in the selected scope. Unknown timezones, event durations and event-to-road assignments are not inferred.</p>',
-  '<p>Projected geometry and road bounds are cached. A spatial index limits layout and layer updates to the view plus its density margin. Offscreen layers are detached and reused; all records remain available to statistics, filters, time controls and Full extent. Unchanged views reuse layout and display coordinates. These caches create no additional files.</p>',
-  '<p>Roads, events, basemap and road casing have independent visibility controls. Controls are disabled for absent input components. Hiding roads also removes their casing. Layer visibility does not change statistics, record selection, time membership or geographic extents. Road and event popups retain their record information.</p>',
-  '<p>Optional context geometry uses one neutral style. Point captions use properties.label. Attribution is supplied with the context; an omitted source is shown as unspecified.</p>',
-  if(length(x$provenance))paste0('<details><summary>Source identities</summary><pre>',.tm_escape(jsonlite::toJSON(x$provenance,pretty=TRUE,auto_unbox=TRUE,null='null')),'</pre></details>') else '',
-  if(!is.null(x$basemap))paste0('<p>Map context: ',.tm_escape(x$basemap$attribution),'.</p>') else '',
-  '<p>Leaflet is distributed under its included BSD license.</p></section>')
+  '<p>Road geometry contains longitude and latitude vertices in travel order. Flow records use road_id, time and flow; event records use time, lon and lat. Values and unit labels retain their supplied meanings.</p>',
+  '<p>All inputs share one seven-color green-to-red log1p scale. Exact class thresholds span the full input maximum across roads and times; displayed limits are rounded. Missing observations are gray. Display separation does not change source geometry.</p>',
+  if(!is.null(x$basemap))paragraph(paste('Map context:',x$basemap$attribution)) else '',
+  if(length(x$provenance))paste0('<h3>Source identities</h3><pre>',.tm_escape(jsonlite::toJSON(x$provenance,pretty=TRUE,auto_unbox=TRUE,null='null')),'</pre>') else '',
+  '</section>')
 }
-.tm_document <- function(x,report=FALSE) {
+.tm_document <- function(x,report=FALSE,index=NULL,region=NULL) {
+ if(report) {
+  if(is.null(index))index<-x$initial
+  body<-.tm_report(x,index,region)
+  return(paste0('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>',
+   .tm_escape(x$title),'</title><style>body{max-width:1000px;margin:36px auto;padding:0 22px;font:16px/1.65 system-ui,sans-serif;color:#25364a}h1,h2,h3{line-height:1.25}h2{margin-top:2em}img{display:block;width:100%;height:auto}table{border-collapse:collapse;font-size:14px;width:100%}td,th{padding:8px;border-bottom:1px solid #dbe2e7;text-align:left}caption{text-align:left;font-weight:600;padding:10px 0}.table-wrap{overflow-x:auto;margin:1em 0}pre{background:#f4f6f7;padding:14px;overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere}</style></head><body><h1>',
+   .tm_escape(x$title),'</h1><p>',.tm_escape(x$description),'</p>',body,'</body></html>'))
+ }
  .tm_assert(inherits(x,'trafficmap_data'),'Expected trafficmap_data')
  roads<-lapply(seq_len(nrow(x$roads)),function(j)list(id=x$roads$road_id[j],region=x$roads$region[j],
    geometry=unname(x$roads$geometry[[j]]),opposing=unname(x$opposing[[j]]),attributes=as.list(x$roads[j,setdiff(names(x$roads),'geometry'),drop=FALSE])))
@@ -574,9 +581,9 @@ plot.trafficmap_data <- function(x,index=x$initial,region=NULL,...) {
  }
  html
 }
-.tm_write <- function(x,file,report) {
+.tm_write <- function(x,file,report,index=NULL,region=NULL) {
  if(is.character(x)&&length(x)==1L)x<-read_traffic(x)
- html<-.tm_document(x,report)
+ html<-.tm_document(x,report,index,region)
  con<-file(file,'wt',encoding='UTF-8');on.exit(close(con),add=TRUE);writeLines(html,con,useBytes=TRUE)
  invisible(file)
 }
@@ -585,4 +592,74 @@ plot.trafficmap_data <- function(x,index=x$initial,region=NULL,...) {
 traffic_map <- function(x,file) .tm_write(x,file,FALSE)
 #' @export
 #' @noRd
-traffic_report <- function(x,file) .tm_write(x,file,TRUE)
+traffic_report <- function(x,file,index=NULL,region=NULL) .tm_write(x,file,TRUE,index,region)
+
+.tm_export_trend <- function(x,region,field,index) {
+ trend<-traffic_trend(x,region);y<-trend[[field]]
+ limits<-range(c(0,y[is.finite(y)]));if(diff(limits)==0)limits<-limits+c(0,1)
+ graphics::par(mar=c(4,4,3,1))
+ graphics::plot(trend$time,y,type=if(field=='events')'h' else 'l',lwd=2,
+  col=if(field=='events')'#9b4840' else '#365c70',xaxt='n',ylim=limits,
+  xlab='Source time',ylab=if(field=='events')'Reported starts' else paste('Mean [',x$unit,']'),
+  main=if(field=='events')'Reported event starts by interval' else 'Mean available road values')
+ at<-unique(round(seq(1,nrow(trend),length.out=min(7,nrow(trend)))))
+ graphics::axis(1,at=trend$time[at],labels=trend$label[at],cex.axis=.6)
+ graphics::abline(v=x$times[index],lty=2,col='#7b858b')
+ invisible(trend)
+}
+
+#' @export
+#' @noRd
+traffic_export <- function(x,output_dir,index=NULL,region=NULL,input_files=character()) {
+ if(is.character(x)&&length(x)==1L) {
+  if(!length(input_files))input_files<-c(input=x)
+  x<-read_traffic(x)
+ }
+ .tm_assert(inherits(x,'trafficmap_data'),'Expected trafficmap_data')
+ if(is.null(index))index<-x$initial
+ summary<-traffic_summary(x,index,region);selected<-.tm_select(x,region)
+ .tm_assert(is.character(output_dir)&&length(output_dir)==1L&&!is.na(output_dir)&&nzchar(output_dir),'output_dir must be one path')
+ .tm_assert(is.character(input_files)&&!anyNA(input_files)&&all(file.exists(input_files)&!dir.exists(input_files)),
+  'Every input_file must be an existing file')
+ target<-path.expand(output_dir)
+ .tm_assert(!file.exists(target),'Output directory already exists')
+ parent<-dirname(target);dir.create(parent,recursive=TRUE,showWarnings=FALSE)
+ .tm_assert(dir.exists(parent),'Output parent directory is unavailable')
+ staging<-tempfile('traffic-export-',tmpdir=parent);dir.create(staging)
+ on.exit(unlink(staging,recursive=TRUE),add=TRUE)
+ images<-list(map=function()graphics::plot(x,index=index,region=region))
+ if(length(selected$roads))images[['flow-trend']]<-function().tm_export_trend(x,region,'mean',index)
+ if(length(selected$events))images[['event-trend']]<-function().tm_export_trend(x,region,'events',index)
+ for(name in names(images))for(format in c('png','pdf')) {
+  file<-file.path(staging,paste0(name,'.',format))
+  if(format=='png')grDevices::png(file,width=2400,height=1800,res=240,type=getOption('bitmapType'))
+  else grDevices::pdf(file,width=10,height=7.5,useDingbats=FALSE)
+  tryCatch(images[[name]](),finally=grDevices::dev.off())
+ }
+ ids<-selected$roads;ei<-selected$events;ei<-ei[x$events$frame[ei]==index]
+ frame<-list(schema='trafficmap-selection-v1',title=x$title,clock=x$clock,frame=as.integer(index),
+  time=x$times[index],time_label=x$time_labels[index],interval_seconds=x$interval_seconds[index],
+  unit=x$unit,region=region,roads=x$roads[ids,,drop=FALSE],
+  flow=data.frame(road_id=x$roads$road_id[ids],time=rep(x$times[index],length(ids)),flow=as.numeric(x$values[index,ids])),
+  events=x$events[ei,,drop=FALSE],scale=x$scale,
+  provenance=x$provenance)
+ saveRDS(frame,file.path(staging,'selected-frame.rds'),compress='xz')
+ utils::write.csv(summary,file.path(staging,'summary.csv'),row.names=FALSE,na='NA')
+ utils::write.csv(traffic_trend(x,region),file.path(staging,'trend.csv'),row.names=FALSE,na='NA')
+ provenance<-list(schema='trafficmap-export-v1',title=x$title,clock=x$clock,unit=x$unit,
+  selection=list(frame=as.integer(index),time=x$times[index],time_label=x$time_labels[index],
+    interval_seconds=x$interval_seconds[index],region=region),
+  flow_scale=x$scale,source=x$provenance,basemap_attribution=if(is.null(x$basemap))NULL else x$basemap$attribution,
+  selection_scope='Selected road and event records; flow scale retains the complete input thresholds. The selection snapshot is an inspection artifact, not a trafficmap-input-v1 bundle.')
+ writeLines(jsonlite::toJSON(provenance,auto_unbox=TRUE,pretty=TRUE,na='null',null='null',digits=NA),file.path(staging,'provenance.json'),useBytes=TRUE)
+ labels<-names(input_files);if(is.null(labels))labels<-rep('',length(input_files))
+ inputs<-data.frame(label=labels,file=basename(input_files),bytes=unname(file.info(input_files)$size),
+  md5=unname(tools::md5sum(input_files)),stringsAsFactors=FALSE)
+ utils::write.csv(inputs,file.path(staging,'inputs.csv'),row.names=FALSE)
+ writeLines(utils::capture.output(utils::sessionInfo()),file.path(staging,'session-info.txt'),useBytes=TRUE)
+ files<-sort(list.files(staging))
+ utils::write.csv(data.frame(file=files,bytes=unname(file.info(file.path(staging,files))$size),
+  md5=unname(tools::md5sum(file.path(staging,files)))),file.path(staging,'checksums.csv'),row.names=FALSE)
+ .tm_assert(file.rename(staging,target),'Unable to finalize export directory')
+ invisible(normalizePath(target,mustWork=TRUE))
+}
