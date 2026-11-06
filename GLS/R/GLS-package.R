@@ -7,6 +7,7 @@
 #' @keywords internal
 #' @import stats
 #' @importFrom utils head tail
+#' @useDynLib GLS, .registration = TRUE, .fixes = "C_"
 "_PACKAGE"
 
 if (getRversion() >= "2.15.1") {

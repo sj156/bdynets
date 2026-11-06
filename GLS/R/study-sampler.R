@@ -41,29 +41,25 @@
 
 .gls_study_draw_static_targets <- function(targets, ystar, omega, X, Q, beta, pairs,
                                 alpha, gamma, theta_bar, L, lambda2, means,
-                                pcn_step, cfg) {
-  r <- ncol(L); pQ <- ncol(Q); ids <- split(seq_len(nrow(pairs)), pairs$target)
+                                pcn_step, cfg, ids = NULL, design = NULL) {
+  r <- ncol(L); pQ <- ncol(Q)
+  if (is.null(ids)) ids <- split(seq_len(nrow(pairs)), pairs$target)
   proposal <- list(alpha = alpha, gamma = gamma, theta_bar = theta_bar, L = L)
   beta_obs <- beta[-1L, , drop = FALSE]
+  if (is.null(design)) design <- .gls_target_design_cache(X, Q, beta_obs,
+    pairs, ids, static = TRUE)
   for (a in targets) {
     ii <- ids[[as.character(a)]]; src <- pairs$source[ii]; m <- length(ii)
-    Zbar <- X[, src, drop = FALSE]
-    Zdyn <- do.call(cbind, lapply(seq_len(m), function(j)
-      X[, src[j]] * beta_obs))
-    Z <- cbind(Intercept = 1, Q, Zbar, Zdyn)
+    Z <- .gls_target_design(design, src)
     precision_prior <- c(1 / cfg$alpha_prior_sd^2,
       rep(1 / cfg$season_prior_sd^2, pQ), 1 / lambda2[ii],
       rep(1 / (cfg$c_ell^2 * lambda2[ii]), each = r))
     mean_prior <- c(log(means[a]), rep(0, length(precision_prior) - 1L))
-    Pmat <- crossprod(Z, Z * omega[, a]) + diag(precision_prior)
+    Pmat <- .gls_weighted_precision(Z, omega[, a], precision_prior)
     rhs <- crossprod(Z, omega[, a] * ystar[, a]) + precision_prior * mean_prior
-    conditional_mean <- as.numeric(solve_spd(Pmat) %*% rhs)
-    conditional_draw <- rmvn_precision(Pmat, rhs)
     current <- c(alpha[a], if (pQ) gamma[a, ] else numeric(0),
                  theta_bar[ii], as.vector(t(L[ii, , drop = FALSE])))
-    rho <- sqrt(max(0, 1 - pcn_step^2))
-    draw <- conditional_mean + rho * (current - conditional_mean) +
-      pcn_step * (conditional_draw - conditional_mean)
+    draw <- .gls_pcn_precision(Pmat, rhs, current, pcn_step)
     cursor <- 1L
     proposal$alpha[a] <- draw[cursor]; cursor <- cursor + 1L
     if (pQ) {
@@ -89,12 +85,24 @@
   k <- ncol(Y); accepted <- proposed <- 0L
   current <- list(alpha = alpha, gamma = gamma, theta_bar = theta_bar, L = L)
   current_ref <- reference; current_logB <- .gls_study_log_factor_evolution(beta, current_ref$W)
+  ids <- split(seq_len(nrow(pairs)), pairs$target)
+  design <- .gls_target_design_cache(X, Q, beta[-1L, , drop = FALSE], pairs, ids)
   for (targets in .gls_study_make_target_blocks(k, cfg$static_target_block_size)) {
     candidate <- .gls_study_draw_static_targets(targets, ystar, omega, X, Q, beta, pairs,
       current$alpha, current$gamma, current$theta_bar, current$L, lambda2,
-      means, pcn_step, cfg)
+      means, pcn_step, cfg, ids = ids, design = design)
+    candidate_H <- current_ref$H; candidate_offset <- current_ref$offset
+    for (a in targets) {
+      ii <- ids[[as.character(a)]]; src <- pairs$source[ii]
+      candidate_H[, a, ] <- X[, src, drop = FALSE] %*% candidate$L[ii, , drop = FALSE]
+      candidate_offset[, a] <- candidate$alpha[a] +
+        if (ncol(Q)) as.numeric(Q %*% candidate$gamma[a, ]) else 0
+      candidate_offset[, a] <- candidate_offset[, a] +
+        as.numeric(X[, src, drop = FALSE] %*% candidate$theta_bar[ii])
+    }
     candidate_ref <- .gls_study_reference_filter(Y, X, Q, pairs, candidate$alpha,
-      candidate$gamma, candidate$theta_bar, candidate$L, discount, cfg)
+      candidate$gamma, candidate$theta_bar, candidate$L, discount, cfg,
+      H = candidate_H, offset = candidate_offset)
     candidate_logB <- .gls_study_log_factor_evolution(beta, candidate_ref$W)
     proposed <- proposed + 1L
     if (log(runif(1L)) < candidate_logB - current_logB) {

@@ -5,15 +5,11 @@ dynamic_scale <- function(cfg) if (isTRUE(cfg$static_network)) cfg$dynamic_loadi
 static_network <- function(X, pairs, B, d = NULL) {
     if (is.null(B)) return(matrix(0, nrow(X), ncol(X)))
     if (!is.null(d)) B <- B * d
-    out <- matrix(0, nrow(X), ncol(X))
-    for (a in unique(pairs$target)) {
-        ii <- which(pairs$target == a)
-        out[, a] <- as.numeric(X[, pairs$source[ii], drop = FALSE] %*% B[ii])
-    }
-    out
+    coefficients <- pair_coefficient_matrix(B, pairs, ncol(X))
+    unname(X %*% coefficients)
 }
 
-reference_step <- function(y, h, offset, m, C, discount) {
+.gls_reference_step_R <- function(y, h, offset, m, C, discount) {
     R <- C / discount
     # The scalar objective is strictly convex. Bracket its score to avoid
     # Newton stagnation when the likelihood is nearly flat at machine precision.
@@ -37,16 +33,39 @@ reference_step <- function(y, h, offset, m, C, discount) {
     list(m = b, C = 1 / precision)
 }
 
-reference_path <- function(Y, H, offset, discount, cfg) {
+reference_step <- function(y, h, offset, m, C, discount, backend = "native") {
+    if (backend == "R") return(.gls_reference_step_R(y, h, offset, m, C, discount))
+    ans <- .Call(C_gls_reference_path, matrix(as.double(y), 1L),
+        matrix(as.double(h), 1L), matrix(as.double(offset), 1L),
+        as.double(discount), as.double(c(m, C)), FALSE)
+    ans[c("m", "C")]
+}
+
+reference_path <- function(Y, H, offset, discount, cfg, keep_mean = FALSE) {
+    if (cfg$factor_evolution != "unit" && !identical(cfg$reference_backend, "R"))
+        return(.Call(C_gls_reference_path, Y, H, offset, as.double(discount),
+            c(0, 1), keep_mean))
+    .gls_reference_path_R(Y, H, offset, discount, cfg, keep_mean)
+}
+
+.gls_reference_path_R <- function(Y, H, offset, discount, cfg, keep_mean = FALSE) {
     TT <- nrow(Y)
-    if (cfg$factor_evolution == "unit") return(list(W = rep(1, TT), m = 0, C = 1))
+    if (cfg$factor_evolution == "unit") {
+        out <- list(W = rep(1, TT), m = 0, C = 1)
+        if (keep_mean) out$mean_path <- rep(0, TT)
+        return(out)
+    }
     m <- 0; C <- 1; W <- numeric(TT)
+    if (keep_mean) mean_path <- numeric(TT)
     for (tt in seq_len(TT)) {
         W[tt] <- (1 / discount - 1) * C
-        z <- reference_step(Y[tt, ], as.numeric(H[tt, , ]), offset[tt, ], m, C, discount)
+        z <- .gls_reference_step_R(Y[tt, ], as.numeric(H[tt, , ]), offset[tt, ], m, C, discount)
         m <- z$m; C <- z$C
+        if (keep_mean) mean_path[tt] <- m
     }
-    list(W = W, m = m, C = C)
+    out <- list(W = W, m = m, C = C)
+    if (keep_mean) out$mean_path <- mean_path
+    out
 }
 
 factor_log_density <- function(beta, ref) {
@@ -75,7 +94,8 @@ accept_reference <- function(Y, H, offset, beta, discount, ref, cfg) {
 
 # One predict-before-update step, conditional on a retained parameter draw.
 # The one-PG-sweep assimilation is an approximation, not an exact online filter.
-forecast_factor_step <- function(beta, ref, discount, evolution, H, base, y, rn) {
+forecast_factor_step <- function(beta, ref, discount, evolution, H, base, y, rn,
+    reference_backend = "native") {
     W <- if (evolution == "unit") 1 else (1 / discount - 1) * ref$C
     bp <- beta + rnorm(length(beta), sd = sqrt(W))
     eta <- base + as.numeric(H %*% bp)
@@ -84,7 +104,8 @@ forecast_factor_step <- function(beta, ref, discount, evolution, H, base, y, rn)
     ys <- log(rn) + (y - rn) / (2 * om)
     precision <- diag(1 / W, length(beta)) + crossprod(H, H * om)
     updated <- rmvn_precision(precision, beta / W + crossprod(H, om * (ys - base)))
-    if (evolution != "unit") ref <- reference_step(y, as.numeric(H), base, ref$m, ref$C, discount)
+    if (evolution != "unit") ref <- reference_step(y, as.numeric(H), base,
+        ref$m, ref$C, discount, backend = reference_backend)
     list(eta = eta, beta = updated, ref = ref)
 }
 

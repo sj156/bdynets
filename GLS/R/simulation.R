@@ -169,15 +169,9 @@
 }
 
 .gls_study_pair_components <- function(X, pairs, theta_bar, L, k, r, d = NULL) {
-  if (is.null(d)) d <- rep(1, nrow(pairs))
-  ids <- split(seq_len(nrow(pairs)), pairs$target)
-  static <- matrix(0, nrow(X), k); H <- array(0, c(nrow(X), k, r))
-  for (a in seq_len(k)) {
-    ii <- ids[[as.character(a)]]; src <- pairs$source[ii]
-    static[, a] <- X[, src, drop = FALSE] %*% (d[ii] * theta_bar[ii])
-    H[, a, ] <- X[, src, drop = FALSE] %*% (L[ii, , drop = FALSE] * d[ii])
-  }
-  list(static = static, H = H)
+  loadings <- if (is.null(d)) L else L * d
+  list(static = static_network(X, pairs, theta_bar, d),
+    H = build_network_array(X, pairs, loadings, r, k))
 }
 
 .gls_study_baseline_matrix <- function(alpha, gamma, Q) {
@@ -187,24 +181,32 @@
 }
 
 .gls_study_reference_filter <- function(Y, X, Q, pairs, alpha, gamma, theta_bar, L,
-                             discount, cfg, d = NULL) {
+                             discount, cfg, d = NULL, H = NULL, offset = NULL) {
   TT <- nrow(Y); k <- ncol(Y); r <- ncol(L)
-  comp <- .gls_study_pair_components(X, pairs, theta_bar, L, k, r, d)
-  offset <- .gls_study_baseline_matrix(alpha, gamma, Q) + comp$static
+  if (is.null(H) || is.null(offset)) {
+    comp <- .gls_study_pair_components(X, pairs, theta_bar, L, k, r, d)
+    H <- comp$H
+    offset <- .gls_study_baseline_matrix(alpha, gamma, Q) + comp$static
+  }
   m <- matrix(0, TT + 1L, r); C <- array(0, c(r, r, TT + 1L))
   W <- array(0, c(r, r, TT)); C[, , 1L] <- diag(1, r)
   for (t in seq_len(TT)) {
-    Ht <- matrix(comp$H[t, , ], nrow = k, ncol = r)
+    Ht <- matrix(H[t, , ], nrow = k, ncol = r)
     z <- .gls_study_reference_update_one(m[t, ], C[, , t], discount, offset[t, ], Ht,
                               Y[t, ], cfg)
     m[t + 1L, ] <- z$m; C[, , t + 1L] <- z$C; W[, , t] <- z$W
   }
-  list(m = m, C = C, W = W, offset = offset, H = comp$H)
+  list(m = m, C = C, W = W, offset = offset, H = H)
 }
 
 .gls_study_log_factor_evolution <- function(beta, W) {
   TT <- dim(W)[3L]; out <- 0
   if (nrow(beta) != TT + 1L) stop("beta must contain time zero through T.")
+  if (dim(W)[1L] == 1L && dim(W)[2L] == 1L && all(is.finite(W) & W > 0)) {
+    # Preserve the same scalar jitter used by both legacy Cholesky calls.
+    return(sum(dnorm(diff(as.numeric(beta)), sd = sqrt(as.numeric(W) + 1e-10),
+      log = TRUE)))
+  }
   for (t in seq_len(TT)) {
     z <- beta[t + 1L, ] - beta[t, ]; Wi <- solve_spd(W[, , t])
     out <- out - 0.5 * (length(z) * log(2 * pi) + .gls_study_logdet_spd(W[, , t]) +

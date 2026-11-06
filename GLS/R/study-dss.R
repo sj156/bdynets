@@ -16,6 +16,7 @@
     cfg$predictive_draws, seed)
   pairs <- fit$pairs; k <- ncol(Y); r <- ncol(fit$final_beta)
   sequence_rows <- c(conditioning_rows, rows); rn_all <- .gls_study_choose_r_nb_time(Y, cfg)
+  Xseq <- X[sequence_rows, , drop = FALSE]; Qseq <- Q[sequence_rows, , drop = FALSE]
   lambda <- if (return_draws) array(NA_real_, c(length(rows), k, length(draw_ids))) else NULL
   mean_lambda <- matrix(0, length(rows), k)
   set.seed(seed)
@@ -28,10 +29,12 @@
     ref_m <- as.numeric(fit$ref_m_T[s, ])
     ref_C <- matrix(fit$ref_C_T[s, , ], r, r)
     discount <- fit$discount[s]
-    for (tt in sequence_rows) {
-      comp <- .gls_study_one_time_pair_components(X[tt, ], pairs, theta_bar, L, k, r, d)
-      offset <- alpha + if (ncol(Q)) as.numeric(gamma %*% Q[tt, ]) else 0
-      offset <- offset + comp$static
+    all_comp <- .gls_study_pair_components(Xseq, pairs, theta_bar, L, k, r, d)
+    all_offset <- .gls_study_baseline_matrix(alpha, gamma, Qseq) + all_comp$static
+    for (pos in seq_along(sequence_rows)) {
+      tt <- sequence_rows[pos]
+      comp <- list(H = matrix(all_comp$H[pos, , ], k, r))
+      offset <- all_offset[pos, ]
       W <- symmetrize((1 / discount - 1) * ref_C)
       beta_predictive <- rmvn_cov(beta_previous, W)
       eta_predictive <- offset + as.numeric(comp$H %*% beta_predictive)

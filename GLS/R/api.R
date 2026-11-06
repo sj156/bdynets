@@ -17,6 +17,18 @@
 #' innovations; combine with `static_network = FALSE` for the legacy model.
 #' The implementation supports rank one and fixed graph affinities. Online
 #' assimilation uses one Polya-Gamma sweep per observation and is approximate.
+#' General fits use the Simulation 1 target-block/pCN coefficient proposal.
+#' `reference_backend = "native"` uses the compiled rank-one reference filter;
+#' `"R"` retains the original bracketed R solver for numerical comparisons.
+#' Both retain the full covariance MH correction. This does not change
+#' Simulation 1's separate reference update or numerical limits.
+#' `static_target_block_size` controls the number of target series per block;
+#' `static_pcn_initial_step` is adapted only during `burn_mcmc`, then frozen.
+#' `initialization = "baseline"` starts at training means with nonzero loadings;
+#' `"full_glm"` uses unrestricted-GLM baseline/static starting values.
+#' `initial_tau` is a starting value, not the global-scale prior.
+#' General fits record per-iteration counts and step sizes in
+#' `coefficient_trace`, and stop on a failed startup movement/stability check.
 #' @param profile One of `"default"`, `"quick"`, or `"smoke"`.
 #' @param ... Named settings replacing profile defaults.
 #' @return A validated list of GLS settings.
@@ -39,7 +51,7 @@ gls_control <- function(profile = c("default", "quick", "smoke"), ...) {
     discount_grid = c(0.90, 0.95, 0.98, 0.995),
     discount_prior = rep(0.25, 4L),
     discount_tau_scale = 1,
-    engine_version = "static-dynamic-0.2.0",
+    engine_version = "static-dynamic-blocked-fast-0.5.1",
     self_effect = 0.10,
     local_network_effect = 0.08,
     x_scale = 0.50,
@@ -106,6 +118,7 @@ gls_control <- function(profile = c("default", "quick", "smoke"), ...) {
     dss_max_draws = switch(profile, smoke = 25L, quick = 120L, default = 600L),
     interval_level = 0.95
   )
+  cfg <- c(cfg, .gls_general_sampler_defaults(profile))
   replacements <- list(...)
   if (length(replacements) &&
       (is.null(names(replacements)) || any(!nzchar(names(replacements))))) {
@@ -122,7 +135,59 @@ gls_control <- function(profile = c("default", "quick", "smoke"), ...) {
   .validate_gls_control(cfg)
 }
 
+.gls_general_sampler_defaults <- function(profile = "default") {
+  list(
+    reference_backend = "native",
+    static_target_block_size = if (profile == "smoke") 1L else 4L,
+    static_pcn_initial_step = if (profile == "smoke") 0.20 else 0.80,
+    static_pcn_target_acceptance = 0.25,
+    static_pcn_adapt_rate = 0.20,
+    static_pcn_min_step = 0.002,
+    static_pcn_max_step = 0.99,
+    initialization = "baseline",
+    initial_loading_sd = 0.01,
+    initial_tau = 0.05,
+    startup_check_iteration = switch(profile, smoke = 5L, quick = 40L, 100L),
+    startup_min_static_acceptance = 0.005,
+    startup_min_static_accepts = 1L,
+    startup_beta_abs_limit = 100
+  )
+}
+
 .validate_gls_control <- function(cfg) {
+  defaults <- .gls_general_sampler_defaults()
+  missing <- setdiff(names(defaults), names(cfg))
+  cfg[missing] <- defaults[missing]
+  scalar <- function(x) is.numeric(x) && length(x) == 1L && is.finite(x)
+  if (!is.character(cfg$reference_backend) || length(cfg$reference_backend) != 1L ||
+      !cfg$reference_backend %in% c("native", "R"))
+    stop("reference_backend must be 'native' or 'R'.", call. = FALSE)
+  block_size <- cfg$static_target_block_size
+  if (!is.numeric(block_size) || length(block_size) != 1L || is.na(block_size) ||
+      block_size < 1 || (is.finite(block_size) && block_size != floor(block_size)))
+    stop("static_target_block_size must be a positive integer or Inf.", call. = FALSE)
+  step_fields <- c("static_pcn_initial_step", "static_pcn_min_step", "static_pcn_max_step")
+  if (!all(vapply(cfg[step_fields], function(x) scalar(x) && x > 0 && x <= 1, logical(1L))) ||
+      cfg$static_pcn_initial_step < cfg$static_pcn_min_step ||
+      cfg$static_pcn_initial_step > cfg$static_pcn_max_step)
+    stop("pCN steps must satisfy 0 < min <= initial <= max <= 1.", call. = FALSE)
+  if (!scalar(cfg$static_pcn_target_acceptance) || cfg$static_pcn_target_acceptance <= 0 ||
+      cfg$static_pcn_target_acceptance >= 1 || !scalar(cfg$static_pcn_adapt_rate) ||
+      cfg$static_pcn_adapt_rate < 0)
+    stop("Invalid static pCN adaptation controls.", call. = FALSE)
+  if (!is.character(cfg$initialization) || length(cfg$initialization) != 1L ||
+      !cfg$initialization %in% c("baseline", "full_glm"))
+    stop("initialization must be 'baseline' or 'full_glm'.", call. = FALSE)
+  for (name in c("initial_loading_sd", "initial_tau", "startup_beta_abs_limit"))
+    if (!scalar(cfg[[name]]) || cfg[[name]] <= 0)
+      stop(name, " must be positive and finite.", call. = FALSE)
+  for (name in c("startup_check_iteration", "startup_min_static_accepts"))
+    if (!scalar(cfg[[name]]) || cfg[[name]] != floor(cfg[[name]]) ||
+        cfg[[name]] < if (name == "startup_check_iteration") 1 else 0)
+      stop("Invalid ", name, ".", call. = FALSE)
+  if (!scalar(cfg$startup_min_static_acceptance) || cfg$startup_min_static_acceptance < 0 ||
+      cfg$startup_min_static_acceptance > 1)
+    stop("startup_min_static_acceptance must be in [0,1].", call. = FALSE)
   integer_fields <- c(
     "seed", "grid_side", "n_long_pairs", "expected_active_pairs", "factor_dim", "simulation_burn",
     "n_total", "calibration_iterations", "calibration_length", "r_nb_min",

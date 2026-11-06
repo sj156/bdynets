@@ -6,11 +6,13 @@ clamp <- function(x, lo, hi) pmin(pmax(x, lo), hi)
 
 symmetrize <- function(A) (A + t(A))/2
 
-chol_jitter <- function(A, initial = 1e-10, attempts = 10L) {
-    A <- symmetrize(A)
+chol_jitter <- function(A, initial = 1e-10, attempts = 10L, symmetric = FALSE) {
+    if (!symmetric) A <- symmetrize(A)
     jitter <- initial
     for (i in seq_len(attempts)) {
-        z <- try(chol(A + diag(jitter, nrow(A))), silent = TRUE)
+        trial <- A
+        diag(trial) <- diag(A) + jitter
+        z <- try(chol(trial), silent = TRUE)
         if (!inherits(z, "try-error")) 
             return(z)
         jitter <- jitter * 10
@@ -24,7 +26,53 @@ rmvn_cov <- function(mu, Sigma) as.numeric(mu + t(chol_jitter(Sigma)) %*% rnorm(
 
 rmvn_precision <- function(P, rhs) {
     R <- chol_jitter(P)
-    as.numeric(backsolve(R, forwardsolve(t(R), rhs)) + backsolve(R, rnorm(length(rhs))))
+    as.numeric(backsolve(R, backsolve(R, rhs, transpose = TRUE)) +
+        backsolve(R, rnorm(length(rhs))))
+}
+
+# Reuse one factor for the conditional mean and innovation. No inverse is
+# needed, and the normal variates are consumed in the original order.
+.gls_pcn_precision <- function(P, rhs, current, step) {
+    # P is produced by the symmetric weighted Gram helper, not an arbitrary
+    # numerical matrix. Avoid an extra transpose and full symmetrizing copy.
+    R <- chol_jitter(P, symmetric = TRUE)
+    mu <- as.numeric(backsolve(R, backsolve(R, rhs, transpose = TRUE)))
+    noise <- as.numeric(backsolve(R, rnorm(length(rhs))))
+    mu + sqrt(max(0, 1 - step^2)) * (current - mu) + step * noise
+}
+
+.gls_weighted_precision <- function(Z, weights, prior_precision) {
+    # A symmetric rank-k product uses only one weighted design matrix.
+    P <- crossprod(Z * sqrt(weights))
+    diag(P) <- diag(P) + prior_precision
+    P
+}
+
+# beta is fixed during a complete target sweep. All-pairs targets share the
+# entire design; heterogeneous/duplicated source dictionaries retain their
+# own column order and use the common dynamic columns without recomputing them.
+.gls_target_design_cache <- function(X, Q, beta, pairs, ids, static = TRUE) {
+    r <- ncol(beta); k <- ncol(X)
+    dynamic <- if (r == 1L) X * beta[, 1L] else
+        do.call(cbind, lapply(seq_len(k), function(j) X[, j] * beta))
+    sources <- lapply(ids, function(ii) pairs$source[ii])
+    same <- length(sources) > 0L && all(vapply(sources,
+        function(src) identical(src, sources[[1L]]), logical(1L)))
+    out <- list(common = cbind(Intercept = 1, Q), X = X,
+        dynamic = dynamic, r = r, static = static, shared = NULL,
+        shared_sources = if (same) sources[[1L]] else NULL)
+    if (same) out$shared <- .gls_target_design(out, sources[[1L]])
+    out
+}
+
+.gls_target_design <- function(cache, sources) {
+    if (!is.null(cache$shared) && identical(sources, cache$shared_sources))
+        return(cache$shared)
+    columns <- if (cache$r == 1L) sources else
+        as.vector(t(outer(sources - 1L, seq_len(cache$r),
+            function(s, j) s * cache$r + j)))
+    cbind(cache$common, if (cache$static) cache$X[, sources, drop = FALSE],
+        cache$dynamic[, columns, drop = FALSE])
 }
 
 rinvgamma <- function(n, shape, rate) 1/rgamma(n, shape = shape, rate = rate)
@@ -355,12 +403,21 @@ choose_r_nb_time <- function(Y, cfg = CFG) {
     clamp(ceiling(r/step) * step, cfg$r_nb_min, cfg$r_nb_max)
 }
 
+pair_coefficient_matrix <- function(value, pairs, k) {
+    out <- matrix(0, k, k)
+    index <- pairs$source + (pairs$target - 1L) * k
+    if (anyDuplicated(index)) {
+        total <- rowsum(matrix(value, ncol = 1L), index, reorder = FALSE)
+        out[as.integer(rownames(total))] <- total[, 1L]
+    } else out[index] <- value
+    out
+}
+
 build_network_array <- function(X, pairs, L, r, k) {
     H <- array(0, c(nrow(X), k, r))
-    ids <- split(seq_len(nrow(pairs)), pairs$target)
-    for (a in seq_len(k)) {
-        ii <- ids[[as.character(a)]]
-        H[, a, ] <- X[, pairs$source[ii], drop = FALSE] %*% L[ii, , drop = FALSE]
+    for (j in seq_len(r)) {
+        coefficients <- pair_coefficient_matrix(L[, j], pairs, k)
+        H[, , j] <- X %*% coefficients
     }
     H
 }
@@ -797,7 +854,8 @@ validation_gls_deviance <- function(fit, X, WX, time_covariate, season_covariate
                 fit$self_coef[s, ] * X[tt, ] + fit$w_coef[s, ] * WX[tt, ]
             baseline <- baseline + as.numeric(static_network(X[tt, , drop = FALSE], fit$pairs, if (is.null(fit$B)) NULL else fit$B[s, ], d))
             step <- forecast_factor_step(beta, ref, stored_discount(fit, s), stored_evolution(fit), Ht, baseline,
-                Y[tt, ], r_nb_from_previous(Y[max(1L, tt - 1L), ], cfg))
+                Y[tt, ], r_nb_from_previous(Y[max(1L, tt - 1L), ], cfg),
+                reference_backend = cfg$reference_backend)
             eta <- step$eta
             beta <- step$beta; ref <- step$ref
             mu_sum[h, ] <- mu_sum[h, ] + exp(clamp(eta, -15, 12))
@@ -962,13 +1020,10 @@ network_one_time <- function(x, pairs, L, beta, k, d = NULL) {
 factor_design_one_time <- function(x, pairs, L, k, d = NULL) {
     r <- ncol(L)
     H <- matrix(0, k, r)
-    ids <- split(seq_len(nrow(pairs)), pairs$target)
-    for (a in seq_len(k)) {
-        ii <- ids[[as.character(a)]]
-        Li <- L[ii, , drop = FALSE]
-        if (!is.null(d)) 
-            Li <- Li * d[ii]
-        H[a, ] <- colSums(Li * x[pairs$source[ii]])
+    if (!is.null(d)) L <- L * d
+    for (j in seq_len(r)) {
+        coefficients <- pair_coefficient_matrix(L[, j], pairs, k)
+        H[, j] <- as.numeric(x %*% coefficients)
     }
     H
 }
@@ -1006,7 +1061,8 @@ predict_gls <- function(fit, X, time_covariate, season_covariate, Y, rows, condi
                 X[tt, ] + fit$w_coef[s, ] * WX[tt, ]
             baseline <- baseline + as.numeric(static_network(X[tt, , drop = FALSE], fit$pairs, if (is.null(fit$B)) NULL else fit$B[s, ], d))
             step <- forecast_factor_step(beta, ref, stored_discount(fit, s), stored_evolution(fit), Ht, baseline,
-                Y[tt, ], r_nb_from_previous(Y[max(1L, tt - 1L), ], cfg))
+                Y[tt, ], r_nb_from_previous(Y[max(1L, tt - 1L), ], cfg),
+                reference_backend = cfg$reference_backend)
             eta <- step$eta
             beta <- step$beta; ref <- step$ref
             h <- match(tt, rows)

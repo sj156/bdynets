@@ -1,6 +1,6 @@
 Package: GLS
 Title: Structured Global-Local Shrinkage and Selection
-Version: 0.4.1
+Version: 0.5.1
 Authors@R: c(
     person("Ying", "Wu", role = "aut"),
     person("Sheng", "Jiang", email = "jiangsheng@cuhk.edu.cn",
@@ -16,6 +16,7 @@ Description: Implements global-local shrinkage and selection for edge-indexed
     periodic covariates, and PNAR benchmarks.
 License: MIT + file LICENSE
 Encoding: UTF-8
+NeedsCompilation: yes
 Depends: R (>= 4.1.0)
 Imports:
     BayesLogit,

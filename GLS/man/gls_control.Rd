@@ -33,6 +33,26 @@ half-Cauchy scale for discount fits. \code{factor_evolution = "unit"} restores u
 innovations; combine with \code{static_network = FALSE} for the legacy model.
 The implementation supports rank one and fixed graph affinities. Online
 assimilation uses one Polya-Gamma sweep per observation and is approximate.
+General fits use the Simulation 1 target-block/pCN coefficient proposal.
+\code{reference_backend="native"} uses the compiled rank-one reference
+filter (default); \code{"R"} retains the original bracketed R solver for
+numerical comparisons. Both use the same Laplace reference definition and
+full covariance MH correction. These settings do not change Simulation 1's
+separate reference update. Source installation requires a C compiler.
+\code{static_target_block_size} controls target series per block (default 4;
+1 for smoke). \code{static_pcn_initial_step} defaults to 0.8 (0.2 for smoke)
+and is adapted only during \code{burn_mcmc}, then frozen. Adaptation uses
+\code{static_pcn_target_acceptance}, \code{static_pcn_adapt_rate}, and
+\code{static_pcn_min_step}/\code{static_pcn_max_step}.
+\code{initialization="baseline"} starts at training means with nonzero
+loadings; \code{"full_glm"} uses unrestricted-GLM baseline/static starts.
+\code{initial_loading_sd} and \code{initial_tau} control starting values,
+not the coefficient priors. The default loading SD is 0.01 and initial tau
+is 0.05, matching Simulation 1.
+General fits return per-iteration block counts and steps in
+\code{coefficient_trace}. The \code{startup_check_iteration},
+\code{startup_min_static_accepts}, \code{startup_min_static_acceptance}, and
+\code{startup_beta_abs_limit} controls stop frozen or unstable startup runs.
 }
 \examples{
 ctrl <- gls_control("smoke", n_iter = 40, burn_mcmc = 20)

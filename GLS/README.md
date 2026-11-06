@@ -64,6 +64,32 @@ study writer/orchestrator or by scripts in the simulation project.
 
 ## 2. Installation and verification
 
+Version 0.5.1 includes a small compiled C reference filter. Source installs on
+Windows need Rtools matching the R release; Linux/macOS need the usual R C build
+tools. Binary installs do not need a compiler. No additional R dependency, GPU,
+or change to the system BLAS is required.
+
+The fast implementation retains the model, priors, full candidate dictionary,
+block size, iteration counts and MH covariance correction. Gaussian target
+proposals share one design per sweep, form symmetric weighted Gram matrices,
+and reuse one Cholesky factor for both the conditional mean and innovation;
+they do not form a matrix inverse. General-data reference filtering uses a
+bracketed, safeguarded scalar solver in C with a tighter root tolerance than
+the retained R implementation. `gls_control(reference_backend = "R")` selects
+the original R reference solver for numerical comparisons. Simulation 1 keeps
+its own reference update and numerical-limit settings, while sharing the
+optimized Gaussian proposal and batched network products.
+
+General and study predictions batch deterministic network products per draw.
+Forecasts still precede assimilation of the current counts. Caching does not
+cache a data-dependent posterior across draws or reuse target-specific weights
+or prior precisions. Different BLAS reduction orders and tighter scalar roots
+can change floating-point results and eventually individual MCMC paths; they
+do not imply an identical bit-for-bit chain. Compare conditional calculations,
+convergence, ESS per second and predictive uncertainty, rather than acceptance
+alone. The finite-shape count approximation and one-sweep online assimilation
+are unchanged.
+
 The package requires R 4.1 or newer. Its mandatory R dependency is
 `BayesLogit`; figures additionally use `ggplot2` and `patchwork`.
 
@@ -100,6 +126,34 @@ pairs, including self, physically adjacent, multi-hop and unreachable pairs.
 The older `gls_fit()` interface excludes the separately modeled local domain
 and is retained mainly for older examples; it is not the recommended interface
 for the current all-pairs formulation.
+
+Since version 0.5.0, the general interface reuses Simulation 1's conditional
+Gaussian pCN target proposal. It accepts/rejects small target blocks separately,
+retains the full reference-covariance density correction, and adapts the pCN
+step during burn-in only. The general-data covariates and fixed graph-affinity
+prior are retained; this does not substitute Simulation 1's learned dictionary
+or regenerate simulation covariates.
+
+The main controls are `static_target_block_size=4L`,
+`static_pcn_initial_step=0.8`, `static_pcn_target_acceptance=0.25`, and the
+corresponding `static_pcn_adapt_rate`, `static_pcn_min_step`, and
+`static_pcn_max_step`. Use `fit$coefficient_trace` to inspect per-iteration
+accepted/proposed target blocks and the applied/next step size. Step adaptation
+stops at `burn_mcmc`. `startup_*` controls stop chains with no meaningful
+coefficient movement or unstable factors.
+
+Default starting values use training means, nonzero loadings, and the
+reference-filter state means. `initial_loading_sd=0.01` and `initial_tau=0.05`
+are starting-value controls, not changes to the prior. An explicit
+`initialization="full_glm"` uses unrestricted-GLM baseline/static starts, which
+can be unstable on sparse, high-dimensional OD data. All-zero training series
+are supported using a positive prior-center floor of `0.5/length(train_rows)`;
+their counts remain zero. An explicit `means` argument overrides the default.
+
+Each sweep still updates every target and keeps the complete source-target
+candidate domain. Target blocking is a sampler choice, not an edge-screening
+rule. Existing result directories must not be overwritten when changing this
+sampler configuration.
 
 ### 3.1 Required inputs
 

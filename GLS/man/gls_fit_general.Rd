@@ -30,7 +30,9 @@ gls_fit_general(
 
 \item{pairs}{Optional all-pairs dictionary from \code{\link[=gls_all_pairs]{gls_all_pairs()}}.}
 
-\item{means}{Optional positive prior-centering means, one per series.}
+\item{means}{Optional positive prior-centering means, one per series.
+The default uses training sample means with a \code{0.5 / length(train_rows)}
+floor for all-zero training series; observations are unchanged.}
 
 \item{signal}{Numeric label used only to derive deterministic random seeds.}
 

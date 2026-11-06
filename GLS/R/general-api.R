@@ -27,7 +27,9 @@ gls_all_pairs <- function(graph, control = gls_control()) {
 #' @param train_rows Consecutive rows used for posterior fitting.
 #' @param pre_history Optional count history preceding `Y`.
 #' @param pairs Optional all-pairs dictionary from [gls_all_pairs()].
-#' @param means Optional positive prior-centering means, one per series.
+#' @param means Optional positive prior-centering means, one per series. By
+#'   default, training sample means with a `0.5 / length(train_rows)` floor
+#'   for all-zero training series; observations are not changed.
 #' @param signal Numeric label used only to derive deterministic random seeds.
 #' @param label Human-readable fit label.
 #' @param control A [gls_control()] object.
@@ -73,7 +75,8 @@ gls_fit_general <- function(
   raw_lags <- make_lags(Y, pre_history, rep(0, ncol(Y)), rep(1, ncol(Y)), 1L)
   standardized <- standardize_lags_from_train(raw_lags, train_rows)
   X <- standardized$lags[, , 1L]
-  if (is.null(means)) means <- colMeans(Y[train_rows, , drop = FALSE])
+  if (is.null(means)) means <- pmax(colMeans(Y[train_rows, , drop = FALSE]),
+                                   0.5 / length(train_rows))
   if (length(means) != ncol(Y) || any(!is.finite(means)) || any(means <= 0)) {
     stop("means must contain one positive finite value per series.", call. = FALSE)
   }
@@ -86,6 +89,7 @@ gls_fit_general <- function(
   fit$X <- X
   fit$covariates <- covariates
   fit$train_rows <- train_rows
+  fit$means <- as.numeric(means)
   fit$pre_history <- pre_history
   fit$scaler <- list(center = standardized$center, scale = standardized$scale)
   fit$graph <- graph
