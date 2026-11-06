@@ -1,17 +1,23 @@
 Package: bdynets
 Title: Bayesian Dynamic Network Analysis
-Version: 0.1.0
+Version: 0.2.0
 Authors@R: 
-    person("Sheng", "Jiang", , "jiangsheng@cuhk.edu.cn", role = c("aut", "cre"))
+    c(person("Ying", "Wu", role = "aut"),
+      person("Sheng", "Jiang", , "jiangsheng@cuhk.edu.cn", role = c("aut", "cre")))
 Description: Modular tools for Bayesian analysis of network-associated time
     series. Provides graph-informed mixtures of static Gaussian experts with
     adaptive graph guidance and posterior partition summaries, alongside the
     existing experimental dynamic count-mixture sampler and clustering utilities.
+    The GLS module implements dynamic count-network inference, graph-informed
+    shrinkage, selection, prediction, and directed-grid studies. Shared scalar
+    Gaussian state sampling and Poisson Laplace reference filtering kernels
+    are available through Rcpp and a standalone C++ header.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 Depends: R (>= 4.1.0)
 Imports:
+    BayesLogit,
     curl,
     data.table,
     ggplot2,
@@ -20,14 +26,18 @@ Imports:
     grid,
     jsonlite,
     magrittr,
+    parallel,
+    Rcpp,
     stats,
     tools,
     utils
+LinkingTo: Rcpp
+SystemRequirements: C++17
+NeedsCompilation: yes
 Suggests:
     posterior,
-    BayesLogit,
     beepr,
     testthat (>= 3.2.0)
 Config/testthat/edition: 3
 Config/roxygen2/version: 8.0.0
-RoxygenNote: 7.3.3
+RoxygenNote: 8.0.0

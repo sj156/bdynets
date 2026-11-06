@@ -1,7 +1,7 @@
 # Shared data: collaborator guide
 
-This is an additive interface. Existing `gmde_fit()`, `GLS::gls_fit()` and
-`lpr_fit()` calls continue to work. GLS remains a separate installation.
+This is an additive interface. Existing `gmde_fit()`, `bdynets::gls_fit()` and
+`lpr_fit()` calls continue to work. GLS is included in the same bdynets installation.
 After obtaining this revision, reinstall the package from the repository root:
 
 ```sh
@@ -34,7 +34,7 @@ fit <- do.call(gmde_fit, c(args, list(K=K, expert=expert, mcmc=control)))
 
 # Existing GLS graph still supplies its model-specific A and W.
 args <- as_gls_inputs(edge_panel, gls_graph, graph_unit_ids=edge_ids)
-fit <- do.call(GLS::gls_fit, c(args, list(control=gls_control)))
+fit <- do.call(bdynets::gls_fit, c(args, list(control=gls_control)))
 
 # Current LPR is static: select a time slice explicitly.
 data <- as_lpr_data(edge_panel, time_index=1)

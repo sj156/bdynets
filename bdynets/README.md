@@ -1,9 +1,10 @@
 # bdynets: one package, multiple analysis modules
 
-This directory is the installable package. Graph-informed mixtures, the
-historical dynamic count-mixture engine and clustering utilities share one
-namespace and version. The `gmde_*` functions implement the graphMoDE module;
-there is no separate `library(graphMoDE)` step.
+This directory is the installable package. Graph-informed mixtures (graphMoDE),
+structured global-local shrinkage and selection (GLS), historical count
+mixtures, network and traffic interfaces, and shared numerical kernels use one
+namespace and version. Load `library(bdynets)` for all packaged modules. The
+`gmde_*` and `gls_*` functions identify their respective analysis modules.
 
 ## Installation
 
@@ -18,9 +19,11 @@ library(bdynets)
 For the local checkout, run `pak::pak("./bdynets", dependencies = TRUE)` from
 the repository root, or `pak::pak(".", dependencies = TRUE)` from this package
 directory. Suggested dependencies are included by `dependencies = TRUE`.
+Source installation requires Rcpp and a working C++17 compiler. GLS and the
+shared kernels are included in this package; no separate installation is needed.
 
 See the [repository overview](../README.md) for the development workflow and
-the [graphMoDE research guide](../graphMoDE/readme.md) for historical material.
+the [graphMoDE research guide](../graphMoDE/README.md) for historical material.
 
 ## Gaussian/static graphMoDE example
 
@@ -59,6 +62,69 @@ Gaussian panels with static experts. Poisson, dynamic states, forecasting,
 missing histories and new units are not yet supported by the gmde_* API.
 See `?gmde_fit` and the other function help pages for complete contracts.
 
+## GLS count-network module
+
+GLS provides edge-count shrinkage, static-plus-dynamic propagation, posterior
+diagnostics, joint DSS and sequential one-step prediction. Its current
+directed-grid study, learned-affinity model and PNAR benchmark interfaces are
+preserved within bdynets.
+
+```r
+library(bdynets)
+control <- gls_control("smoke", backend = "cpp", reference_backend = "native")
+r_control <- gls_control("smoke", backend = "R", reference_backend = "R")
+study_control <- gls_study_control("smoke")
+```
+
+Pass the general controls to `gls_fit()` or `gls_fit_general()`. `backend`
+selects their scalar FFBS implementation; C++ is the default. The independent
+`reference_backend` option retains the established safeguarded C Newton
+reference filter or its R alternative. The covariance-density correction,
+initial factor draw, R RNG and GLS jitter convention remain unchanged. The
+study FFBS and study reference recursion are retained separately.
+
+See the [GLS method guide](GLS.md) for full fitting, simulation, PNAR and
+post-processing instructions. Smoke and quick profiles check execution rather
+than establish convergence. These GLS interfaces do not extend the packaged
+`gmde_*` Gaussian/static contract.
+
+## Shared scalar numerical kernels
+
+The public `gaussian_ffbs()` and `poisson_discount_filter()` functions can be
+used independently of any analysis module:
+
+```r
+set.seed(1)
+draw <- gaussian_ffbs(
+  c(1.1, .8, 1.3), precision = 4, innovation_variance = .05,
+  transition = .95, initial_mean = 1, initial_variance = .2
+)
+reference <- poisson_discount_filter(
+  c(2, 3, 1, 4), loadings = .2, offset = log(3), discount = .95
+)
+```
+
+The Gaussian kernel handles one latent scalar observed by one or more series,
+with configurable transitions, innovation variances and initial distribution.
+Zero observation precision marks missing values. Generic jitter defaults to
+zero; the GLS FFBS adapter requests its established jitter convention. The
+Poisson routine is a Laplace discount-reference approximation with a bracketed
+Brent solver, not exact filtering or a replacement for the existing GLS C
+Newton reference filter.
+
+The shared header is `inst/include/bdynets/scalar_state_space.h`. Other Rcpp
+packages can declare `LinkingTo: Rcpp, bdynets`, select C++17, and include
+`<bdynets/scalar_state_space.h>`. Plain C++ programs can use the same header
+with `bdynets/inst/include` on their include path and supply their own
+normal-draw callback. The header itself has no R dependency. Keep its adjacent
+MIT license when copying it, and rebuild consumers after header changes.
+
+See the [kernel guide](CPP-KERNELS.md) for detailed R/C++ contracts and the
+[graphMoDE bridge guide](../graphMoDE/SHARED-KERNELS.md) for compatible scalar
+reuse. The current graphMoDE research driver has a three-dimensional default
+state and is unchanged; neither it nor the historical multidimensional bdynets
+FFBS has been migrated to this scalar kernel.
+
 ## Scripts
 
 | R script | Responsibility |
@@ -73,12 +139,17 @@ See `?gmde_fit` and the other function help pages for complete contracts.
 | gmde-mcmc-control.R | Chain, seed and retention settings |
 | gmde-fit.R | Sampler and fit metadata |
 | gmde-partition.R | Co-clustering and representative partition |
+| gls-api.R, gls-general-api.R | GLS controls, fitting and prediction APIs |
+| gls-study-*.R, gls-simulation.R, gls-benchmark-pnar.R | Current directed-grid study, diagnostics, output and PNAR benchmarks |
+| scalar-state-space.R | Reusable Gaussian FFBS and Poisson reference-filter R interfaces |
 | gibbs.R, gibbs-helpers.R, all-helpers.R | Preserved historical module and utilities |
 
 All modules are maintained directly as R scripts, with module-specific tests
 under `tests/testthat/`. Internal `.gmde_*` helpers are separate from legacy
 helpers. Roxygen generates NAMESPACE and man pages; litr is no longer a build
-dependency. Package authorship and MIT licensing follow bdynets.
+dependency. Package authorship and MIT licensing follow bdynets. Native Rcpp
+adapters live in `src/` and use the installed shared header where appropriate;
+the established GLS C reference implementation is retained for compatibility.
 
 ## Historical module
 
@@ -89,10 +160,11 @@ and jittered covariance calculations; it does not implement the revised
 graphMoDE Poisson correction. Its preservation is not a correctness endorsement.
 The Gaussian graphMoDE module never calls those numerical helpers.
 
-Runtime imports are graphics, magrittr, stats and utils. BayesLogit and beepr
-are optional historical features; testthat is a test dependency. Notebook-only
-libraries are no longer attached by loading the package. Existing notebooks
-must explicitly load the libraries their analyses use.
+The current traffic and networking imports are retained, including ggplot2,
+data.table, curl and jsonlite. BayesLogit, Rcpp and parallel are required by the
+integrated code. The historical beep still uses optional beepr; testthat is a
+test dependency. Notebook-only libraries are not attached by loading the package.
+Existing notebooks must explicitly load the libraries their analyses use.
 
 ## Development and validation
 
@@ -105,14 +177,16 @@ testthat::test_local("bdynets")
 
 ```sh
 R CMD build bdynets
-R CMD check --no-manual --no-build-vignettes bdynets_0.1.0.tar.gz
+R CMD check --no-manual --no-build-vignettes bdynets_0.2.0.tar.gz
 ```
 
-The September 6, 2026 migration passed 148 assertions and the package check
+The September 6, 2026 version 0.1.0 migration passed 148 assertions and the package check
 with Status: OK. pak installation with all suggested dependencies and loading
 in a fresh R session also passed. Fixed-seed comparison confirmed unchanged
 graphMoDE K=1/2/3 outputs and preserved legacy sampler outputs (apart from
-elapsed time). See the [migration record](../MIGRATION.md).
+elapsed time). This is historical evidence for that migration, not a test
+count for the current integration. The clean-checkout package needs its own
+build and check. See the [migration record](../MIGRATION.md).
 
 These are focused implementation and compatibility checks. They do not establish
 posterior calibration, chain convergence or scientific performance. Keep future
@@ -120,10 +194,13 @@ modules in separate prefixed scripts with their own tests and examples.
 
 ## Next milestone
 
-Implement graphMoDE Poisson/static with exact integer-shape PG and whole-block
-MH, validated against quadrature; then stable Gaussian FFBS and Poisson PG-FFBS.
-Prediction and posterior calibration follow. No formal experiments were run
-during this package migration.
+For the packaged `gmde_*` API, implement Poisson/static with exact integer-shape
+PG and whole-block MH, validated against quadrature, before adding dynamic
+experts and prediction. The separate `graphMoDE/` research driver already has
+its own dynamic state implementation and controls; those remain unchanged.
+Shared scalar kernels can support compatible cases without replacing its
+multidimensional smoother. No formal experiments were run during the original
+September package migration.
 
 ## Shared network data
 

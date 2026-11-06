@@ -8,8 +8,11 @@
 \description{
 One package with separate analysis modules. The \verb{gmde_*} functions provide
 fixed-K Gaussian/static graph-informed mixtures. \code{gibbs_sampler()} retains
-the historical experimental dynamic count-mixture method. These engines have
-different targets and numerical guarantees; their helpers are not shared.
+the historical experimental dynamic count-mixture method. The \verb{gls_*}
+interfaces implement the GLS dynamic count-network module. Shared scalar
+numerical kernels are exposed by \code{\link[=gaussian_ffbs]{gaussian_ffbs()}} and
+\code{\link[=poisson_discount_filter]{poisson_discount_filter()}} and an installed C++ header. Each method keeps
+its own model assumptions and inference logic.
 }
 \details{
 Package code is maintained directly in R scripts. R Markdown notes do not
@@ -21,6 +24,7 @@ generate or overwrite the package. See \code{gmde_fit()} for a working example.
 Authors:
 \itemize{
   \item Sheng Jiang \email{jiangsheng@cuhk.edu.cn}
+  \item Ying Wu
 }
 
 }
