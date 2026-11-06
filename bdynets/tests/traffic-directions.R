@@ -1,6 +1,6 @@
-if(nzchar(Sys.getenv('TRAFFICMAP_SOURCE')))source(Sys.getenv('TRAFFICMAP_SOURCE')) else library(bdynets)
+options(bdynets.basemap.auto=FALSE)
+library(bdynets)
 inside<-function(n)if(exists(n,mode='function'))get(n,mode='function') else getFromNamespace(n,'bdynets')
-if(nzchar(Sys.getenv('TRAFFICMAP_SOURCE'))&&!exists('.tm_opposing',mode='function'))stop('Opposing geometry recognition is absent')
 match_paths<-inside('.tm_opposing')
 line<-rbind(c(10,50),c(10.004,50))
 reverse<-line[2:1,,drop=FALSE]

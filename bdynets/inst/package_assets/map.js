@@ -62,9 +62,20 @@
 
   function color(value) {
     if (value == null) return '#94a3b8';
+    const scale = data.scale;
+    if (scale.kind === 'change') return scale.palette[value < 0 ? 0 : value > 0 ? 2 : 1];
+    if (scale.kind === 'gradient') {
+      const stops = scale.breaks, v = Math.max(stops[0], Math.min(stops[stops.length - 1], value));
+      let i = 0;
+      while (i < stops.length - 2 && v >= stops[i + 1]) i++;
+      const parse = c => { const element = document.createElement('span'); element.style.color = c; document.body.appendChild(element); const rgb = getComputedStyle(element).color.match(/[\d.]+/g).slice(0, 3).map(Number); element.remove(); return rgb; };
+      if (!scale.rgb) scale.rgb = scale.palette.map(parse);
+      const u = (v - stops[i]) / (stops[i + 1] - stops[i]);
+      return '#' + scale.rgb[i].map((c, k) => Math.round(c + (scale.rgb[i + 1][k] - c) * u).toString(16).padStart(2, '0')).join('');
+    }
     let group = 0;
-    while (group < data.scale.breaks.length && Math.log1p(value) >= Math.log1p(data.scale.breaks[group])) group++;
-    return data.scale.palette[group];
+    while (group < scale.breaks.length && (scale.kind === 'classes' ? (scale.right ? value > scale.breaks[group] : value >= scale.breaks[group]) : Math.log1p(value) >= Math.log1p(scale.breaks[group]))) group++;
+    return scale.palette[group];
   }
   function locations(complete) {
     const indices = roadIndices();
@@ -234,7 +245,7 @@
     coordinateKeys[j] = key; coordinateCache[j] = shifted; return shifted;
   }
   function roadPopup(j) {
-    const r = data.roads[j], rows = [['Time', data.labels[state.index]], ['Flow', format(data.values[state.index][j]) + ' ' + data.unit], ...Object.entries(r.attributes)];
+    const r = data.roads[j], rows = [['Time', data.labels[state.index]], [data.measurement?.label || 'Flow', format(data.values[state.index][j]) + ' ' + data.unit], ...Object.entries(r.attributes)];
     return '<div class="popup"><b>' + escape(r.id) + '</b><table>' + rows.filter(([, v]) => v != null && typeof v !== 'object').map(([k, v]) => '<tr><td>' + escape(k) + '</td><td>' + escape(v) + '</td></tr>').join('') + '</table></div>';
   }
   function buildRoads() { lastViewKey = ''; refreshRoads(); }
@@ -256,9 +267,28 @@
     });
   }
   function trend() {
+    const caption = byId('flowTrendBox').querySelector('p');
+    if (data.trend_method === 'provided') {
+      const rows = (data.provided_trends || []).filter(r => r.metric === data.selected_metric && r.region === state.region);
+      caption.textContent = rows.length ? rows[0].label : 'No supplied trend for this scope';
+      byId('flowTrendBox').title = rows.length ? rows[0].definition : 'No supplied trend for this scope';
+    } else {
+      caption.textContent = 'Mean of finite road values';
+      byId('flowTrendBox').title = 'Arithmetic mean of available supplied road values; no length or lane weighting.';
+    }
     if (!trendCache.has(state.region)) {
-      const indices = roadIndices();
-      trendCache.set(state.region, data.values.map(row => { const v = indices.map(j => row[j]).filter(v => v != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; }));
+      let values;
+      if (data.trend_method === 'provided') {
+        const rows = (data.provided_trends || []).filter(r => r.metric === data.selected_metric && r.region === state.region);
+        const byTime = new Map(rows.map(r => [r.time, r.value]));
+        values = data.times.map(t => byTime.has(t) ? byTime.get(t) : null);
+        byId('flowTrendBox').title = rows.length ? rows[0].definition : 'No supplied trend for this scope';
+      } else {
+        const indices = roadIndices();
+        values = data.values.map(row => { const v = indices.map(j => row[j]).filter(v => v != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; });
+        byId('flowTrendBox').title = 'Arithmetic mean of available supplied road values; no length or lane weighting.';
+      }
+      trendCache.set(state.region, values);
     }
     return trendCache.get(state.region);
   }
@@ -266,16 +296,16 @@
     const canvas = byId(id), size = canvas.getBoundingClientRect(), ratio = devicePixelRatio || 1;
     canvas.width = Math.max(1, size.width * ratio); canvas.height = Math.max(1, size.height * ratio);
     const ctx = canvas.getContext('2d'); ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-    const valid = values.filter(v => v != null), top = Math.max(1, ...valid), w = size.width - 18, h = size.height - 16;
+    const valid = values.filter(v => v != null), top = Math.max(1, ...valid), bottom = Math.min(0, ...valid), w = size.width - 18, h = size.height - 16;
     ctx.clearRect(0, 0, size.width, size.height); ctx.strokeStyle = '#365c70'; ctx.lineWidth = 1.8; ctx.beginPath(); let started = false;
-    values.forEach((v, j) => { if (v == null) { started = false; return; } const px = 8 + j * w / Math.max(1, values.length - 1), py = 6 + h * (1 - v / top); if (started) ctx.lineTo(px, py); else ctx.moveTo(px, py); started = true; }); ctx.stroke();
+    values.forEach((v, j) => { if (v == null) { started = false; return; } const px = 8 + j * w / Math.max(1, values.length - 1), py = 6 + h * (1 - (v - bottom) / (top - bottom)); if (started) ctx.lineTo(px, py); else ctx.moveTo(px, py); started = true; }); ctx.stroke();
     const cursor = 8 + state.index * w / Math.max(1, values.length - 1); ctx.strokeStyle = '#303a40'; ctx.beginPath(); ctx.moveTo(cursor, 3); ctx.lineTo(cursor, h + 10); ctx.stroke();
   }
   function legend() {
     let html = '';
     if (data.roads.length) {
-      html = '<b>Flow · ' + escape(data.unit) + '</b><div>Log scale · rounded limits</div>';
-      if (data.scale.kind === 'missing') html += '<p>No finite flow observations</p>';
+      html = '<b>' + escape(data.measurement?.label || 'Flow') + ' · ' + escape(data.unit) + '</b><div>' + (data.scale.kind === 'change' ? 'Blue decrease · neutral zero · red increase' : data.scale.kind === 'gradient' ? 'Supplied gradient stops' : data.scale.kind === 'classes' ? 'Supplied class limits' : 'Log scale · rounded limits') + '</div>';
+      if (data.scale.kind === 'missing') html += '<p>No finite observations</p>';
       else if (data.scale.kind === 'zero') html += '<div class="swatch"><i style="background:' + data.scale.palette[0] + '"></i>0</div>';
       else html += data.scale.palette.map((c, j) => '<div class="swatch"><i style="background:' + c + '"></i>' + escape(data.scale.labels[j]) + '</div>').join('');
       html += '<div class="swatch"><i style="background:#94a3b8"></i>Missing</div>';

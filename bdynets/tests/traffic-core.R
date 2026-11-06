@@ -1,4 +1,5 @@
-if(nzchar(Sys.getenv('TRAFFICMAP_SOURCE'))) source(Sys.getenv('TRAFFICMAP_SOURCE')) else library(bdynets)
+options(bdynets.basemap.auto=FALSE)
+library(bdynets)
 fail <- function(e) inherits(tryCatch(force(e),error=identity),'error')
 roads <- data.frame(road_id=c('a','b'),region=c('West','East'))
 roads$geometry <- list(rbind(c(-118,34),c(-118.1,34.1)),rbind(c(-117,34),c(-117.1,34.1)))

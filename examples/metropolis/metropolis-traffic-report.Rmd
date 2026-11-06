@@ -1,0 +1,185 @@
+---
+title: "Metropolis: road volume on 2024-10-18"
+output:
+  html_document:
+    self_contained: true
+    toc: true
+    toc_depth: 2
+    mathjax: null
+    md_extensions: "-tex_math_dollars"
+params:
+  time_label: "08:00"
+  export: false
+  export_dir: "output"
+  figure_dir: null
+
+---
+
+<style>
+body{font-size:16px;line-height:1.65;color:#25364a} .main-container{max-width:1040px} h1,h2,h3{line-height:1.3} h2{margin-top:1.8em} pre{font-size:13px;overflow-x:auto} table{font-size:14px;max-width:100%;display:block;overflow-x:auto} th,td{padding:7px 10px!important;overflow-wrap:anywhere} img{max-width:100%;height:auto} p{margin-bottom:1em} code{overflow-wrap:anywhere}
+table{display:block!important;max-width:100%!important;width:100%!important;overflow-x:auto!important}th,td{overflow-wrap:anywhere}
+</style>
+
+```{r setup, include=FALSE}
+figure_dir <- params$figure_dir
+if(is.null(figure_dir)) {figure_dir <- tempfile("traffic-figures-");dir.create(figure_dir)}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=TRUE,
+  fig.path=file.path(figure_dir,"figure-"), dev="png", dpi=150,
+  fig.width=10, fig.height=8, out.width="100%", cache=FALSE)
+fmt <- function(v,digits=2) format(round(v,digits),trim=TRUE,scientific=FALSE,big.mark=",")
+stopifnot(is.logical(params$export),length(params$export)==1L,!is.na(params$export))
+```
+
+## Source and measurement
+
+The saved City-traffic-M data describe 720 supplied road segments in Yekaterinburg on 2024-10-18. They originate from version 4 of `mightyneghbor/city-traffic-benchmarks`, with volume and static-feature Parquet sources. The bundled records are from `city_traffic_M_osm_congestion_sample.json`.
+
+Each fifteen-minute frame is the saved mean of three five-minute observations. The payload does not establish the physical volume unit; values retain the label `source volume`. Speed is retained as `source speed` without conversion.
+
+The saved congestion index combines slowdown relative to each segment's 90th-percentile speed with a clipped log-volume weight. The report uses that existing index and its supplied display scale. It is a derived indicator, not an official congestion label.
+
+## Data preparation
+
+`prepare.R` aligns the supplied segment IDs, coordinates and saved frames. It preserves the volume, speed and congestion arrays and their source summaries, then writes `data/input.rds`. It performs no further temporal averaging or segment selection.
+
+```{r prepare}
+library(bdynets)
+source("prepare.R")
+prepared_file <- prepare_example(".")
+x <- read_traffic(prepared_file)
+input <- readRDS(prepared_file)
+x$basemap <- traffic_basemap(x,cache_dir=file.path("data","basemap-cache"))
+x$provenance$basemap <- x$basemap$provenance
+runtime_context <- x$basemap
+index <- match(params$time_label,sub("^.* ","",x$time_labels))
+stopifnot(!is.na(index))
+```
+
+The map starts at `r x$time_labels[index]` and covers
+`r x$interval_seconds[index]/60` minutes. The default 08:00 is a demonstration
+selection, not a maximum-based selection. Numeric seconds and displayed labels
+retain the supplied source clock; they do not establish a UTC offset.
+
+```{r overview}
+knitr::kable(data.frame(
+  Item=c("Roads","Frames","First interval start","Last interval start","Flow unit"),
+  Value=c(nrow(x$roads),length(x$times),x$time_labels[1],tail(x$time_labels,1),x$unit)),
+  caption="Data scope")
+```
+
+| Common field | Meaning |
+|---|---|
+| road_id | Unique directed road or segment identifier |
+| geometry | Longitude/latitude vertex matrix, ordered in travel direction |
+| time | Source-clock interval start in numeric seconds |
+| flow | Supplied nonnegative measurement; zero is observed and NA is missing |
+| unit | Supplied measurement label, without inferred conversion |
+
+```{r sample-records}
+knitr::kable(head(input$flow),caption="Actual prepared flow records")
+```
+
+## Whole-day coverage
+
+```{r day-coverage}
+coverage <- traffic_coverage(x)
+knitr::kable(data.frame(
+  Statistic=c("Expected road-time cells","Observed cells","Missing cells","Observed zero cells"),
+  Value=unlist(coverage[c("road_time_cells","observed","missing","zero")],use.names=FALSE)),
+  caption="All supplied roads and intervals")
+```
+
+A road-time cell is one road in one interval. These counts cover the whole day,
+including roads outside the central-area map view. An omitted pair and an explicit
+NA are missing; neither is replaced by zero.
+
+## Selected-time map and statistics
+
+```{r map, fig.cap="Saved source-volume observations at the selected fifteen-minute interval. The map focuses on the central spatial range; all 720 supplied segments enter the statistics."}
+plot(x,index=index)
+```
+
+The common log1p algorithm uses all supplied values to establish the day's
+thresholds. Red means higher source volume, not a verified congested state.
+Speed-limit and maximum-volume attributes do not choose a plotting style.
+
+```{r selected-statistics}
+selected <- traffic_summary(x,index=index)
+knitr::kable(selected[c("time","roads","available","missing","zero")],
+  caption="Selected-interval availability")
+knitr::kable(selected[c("minimum","median","mean","p95","maximum")],
+  digits=2,caption=paste("Selected-interval distribution [",x$unit,"]"))
+```
+
+At `r selected$time`, mean source volume is `r fmt(selected$mean)` and the
+median is `r fmt(selected$median)`. There are `r fmt(selected$zero,0)` observed
+zero values and `r fmt(selected$missing,0)` missing values in this interval.
+
+## Daily pattern and limits
+
+```{r daily-trend, fig.height=5, fig.cap="Saved meanVolume series from the source frames. The dashed line marks the selected map time."}
+trend <- traffic_trend(x,method="provided")
+plot(trend,metric="mean",index=index)
+peak <- which.max(trend$mean)
+```
+
+The greatest saved meanVolume is `r fmt(trend$mean[peak])` at
+`r trend$label[peak]`. All 69,120 road-frame values are present. The observations
+cover the supplied segment selection, not all city roads. The unknown physical
+unit prevents a direct magnitude comparison with Beijing or PeMS hourly rates.
+No event table is supplied. The daily curve preserves `meanVolume`, which the
+source builder rounded to two decimal places. Selected-interval statistics above
+are calculated from the saved road arrays and can differ slightly from this
+rounded series.
+
+## Saved congestion and source summaries
+
+```{r saved-metric-inventory}
+knitr::kable(data.frame(
+  Metric=c("Volume","Speed","Congestion index"),
+  Field=c("volume","speed","congestion"),
+  Values=c(length(x$values),length(x$metrics$speed),length(x$metrics$congestion)),
+  Unit=c(x$unit,x$metric_info$speed$unit,x$metric_info$congestion$unit),
+  Saved_series=c("meanVolume","meanSpeed","congestionMean")),
+  caption="Retained source measurements and frame summaries")
+```
+
+```{r congestion-map, fig.cap="Saved congestion index at the same selected interval, using the supplied source gradient."}
+plot(x,index=index,metric="congestion")
+```
+
+```{r congestion-statistics}
+congestion_summary <- traffic_summary(x,index=index,metric="congestion")
+knitr::kable(congestion_summary[c("available","missing","zero","minimum","median","mean","p95","maximum")],
+  digits=3,caption="Selected-interval saved congestion index")
+```
+
+```{r congestion-trend, fig.height=5, fig.cap="Source congestionMean series, retained at its saved precision."}
+congestion_trend <- traffic_trend(x,metric="congestion",method="provided")
+plot(congestion_trend,index=index)
+```
+
+`congestionMean` is the saved mean over all 720 segments, rounded to three
+decimal places by the source builder. `meanSpeed` is also retained: it averages
+speed only over segments with positive volume, so it is not a mean over every
+road. The speed array remains available to statistics and explicit metric
+selection; no speed display scale is supplied. A duration figure is absent
+because the source supplies neither duration records nor a duration rule.
+
+## Figure and data export
+
+`traffic_export()` writes maps, trend figures and the selected data and summary tables for the same input and interval.
+
+```{r export}
+if(params$export) {
+  label <- gsub("[^[:alnum:]_-]+","-",x$time_labels[index])
+  traffic_export(x,file.path(params$export_dir,label),index=index,
+    input_files=c(source="data/source.rds",prepared="data/input.rds"),trend_method="provided")
+  traffic_export(x,file.path(params$export_dir,paste0(label,"-congestion")),index=index,
+    metric="congestion",trend_method="provided",
+    input_files=c(source="data/source.rds",prepared="data/input.rds"))
+}
+```
+
+
+Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright).
