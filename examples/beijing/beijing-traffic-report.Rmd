@@ -1,0 +1,144 @@
+---
+title: "Beijing: simulated road flow on day 10"
+output:
+  html_document:
+    self_contained: true
+    toc: true
+    toc_depth: 2
+    mathjax: null
+    md_extensions: "-tex_math_dollars"
+params:
+  time_label: "08:00"
+  export: false
+  export_dir: "output"
+  figure_dir: null
+
+---
+
+<style>
+body{font-size:16px;line-height:1.65;color:#25364a} .main-container{max-width:1040px} h1,h2,h3{line-height:1.3} h2{margin-top:1.8em} pre{font-size:13px;overflow-x:auto} table{font-size:14px;max-width:100%;display:block;overflow-x:auto} th,td{padding:7px 10px!important;overflow-wrap:anywhere} img{max-width:100%;height:auto} p{margin-bottom:1em} code{overflow-wrap:anywhere}
+table{display:block!important;max-width:100%!important;width:100%!important;overflow-x:auto!important}th,td{overflow-wrap:anywhere}
+</style>
+
+```{r setup, include=FALSE}
+figure_dir <- params$figure_dir
+if(is.null(figure_dir)) {figure_dir <- tempfile("traffic-figures-");dir.create(figure_dir)}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=TRUE,
+  fig.path=file.path(figure_dir,"figure-"), dev="png", dpi=150,
+  fig.width=10, fig.height=8, out.width="100%", cache=FALSE)
+fmt <- function(v,digits=2) format(round(v,digits),trim=TRUE,scientific=FALSE,big.mark=",")
+stopifnot(is.logical(params$export),length(params$export)==1L,!is.na(params$export))
+```
+
+## Source and measurement
+
+This example uses simulation day 10 from `output_LinkTDMOE.csv`, identified in *个体轨迹数据拥堵溯源分析项目及数据说明.docx*. The supplied geometry matches 11,742 of the 12,287 directed node pairs; 545 pairs without geometry are excluded.
+
+`link_volume_in_veh_per_hour_for_all_lanes` records an all-lane hourly entry-flow rate each minute. Five consecutive rates are averaged for each five-minute frame. Values remain in vehicles/hour.
+
+## Data preparation
+
+`prepare.R` matches directed node-pair IDs to the supplied geometry and averages five one-minute rates per frame. It reads the bundled source records in `data/source.rds` and writes the standard road, time and flow fields to `data/input.rds`.
+
+```{r prepare}
+library(bdynets)
+source("prepare.R")
+prepared_file <- prepare_example(".")
+x <- read_traffic(prepared_file)
+input <- readRDS(prepared_file)
+x$basemap <- traffic_basemap(x,cache_dir=file.path("data","basemap-cache"))
+x$provenance$basemap <- x$basemap$provenance
+runtime_context <- x$basemap
+index <- match(params$time_label,sub("^.* ","",x$time_labels))
+stopifnot(!is.na(index))
+```
+
+The map starts at `r x$time_labels[index]` and covers
+`r x$interval_seconds[index]/60` minutes. The default 08:00 is a demonstration
+selection, not a maximum-based selection. Numeric seconds and displayed labels
+retain the supplied source clock; they do not establish a UTC offset.
+
+```{r overview}
+knitr::kable(data.frame(
+  Item=c("Roads","Frames","First interval start","Last interval start","Flow unit"),
+  Value=c(nrow(x$roads),length(x$times),x$time_labels[1],tail(x$time_labels,1),x$unit)),
+  caption="Data scope")
+```
+
+| Common field | Meaning |
+|---|---|
+| road_id | Unique directed road or segment identifier |
+| geometry | Longitude/latitude vertex matrix, ordered in travel direction |
+| time | Source-clock interval start in numeric seconds |
+| flow | Supplied nonnegative measurement; zero is observed and NA is missing |
+| unit | Supplied measurement label, without inferred conversion |
+
+```{r sample-records}
+knitr::kable(head(input$flow),caption="Actual prepared flow records")
+```
+
+## Whole-day coverage
+
+```{r day-coverage}
+coverage <- traffic_coverage(x)
+knitr::kable(data.frame(
+  Statistic=c("Expected road-time cells","Observed cells","Missing cells","Observed zero cells"),
+  Value=unlist(coverage[c("road_time_cells","observed","missing","zero")],use.names=FALSE)),
+  caption="All supplied roads and intervals")
+```
+
+A road-time cell is one road in one interval. These counts cover the whole day,
+including roads outside the central-area map view. An omitted pair and an explicit
+NA are missing; neither is replaced by zero.
+
+## Selected-time map and statistics
+
+```{r map, fig.cap="Simulated all-lane hourly entry rates at the selected five-minute interval. The map uses a central-area view; statistics include all supplied roads."}
+plot(x,index=index)
+```
+
+Green through red denotes lower through higher flow on the full-day log1p scale;
+gray denotes missing observations. High flow alone does not establish low speed
+or a cause of congestion. Basemap roads without observations provide context.
+
+```{r selected-statistics}
+selected <- traffic_summary(x,index=index)
+knitr::kable(selected[c("time","roads","available","missing","zero")],
+  caption="Selected-interval availability")
+knitr::kable(selected[c("minimum","median","mean","p95","maximum")],
+  digits=2,caption=paste("Selected-interval distribution [",x$unit,"]"))
+```
+
+At `r selected$time`, the available-road mean is `r fmt(selected$mean)`
+vehicles/hour and the median is `r fmt(selected$median)`; `r fmt(selected$zero,0)`
+roads have recorded zero. These numbers describe this interval, not the whole
+day and not distinct vehicles across the network.
+
+## Daily pattern and limits
+
+```{r daily-trend, fig.height=5, fig.cap="Mean of available road values in each interval. The dashed line marks the selected map time."}
+trend <- traffic_trend(x,method="mean")
+plot(trend,metric="mean",index=index)
+peak <- which.max(trend$mean)
+```
+
+The largest included-road mean is `r fmt(trend$mean[peak])` vehicles/hour at
+`r trend$label[peak]`. The curve includes recorded zeros and excludes missing
+values. All 3,381,696 included road-frame cells are present. This completeness
+does not cover the 545 source pairs without supplied geometry. Lane counts and
+simulation conditions differ between roads. No event records are supplied.
+
+## Figure and data export
+
+`traffic_export()` writes maps, trend figures and the selected data and summary tables for the same input and interval.
+
+```{r export}
+if(params$export) {
+  label <- gsub("[^[:alnum:]_-]+","-",x$time_labels[index])
+  traffic_export(x,file.path(params$export_dir,label),index=index,
+    input_files=c(source="data/source.rds",prepared="data/input.rds"))
+}
+```
+
+
+Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright).

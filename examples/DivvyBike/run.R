@@ -1,59 +1,40 @@
-# Run from the repository root:
-# Rscript examples/DivvyBike/run.R /tmp/new-divvy-output
-
-args <- commandArgs(trailingOnly = TRUE)
-if (length(args) != 1L) stop("Supply one new output directory", call. = FALSE)
-output_dir <- path.expand(args[[1]])
-if (file.exists(output_dir)) {
-  stop("Output directory already exists; supply a new path", call. = FALSE)
+#!/usr/bin/env Rscript
+render_example <- function(base, output_dir=NULL) {
+  base <- normalizePath(base, mustWork=TRUE)
+  required <- c("curl", "jsonlite", "rmarkdown", "knitr", "data.table", "ggplot2", "magrittr")
+  missing <- required[!vapply(required, requireNamespace, logical(1), quietly=TRUE)]
+  if(length(missing)) stop("Missing R packages: ", paste(missing, collapse=", "))
+  if(!rmarkdown::pandoc_available()) stop("Pandoc is unavailable")
+  if("bdynets" %in% loadedNamespaces()) stop("A fresh R session is required")
+  package_path <- normalizePath(file.path(base,"..","..","bdynets"),mustWork=TRUE)
+  local_library <- tempfile("bdynets-library-");dir.create(local_library)
+  on.exit(unlink(local_library,recursive=TRUE),add=TRUE)
+  status <- system2(file.path(R.home("bin"),"R"),
+    c("CMD","INSTALL",paste0("--library=",shQuote(local_library)),shQuote(package_path)))
+  if(status!=0L) stop("Bundled package installation failed")
+  .libPaths(c(local_library,.libPaths()))
+  scratch <- tempfile("traffic-render-"); dir.create(scratch)
+  on.exit(unlink(scratch, recursive=TRUE), add=TRUE)
+  map_file <- NULL
+  if(!is.null(output_dir)) {
+    output_dir <- path.expand(output_dir)
+    if(file.exists(output_dir)) stop("Output directory already exists")
+    dir.create(output_dir,recursive=TRUE)
+    map_file <- file.path(normalizePath(output_dir,mustWork=TRUE),"divvy_od_r2000_month_0000_0300.png")
+  }
+  rmarkdown::render(file.path(base, "divvy-od-report.Rmd"),
+    output_file="divvy-od-report.html", output_dir=base,
+    intermediates_dir=scratch, knit_root_dir=base,
+    params=list(map_file=map_file,figure_dir=scratch,work_dir=scratch),
+    envir=new.env(parent=globalenv()), clean=TRUE, quiet=TRUE)
+  cat("Built divvy-od-report.html\n")
 }
-dir.create(output_dir, recursive = TRUE)
-
-library(bdynets)
-
-data_dir <- "examples/DivvyBike/data"
-node_file <- file.path(data_dir, "nodes_r2000.csv")
-flow_file <- file.path(data_dir, "od_flow_2026_01_dt01h_r2000.csv")
-if (!file.exists(node_file) || !file.exists(flow_file)) {
-  stop("The supplied r2000 node and OD files are required.", call. = FALSE)
+if(sys.nframe()==0L) {
+  script <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value=TRUE))
+  if(length(script)!=1L) stop("Rscript entrypoint is required")
+  if(!file.exists(script)) script <- gsub("~+~", " ", script, fixed=TRUE)
+  args <- commandArgs(TRUE)
+  if(length(args)>1L) stop("At most one new output directory is accepted")
+  render_example(dirname(normalizePath(script, mustWork=TRUE)),
+    output_dir=if(length(args))args[1] else NULL)
 }
-
-# Pool every January date over the same 00:00-03:00 clock-hour window.
-map_file <- file.path(output_dir, "divvy_od_r2000_month_0000_0300.png")
-map_result <- traffic_od_map(
-  nodes = node_file,
-  flows = flow_file,
-  basemap = file.path(data_dir, "chicago_streets_divvy.rds"),
-  node_columns = c(
-    id = "node_idx", longitude = "longitude", latitude = "latitude",
-    size = "n_raw_stations"
-  ),
-  flow_columns = c(
-    origin = "origin_node_idx", destination = "destination_node_idx",
-    count = "trip_count", time = "timestamp"
-  ),
-  hour_window = c(0, 3),
-  timezone = "America/Chicago",
-  top_n = Inf,
-  active_nodes_only = TRUE,
-  title = "Divvy directed OD flows | 2 km grid aggregation",
-  subtitle = paste(
-    "January 2026 · all dates pooled over 00:00-03:00 ·",
-    "active nodes only"
-  ),
-  caption = paste(
-    "Background: City of Chicago street center lines.",
-    "Curved arrows connect aggregate endpoints; they are not observed paths."
-  ),
-  output_file = map_file,
-  width = 7.6,
-  height = 9.2,
-  dpi = 240,
-  draw = FALSE
-)
-
-cat("Displayed", map_result$summary$displayed_nodes, "active nodes and",
-    map_result$summary$displayed_pairs, "directed OD pairs.\n")
-cat("Represented", map_result$summary$displayed_flow, "nonloop trips.\n")
-print(map_result$summary$flow_classes)
-cat("Map:", map_file, "\n")

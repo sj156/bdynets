@@ -1,0 +1,314 @@
+---
+title: "Divvy OD Flows: 2 km Aggregation and Clock-Hour Pooling"
+output:
+  html_document:
+    toc: false
+    theme: flatly
+    self_contained: true
+    mathjax: null
+params:
+  data_dir: "data"
+  node_file: "data/nodes_r2000.csv"
+  flow_file: "data/od_flow_2026_01_dt01h_r2000.csv"
+  aggregate_radius_m: 1000
+  hour_start: 0
+  hour_end: 3
+  map_file: null
+  figure_dir: null
+  work_dir: null
+---
+
+<style>
+.main-container {
+  max-width: 1240px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  padding: 28px 48px 60px 48px;
+  font-size: 17px;
+  line-height: 1.62;
+}
+h1.title, h4.author, h4.date { text-align: center; }
+h1.title { font-size: 36px; margin-top: 18px; margin-bottom: 16px; }
+h2 { font-size: 27px; margin-top: 42px; padding-bottom: 7px; border-bottom: 1px solid #dbe3ea; }
+p, li, table { font-size: 17px; }
+pre, code { font-size: 14px; }
+pre {
+  border: 1px solid #cfd4da;
+  border-radius: 6px;
+  padding: 16px 20px;
+  margin-top: 10px;
+  margin-bottom: 18px;
+  background: #f7f7f7;
+}
+table { margin-left: auto; margin-right: auto; display:block; max-width:100%; overflow-x:auto; }
+th, td { overflow-wrap:anywhere; }
+img { display: block; margin-left: auto; margin-right: auto; }
+@media (max-width: 768px) {
+  .main-container { padding: 18px 20px 40px 20px; }
+  h1.title { font-size: 29px; }
+}
+table{display:block!important;max-width:100%!important;width:100%!important;overflow-x:auto!important}th,td{overflow-wrap:anywhere}
+    </style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = "center",
+  dpi = 150
+)
+library(bdynets)
+work_dir <- params$work_dir
+if(is.null(work_dir)){work_dir<-tempfile("od-work-");dir.create(work_dir)}
+figure_dir <- if(is.null(params$figure_dir))work_dir else params$figure_dir
+knitr::opts_chunk$set(fig.path=file.path(figure_dir,"figure-"),dev="png")
+```
+
+## Purpose
+
+This example uses the supplied 2 km Divvy station groups in Chicago and January 2026 OD counts. The map pools 00:00–03:00 in America/Chicago across all dates in the input.
+
+Directed connections use five trip-count classes: 1, 2–3, 4–5, 6–7 and at least 8. Dashed connections represent one trip. The arrows join station groups and do not identify the route travelled.
+
+## Read and validate the supplied 2 km data
+
+The supplied `r2000` CSV files are the processed inputs for this figure. Extra columns are allowed; only mapped identifiers, coordinates, timestamps, and counts are required.
+
+```{r read-data}
+nodes <- data.table::fread(params$node_file, showProgress = FALSE)
+flows <- data.table::fread(
+  params$flow_file,
+  showProgress = FALSE,
+  colClasses = list(character = "timestamp")
+)
+
+required_node_columns <- c("node_idx", "longitude", "latitude")
+required_flow_columns <- c(
+  "timestamp", "origin_node_idx", "destination_node_idx", "trip_count"
+)
+
+stopifnot(
+  all(required_node_columns %in% names(nodes)),
+  all(required_flow_columns %in% names(flows)),
+  !anyDuplicated(nodes$node_idx),
+  all(flows$origin_node_idx %in% nodes$node_idx),
+  all(flows$destination_node_idx %in% nodes$node_idx),
+  all(is.finite(nodes$longitude)),
+  all(is.finite(nodes$latitude)),
+  all(flows$trip_count >= 0)
+)
+
+data.frame(
+  Input = c("2 km nodes", "Hourly OD rows"),
+  File = c(basename(params$node_file), basename(params$flow_file)),
+  Rows = c(nrow(nodes), nrow(flows)),
+  check.names = FALSE
+) |>
+  knitr::kable(align = c("l", "l", "r"))
+```
+
+## Pool all dates over 00:00–03:00
+
+`hour_window = c(0, 3)` is different from a single-date timestamp window. It selects clock hours 00, 01, and 02 from every date, then sums records with the same directed origin and destination. Self-loops remain in the summary but are not drawn as arrows.
+
+```{r pooled-window-check}
+parsed_time <- as.POSIXct(flows$timestamp, tz = "America/Chicago")
+clock_hour <- as.integer(format(parsed_time, "%H", tz = "America/Chicago"))
+selected <- flows[
+  clock_hour >= params$hour_start & clock_hour < params$hour_end,
+]
+
+pooled <- selected[
+  , .(flow = sum(trip_count)),
+  by = .(origin_node_idx, destination_node_idx)
+]
+nonloop <- pooled[origin_node_idx != destination_node_idx]
+
+data.frame(
+  Metric = c(
+    "Selected trips including within-node trips",
+    "Within-node trips",
+    "Nonloop trips",
+    "Active directed nonloop OD pairs"
+  ),
+  Value = c(
+    sum(pooled$flow),
+    sum(pooled$flow[pooled$origin_node_idx == pooled$destination_node_idx]),
+    sum(nonloop$flow),
+    nrow(nonloop)
+  )
+) |>
+  knitr::kable(align = c("l", "r"))
+```
+
+
+```{r acquire-context, include=FALSE}
+active_ids <- unique(c(nonloop$origin_node_idx,nonloop$destination_node_idx))
+active_nodes <- nodes[nodes$node_idx%in%active_ids,]
+background <- traffic_basemap(active_nodes,cache_dir=file.path("data","basemap-cache"))
+runtime_context <- background
+```
+
+## Directed OD map
+
+Curved arrows show trips between the displayed station groups. Only endpoints of the displayed connections are shown.
+
+```{r od-map, fig.width=7.6, fig.height=9.2, out.width="86%"}
+map_result <- traffic_od_map(
+  nodes = params$node_file,
+  flows = params$flow_file,
+  basemap = background,
+  node_columns = c(
+    id = "node_idx",
+    longitude = "longitude",
+    latitude = "latitude",
+    size = "n_raw_stations"
+  ),
+  flow_columns = c(
+    origin = "origin_node_idx",
+    destination = "destination_node_idx",
+    count = "trip_count",
+    time = "timestamp"
+  ),
+  hour_window = c(params$hour_start, params$hour_end),
+  timezone = "America/Chicago",
+  top_n = Inf,
+  active_nodes_only = TRUE,
+  title = "Divvy directed OD flows | 2 km grid aggregation",
+  subtitle = paste(
+    "January 2026 · all dates pooled over 00:00–03:00 ·",
+    "active nodes only"
+  ),
+  caption = paste(
+    "Background: OpenStreetMap contributors; coordinate-based runtime acquisition.",
+    "Curved arrows connect aggregate endpoints; they are not observed paths."
+  ),
+  output_file = params$map_file,
+  width = 7.6,
+  height = 9.2,
+  dpi = 240
+)
+```
+
+## Displayed-network summary
+
+```{r map-summary}
+class_counts <- map_result$summary$flow_classes
+summary_table <- data.frame(
+  Metric = c(
+    "Active nodes displayed",
+    "Directed OD pairs displayed",
+    "Nonloop trips represented",
+    paste0("Flow class: ", names(class_counts))
+  ),
+  Value = c(
+    map_result$summary$displayed_nodes,
+    map_result$summary$displayed_pairs,
+    map_result$summary$displayed_flow,
+    unname(class_counts)
+  )
+)
+knitr::kable(summary_table, align = c("l", "r"))
+```
+
+## Aggregation from raw station records
+
+`aggregate_od_data()` reads the raw station and hourly OD tables, validates the
+mapped fields, groups nodes with an activity-prioritized radius cover, assigns
+each station to its nearest representative, remaps both endpoints and sums the
+counts for each time and directed pair. The radius parameter is 1000 m here, as in the generic aggregation example. This is a
+radius-cover algorithm; the supplied `r2000` table has an existing grouping and
+is retained for the preceding map. Different membership assignments can change
+the number of within-node trips while preserving total trips.
+
+```{r aggregate-raw-stations}
+aggregated <- aggregate_od_data(
+  nodes=file.path(params$data_dir,"nodes_raw.csv"),
+  flows=file.path(params$data_dir,"od_flow_2026_01_dt01h_raw.csv"),
+  radius_m=params$aggregate_radius_m,
+  node_columns=c(id="node_idx",longitude="longitude",latitude="latitude",name="display_name",weight="n_raw_stations"),
+  flow_columns=c(origin="origin_node_idx",destination="destination_node_idx",count="trip_count",time="timestamp"),
+  timezone="America/Chicago",output_dir=file.path(work_dir,"prepared-od"))
+knitr::kable(data.frame(
+  Item=c("Raw stations","Aggregate nodes","Source OD rows","Aggregate OD rows","Full-month trips","Maximum assignment distance (m)"),
+  Value=unlist(aggregated$metadata[c("raw_nodes","aggregate_nodes","raw_flow_rows","aggregate_flow_rows","total_flow","max_assignment_distance_m")])),
+  caption="Executed raw-station preparation",row.names=FALSE)
+knitr::kable(head(aggregated$nodes),caption="Standardized nodes")
+preview_flows <- as.data.frame(head(aggregated$flows))
+preview_flows$time <- format(preview_flows$time,"%Y-%m-%d %H:%M:%S %Z",tz="America/Chicago")
+knitr::kable(preview_flows,caption="Standardized time and OD counts")
+```
+
+The prepared object and its saved CSV files retain the same time selection.
+Explicit UTC/offset timestamps denote absolute instants; timestamps without an
+offset use the supplied timezone. Re-reading CSV does not discard the time of
+day or reinterpret UTC as local time.
+
+```{r preparation-roundtrip-check}
+prepared_map <- traffic_od_map(aggregated,basemap=NULL,
+  hour_window=c(params$hour_start,params$hour_end),timezone="America/Chicago",
+  top_n=Inf,active_nodes_only=TRUE,draw=FALSE)
+roundtrip_map <- traffic_od_map(aggregated$files[["nodes"]],aggregated$files[["flows"]],
+  basemap=background,hour_window=c(params$hour_start,params$hour_end),
+  timezone="America/Chicago",top_n=Inf,active_nodes_only=TRUE,draw=FALSE)
+stopifnot(identical(prepared_map$summary,roundtrip_map$summary),
+  aggregated$metadata$total_flow==sum(flows$trip_count),
+  prepared_map$summary$selected_flow==sum(pooled$flow),
+  aggregated$metadata$max_assignment_distance_m<=aggregated$metadata$radius_m+1e-7)
+knitr::kable(data.frame(
+  Check=c("Full-month trip counts conserved","Source clock-window trip counts conserved","CSV and in-memory plot selections match"),
+  Passed=c(aggregated$metadata$total_flow==sum(flows$trip_count),
+    prepared_map$summary$selected_flow==sum(pooled$flow),
+    identical(prepared_map$summary,roundtrip_map$summary))),caption="Executed end-to-end checks")
+```
+
+## Reusing the functions with other OD data
+
+Column mappings make the functions independent of provider-specific names. `start_time` and `end_time` define an absolute date interval. `hour_window` pools the same clock hours across dates.
+
+```{r generic-map-example, eval=FALSE}
+traffic_od_map(
+  nodes = other_nodes,
+  flows = other_flows,
+  node_columns = c(
+    id = "station", longitude = "x", latitude = "y", size = NA
+  ),
+  flow_columns = c(
+    origin = "from_station", destination = "to_station",
+    count = "rides", time = "departure_time"
+  ),
+  hour_window = c(0, 3),
+  timezone = "America/Chicago"
+)
+```
+
+The generic aggregation interface accepts other mapped node and OD fields:
+
+```{r generic-aggregation-example, eval=FALSE}
+aggregated <- aggregate_od_data(
+  nodes = raw_nodes,
+  flows = raw_flows,
+  radius_m = 1000,
+  node_columns = c(
+    id = "station", longitude = "x", latitude = "y",
+    name = "station_name", weight = NA
+  ),
+  flow_columns = c(
+    origin = "from_station", destination = "to_station",
+    count = "rides", time = "departure_time"
+  ),
+  timezone = "America/Chicago"
+)
+```
+
+## Notes and limitations
+
+- Every OD endpoint must match one mapped node identifier.
+- `hour_window` pools matching clock hours across every date in the input.
+- Only endpoints of displayed nonloop routes are shown when `active_nodes_only = TRUE`.
+- Fixed flow classes make colours comparable across maps.
+- OD arrows are visual connections, not observed bicycle trajectories or map-matched routes.
+
+
+Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright).

@@ -12,6 +12,7 @@ Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 Depends: R (>= 4.1.0)
 Imports:
+    curl,
     data.table,
     ggplot2,
     graphics,
@@ -26,7 +27,7 @@ Suggests:
     posterior,
     BayesLogit,
     beepr,
-    testthat (>= 3.0.0)
+    testthat (>= 3.2.0)
 Config/testthat/edition: 3
 Config/roxygen2/version: 8.0.0
 RoxygenNote: 7.3.3

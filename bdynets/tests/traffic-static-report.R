@@ -1,6 +1,5 @@
-if(nzchar(Sys.getenv('TRAFFICMAP_SOURCE'))) {
- source(Sys.getenv('TRAFFICMAP_SOURCE'));options(trafficmap.assets=normalizePath('inst/package_assets'))
-} else library(bdynets)
+options(bdynets.basemap.auto=FALSE)
+library(bdynets)
 r<-data.frame(road_id=c('a','b'),region=c('West','East'))
 r$geometry<-list(rbind(c(10,50),c(10.01,50)),rbind(c(11,50),c(11.01,50)))
 f<-data.frame(road_id=rep(c('a','b'),2),time=rep(c(0,3600),each=2),flow=c(10,NA,20,30))

@@ -136,23 +136,75 @@ and the synthetic, no-fitting demonstration.
 
 ## Traffic measurements and reported events
 
-The [traffic examples](../examples/flow/README.md) prepare different sources as
-one common road, flow and event format. Static maps, optional interactive maps,
-statistics and exports share one package implementation. Missing values remain
-missing, source units are retained, and one log1p algorithm defines flow colors.
+The [Beijing](../examples/beijing/README.md),
+[PeMS](../examples/largest/README.md),
+[City-traffic-M](../examples/metropolis/README.md) and
+[Divvy](../examples/DivvyBike/README-divvy-r.md) examples prepare source records
+for the same package. Road measurements and point events use `traffic_data()`;
+endpoint-only integer trip counts use `traffic_od_data()` or `traffic_od_map()`.
+Source units are retained and missing values remain missing. Primary road flow
+uses seven log1p green/yellow/red classes; OD maps use the five trip-count classes.
 
 ```r
 library(bdynets)
 x <- read_traffic("data/input.rds")
 plot(x, index = 1)
 traffic_summary(x, index = 1)
+traffic_coverage(x)
+plot(traffic_trend(x), metric = "mean", index = 1)
 traffic_export(x, "new-output", index = 1)
 ```
 
-Executable reports cover Beijing simulation flow, PeMS flow and CHP starts in
-separate Los Angeles and Bay Area sections, saved City-traffic-M volume, and a
-synthetic road/event fixture. Preparation uses the bundled source caches;
-reporting requires knitr, rmarkdown and Pandoc. The flow directory's run.R
-installs this repository package into a temporary library before rendering.
-The [original traffic examples](../examples/traffic-reference/) are historical
-reference materials for the retired interfaces, rather than current tutorials.
+The traffic implementation is organized in four source files:
+
+| File | Responsibility |
+|---|---|
+| `R/traffic-data.R` | Input, field mappings, validation, summaries and trends |
+| `R/traffic-map.R` | Road and OD maps, event layers, spatial layout and exports |
+| `R/traffic-basemap.R` | Coordinate-derived OpenStreetMap context and caching |
+| `R/aggregate-od-data.R` | Spatial OD aggregation and timestamp parsing |
+
+Beijing contains one simulation day. PeMS contains 24 hours on 2026-06-16,
+with Los Angeles and Bay Area flow and CHP starts shown separately. City-traffic-M
+contains the saved observations for 2024-10-18. Divvy retains the supplied OD
+aggregation and clock-hour selection.
+
+Each example has its own `run.R`. It installs this repository's package in a
+temporary library and renders its dataset-named R Markdown report. Rendering
+requires knitr, rmarkdown and Pandoc, alongside the declared package imports.
+The first OpenStreetMap request requires network access; matching runtime caches
+can be reused. Reports embed static figures and open offline after generation.
+The examples contain no pre-downloaded background geometry.
+
+The reports are [Beijing](../examples/beijing/beijing-traffic-report.html),
+[PeMS](../examples/largest/largest-traffic-report.html),
+[City-traffic-M](../examples/metropolis/metropolis-traffic-report.html) and
+[Divvy](../examples/DivvyBike/divvy-od-report.html).
+The [original traffic examples](../examples/traffic-reference/) remain as
+historical references for the retired interfaces.
+
+Source extraction and optional measurement views share the same interfaces:
+
+```r
+source <- extract_traffic_data("source.json")
+# Field mapping belongs in the example's prepare.R.
+plot(x, index = 2, mode = "change")
+plot(x, index = 2, mode = "change", reference = 1)
+```
+
+extract_traffic_data supports local RDS, JSON/JSON.GZ, CSV/CSV.GZ and explicit
+JSON-literal JS/HTML assignments without script execution or field guessing.
+It records source identities and refuses an existing extraction output.
+Optional metric tables retain their units, definitions, provided trends and
+explicit display scales. Metropolis preserves saved volume, speed and congestion
+arrays and source aggregate series. Primary flow maps retain the shared log1p
+palette; changes use blue/neutral/red by sign, with no magnitude bins.
+
+Duration maps first use explicitly supplied duration records. An object that also
+contains durations requires metric="flow" to compute a separate flow-based rule.
+Computed durations
+require interval_seconds, threshold, comparison and a complete duration_rule:
+definition, interval_meaning, unit (minutes or seconds), missing_policy="break"
+and a declared scale for rendering. There is no percentile fallback. Missing
+values and time gaps interrupt confirmed continuity. No rule is taken as a
+physical congestion standard. Source objects remain unchanged.

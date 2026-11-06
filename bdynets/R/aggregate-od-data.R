@@ -1,3 +1,57 @@
+.od_parse_time <- function(x, timezone = "UTC", time_format = NULL) {
+  if (!is.character(timezone) || length(timezone) != 1L || is.na(timezone) ||
+      !timezone %in% c("UTC", "GMT", OlsonNames())) {
+    stop("timezone must be one recognized IANA timezone.", call. = FALSE)
+  }
+  if (inherits(x, "POSIXt")) {
+    value <- as.numeric(as.POSIXct(x))
+  } else {
+    if (!is.character(x) && !is.factor(x)) {
+      stop("Times must be POSIXt instants or explicit character timestamps.", call. = FALSE)
+    }
+    text <- trimws(as.character(x))
+    if (anyNA(text) || any(!nzchar(text))) stop("Missing timestamps.", call. = FALSE)
+    if (!is.null(time_format)) {
+      if (!is.character(time_format) || length(time_format) != 1L || is.na(time_format) || !nzchar(time_format)) {
+        stop("time_format must be one format string.", call. = FALSE)
+      }
+      value <- as.numeric(as.POSIXct(strptime(text, format = time_format, tz = timezone)))
+    } else {
+      pattern <- paste0("^([0-9]{4}-[0-9]{2}-[0-9]{2})",
+        "(?:[T ]([0-9]{2}:[0-9]{2})(?::([0-9]{2}(?:\\.[0-9]+)?))?",
+        "([Zz]|[+-][0-9]{2}:?[0-9]{2})?)?$")
+      parts <- regmatches(text, regexec(pattern, text, perl = TRUE))
+      if (any(lengths(parts) != 5L)) {
+        stop("Unsupported or incomplete timestamp; supply a complete ISO timestamp or an explicit time_format.", call. = FALSE)
+      }
+      value <- rep(NA_real_, length(text))
+      if (length(text)) {
+        parts <- do.call(rbind, parts)
+        clock <- ifelse(nzchar(parts[, 3]), parts[, 3], "00:00")
+        seconds <- ifelse(nzchar(parts[, 4]), parts[, 4], "00")
+        stamp <- paste(parts[, 2], paste(clock, seconds, sep = ":"))
+        offset <- which(nzchar(parts[, 5]))
+        local <- which(!nzchar(parts[, 5]))
+        if (length(offset)) {
+          zone <- ifelse(tolower(parts[offset, 5]) == "z", "+0000",
+            gsub(":", "", parts[offset, 5], fixed = TRUE))
+          value[offset] <- as.numeric(as.POSIXct(strptime(paste0(stamp[offset], zone),
+            format = "%Y-%m-%d %H:%M:%OS%z", tz = "UTC")))
+        }
+        if (length(local)) {
+          parsed <- as.POSIXct(strptime(stamp[local], format = "%Y-%m-%d %H:%M:%OS", tz = timezone))
+          value[local] <- as.numeric(parsed)
+          # Nonexistent wall-clock times must not silently move to another hour.
+          shifted <- !is.na(parsed) & format(parsed, "%Y-%m-%d %H:%M", tz = timezone) != paste(parts[local, 2], clock[local])
+          value[local[shifted]] <- NA_real_
+        }
+      }
+    }
+  }
+  if (any(!is.finite(value))) stop("Invalid timestamps for the supplied format and timezone.", call. = FALSE)
+  as.POSIXct(value, origin = "1970-01-01", tz = timezone)
+}
+
 #' Validate and aggregate spatial origin-destination data
 #'
 #' This is the only data-preparation function needed by the OD mapping workflow.
@@ -6,6 +60,9 @@
 #' both OD endpoints, and verifies that the total flow is conserved. Column names
 #' are supplied through named mappings, so unrelated columns are ignored and the
 #' function is not tied to a particular data provider.
+#'
+#' Character times with Z or numeric offsets preserve absolute instants; unzoned
+#' times use timezone. Exported UTC CSV timestamps use the same parser on re-read.
 #'
 #' @param nodes A node data frame/data.table, or a path to a CSV, CSV.GZ or RDS.
 #' @param flows An OD data frame/data.table, or a path to a CSV, CSV.GZ or RDS.
@@ -150,13 +207,7 @@ aggregate_od_data <- function(
   parsed_time <- NULL
   if (!is.null(time_col)) {
     raw_time <- flows[[time_col]]
-    if (inherits(raw_time, "POSIXt")) {
-      parsed_time <- as.POSIXct(raw_time, tz = timezone)
-    } else if (is.null(time_format)) {
-      parsed_time <- as.POSIXct(as.character(raw_time), tz = timezone)
-    } else {
-      parsed_time <- as.POSIXct(as.character(raw_time), format = time_format, tz = timezone)
-    }
+    parsed_time <- .od_parse_time(raw_time, timezone, time_format)
     if (anyNA(parsed_time)) stop("The mapped time column contains invalid timestamps.", call. = FALSE)
   }
 
