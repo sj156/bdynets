@@ -15,6 +15,9 @@ have distinct scopes; see the [shared-kernel bridge](graphMoDE/SHARED-KERNELS.md
 
 ## Install
 
+For copy-and-paste Linux terminal commands, see the
+[GLS installation and smoke run](GLS-paper/README.md#linux-installation).
+
 From the repository root:
 
 ```r
@@ -150,7 +153,7 @@ testthat::test_local("bdynets")
 
 ```sh
 R CMD build bdynets
-R CMD check --no-manual bdynets_0.2.0.tar.gz
+R CMD check --no-manual bdynets_0.2.1.tar.gz
 R CMD INSTALL bdynets
 ```
 

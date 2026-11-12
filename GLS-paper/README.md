@@ -2,12 +2,40 @@
 
 GLS is a module of the `bdynets` package. This folder holds thin study and
 prepared-data launchers; fitting, DSS, prediction, simulation and numerical
-kernels are implemented in `bdynets`. Install that package from the repository
-root before using these scripts:
+kernels are implemented in `bdynets`. Download and extract the full repository,
+then open a terminal in its top-level directory, which contains both `bdynets/`
+and `GLS-paper/`.
+
+## Linux installation
+
+Use R 4.1 or later and a C++17 toolchain. On Debian or Ubuntu, install the
+system prerequisites if they are missing.
 
 ```sh
-R CMD INSTALL bdynets
+sudo apt-get update &&
+sudo apt-get install -y r-base r-base-dev build-essential pkg-config \
+  libcurl4-openssl-dev libssl-dev ca-certificates fonts-dejavu-core
 ```
+
+On a managed server, use the site's R and compiler environment. The following
+commands install the R dependencies and the downloaded package in your home
+directory.
+
+```sh
+export R_LIBS_USER="$HOME/.local/lib/bdynets"
+mkdir -p "$R_LIBS_USER" &&
+Rscript --vanilla -e '
+  deps <- c("BayesLogit", "curl", "data.table", "ggplot2", "jsonlite", "magrittr", "Rcpp")
+  missing <- deps[!vapply(deps, requireNamespace, logical(1), quietly = TRUE)]
+  if (length(missing))
+    install.packages(missing, lib = Sys.getenv("R_LIBS_USER"), repos = "https://cloud.r-project.org")
+' &&
+R CMD INSTALL --preclean --clean --library="$R_LIBS_USER" ./bdynets &&
+Rscript --vanilla -e 'library(bdynets); print(packageVersion("bdynets"))'
+```
+
+Run the launchers from the repository root. In a new terminal, repeat the
+`export R_LIBS_USER` line so R can find the same installation.
 
 Both launchers default to `--action=plan --profile=smoke --cores=12` and
 `--chunk-size=100`. Plan mode prints the configuration. The `smoke` and `quick`
@@ -29,12 +57,23 @@ earlier results that store posterior draws inside the fit object.
 
 ## Directed-grid simulation
 
+This example generates its own data and can be pasted after installation.
+Each run creates a fresh directory under `$HOME/bdynets-results`.
+
 ```sh
-Rscript GLS-paper/run_simulation.R --action=plan --profile=smoke --cores=12
-Rscript GLS-paper/run_simulation.R --action=run --profile=smoke --cores=12 \
-  --chunk-size=100 --output=/absolute/results/gls-simulation-smoke
-Rscript GLS-paper/run_simulation.R --action=report \
-  --output=/absolute/results/gls-simulation-smoke
+(
+  set -e
+  mkdir -p "$HOME/bdynets-results"
+  run_root="$(mktemp -d "$HOME/bdynets-results/gls-smoke.XXXXXX")"
+  output="$run_root/run"
+
+  Rscript --vanilla GLS-paper/run_simulation.R --action=plan --profile=smoke \
+    --cores=1 --output="$output"
+  Rscript --vanilla GLS-paper/run_simulation.R --action=run --profile=smoke \
+    --cores=1 --chunk-size=100 --output="$output"
+  Rscript --vanilla GLS-paper/run_simulation.R --action=report --output="$output"
+  printf 'GLS results: %s\n' "$output"
+)
 ```
 
 Use `--profile=full` for the package's declared full study budget. The runner
@@ -65,7 +104,7 @@ prepared <- list(
   split = list(train = train_rows, validation = validation_rows, test = test_rows),
   control = list(n_iter = 1500L, burn_mcmc = 750L, n_chains = 3L)
 )
-saveRDS(prepared, "/absolute/data/prepared.rds")
+saveRDS(prepared, "prepared.rds")
 ```
 
 The three windows must be consecutive, increasing and adjacent; training needs
@@ -76,14 +115,33 @@ forwarded to `gls_fit_general()`. Optional `control` contains named
 `gls_control()` replacements and takes precedence over profile settings.
 The package validates the full model input contract when fitting.
 
+For the projected Divvy application, transfer
+`bdynets_input_r1000_dt03h_long3.rds` to `$HOME/data/`. The prepared input
+lives outside the source repository. For a different prepared RDS,
+set `input` to its path. The following block starts a full fit after printing
+its plan. The Divvy file specifies three chains with 3,500 iterations, 3,000
+warmup iterations and no thinning.
+
 ```sh
-Rscript GLS-paper/run_application.R --action=plan --profile=full --cores=12 \
-  --input=/absolute/data/prepared.rds
-Rscript GLS-paper/run_application.R --action=run --profile=full --cores=12 \
-  --chunk-size=100 --input=prepared.rds --data-root=/absolute/data \
-  --output=/absolute/results/gls-application
-Rscript GLS-paper/run_application.R --action=report \
-  --output=/absolute/results/gls-application
+(
+  set -e
+  input="$HOME/data/bdynets_input_r1000_dt03h_long3.rds"
+  if [ ! -r "$input" ]; then
+    printf 'Cannot read prepared input: %s\n' "$input" >&2
+    exit 1
+  fi
+  mkdir -p "$HOME/bdynets-results"
+  run_root="$(mktemp -d "$HOME/bdynets-results/gls-application.XXXXXX")"
+  output="$run_root/run"
+  export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
+
+  Rscript --vanilla GLS-paper/run_application.R --action=plan --profile=full \
+    --cores=3 --input="$input" --output="$output"
+  Rscript --vanilla GLS-paper/run_application.R --action=run --profile=full \
+    --cores=3 --chunk-size=100 --input="$input" --output="$output"
+  Rscript --vanilla GLS-paper/run_application.R --action=report --output="$output"
+  printf 'GLS results: %s\n' "$output"
+)
 ```
 
 The application runner fits the training window, selects joint DSS on
