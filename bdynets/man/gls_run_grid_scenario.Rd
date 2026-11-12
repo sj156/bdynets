@@ -4,7 +4,13 @@
 \alias{gls_run_grid_scenario}
 \title{Run one complete GLS directed-grid scenario}
 \usage{
-gls_run_grid_scenario(signal, design, control = design$control)
+gls_run_grid_scenario(
+  signal,
+  design,
+  control = design$control,
+  draw_dir = NULL,
+  chunk_size = 100L
+)
 }
 \arguments{
 \item{signal}{Scenario signal amplitude.}
@@ -12,6 +18,12 @@ gls_run_grid_scenario(signal, design, control = design$control)
 \item{design}{A \code{\link[=gls_study_design]{gls_study_design()}} object.}
 
 \item{control}{A \code{\link[=gls_study_control]{gls_study_control()}} object.}
+
+\item{draw_dir}{Optional directory for posterior draws. Each fit creates a
+separate run subdirectory when there are draws to save. With \code{NULL},
+draws remain in RAM.}
+
+\item{chunk_size}{Maximum retained draws per chain per disk chunk.}
 }
 \value{
 A \code{gls_study_scenario} with simulation, fit, DSS, predictions,

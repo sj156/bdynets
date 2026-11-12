@@ -14,7 +14,9 @@ gls_fit_general(
   means = NULL,
   signal = 0,
   label = "GLS, all ordered pairs",
-  control = gls_control()
+  control = gls_control(),
+  draw_dir = NULL,
+  chunk_size = 100L
 )
 }
 \arguments{
@@ -39,9 +41,15 @@ for all-zero training series; observations are not changed.}
 \item{label}{Human-readable fit label.}
 
 \item{control}{A \code{\link[=gls_control]{gls_control()}} object.}
+
+\item{draw_dir}{Optional directory for posterior draw storage. Each fit
+creates a separate run subdirectory. With \code{NULL}, draws remain in RAM.}
+
+\item{chunk_size}{Maximum retained draws per chain per disk chunk.}
 }
 \value{
-A \code{gls_general_fit} object with posterior draws and frozen inputs.
+A \code{gls_general_fit} object with frozen inputs and posterior draws or
+a disk draw index. Use \code{\link[=gls_load_draws]{gls_load_draws()}} to access the full arrays.
 }
 \description{
 Each target has its own coefficients for the columns of \code{covariates}. All

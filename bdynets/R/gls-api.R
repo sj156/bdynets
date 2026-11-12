@@ -389,13 +389,18 @@ gls_simulate_multihop <- function(signal = 0.20, side = 3L,
 #' @param signal Numeric scenario label used only for deterministic seeds.
 #' @param label Human-readable fit label.
 #' @param control A [gls_control()] object.
-#' @return A `gls_fit` object containing posterior draws and frozen inputs.
+#' @param draw_dir Optional directory for posterior draw storage. Each fit
+#'   creates a separate run subdirectory. With `NULL`, draws remain in RAM.
+#' @param chunk_size Maximum retained draws per chain per disk chunk.
+#' @return A `gls_fit` object containing frozen inputs and posterior draws or
+#'   a disk draw index. Use [gls_load_draws()] to access the full arrays.
 #' @export
 gls_fit <- function(
     Y, graph, train_rows = seq_len(nrow(Y)), pre_history = NULL, pairs = NULL,
     time_covariate = NULL, season_covariate = NULL, means = NULL, W = NULL,
     lag_reference_scale = NULL, signal = 0,
-    label = "GLS dynamic nonlocal domain", control = gls_control()) {
+    label = "GLS dynamic nonlocal domain", control = gls_control(),
+    draw_dir = NULL, chunk_size = 100L) {
   Y <- .validate_count_matrix(Y)
   graph <- .validate_gls_graph(graph)
   control <- .validate_gls_control(control)
@@ -456,10 +461,11 @@ gls_fit <- function(
   if (length(means) != ncol(Y) || any(!is.finite(means)) || any(means <= 0)) {
     stop("means must contain one positive finite value per series.", call. = FALSE)
   }
+  draw_store <- .gls_prepare_draw_store(draw_dir, chunk_size)
   fit <- fit_gls(
     Y[train_rows, , drop = FALSE], X[train_rows, , drop = FALSE],
     time_covariate[train_rows], season_covariate[train_rows], W, pairs,
-    means, signal, label, control
+    means, signal, label, control, draw_store
   )
   fit$Y <- Y
   fit$X <- X
@@ -488,6 +494,11 @@ gls_fit <- function(
 gls_diagnostics <- function(object, truth_pairs = NULL,
                              model_id = "GLS_continuous",
                              control = object$control) {
+  if (!inherits(object, c("gls_fit", "gls_general_fit", "gls_study_fit"))) {
+    stop("object must be a gls_fit, gls_general_fit, or gls_study_fit.",
+         call. = FALSE)
+  }
+  object <- gls_load_draws(object)
   if (inherits(object, "gls_study_fit")) {
     control <- .gls_study_validate_control(control)
     out <- .gls_study_convergence(object, object$signal, control)
@@ -499,10 +510,6 @@ gls_diagnostics <- function(object, truth_pairs = NULL,
     out <- basic_convergence(object, object$signal, control)
     out$Converged <- out$PassRhat & out$PassESS
     return(out)
-  }
-  if (!inherits(object, "gls_fit")) {
-    stop("object must be a gls_fit, gls_general_fit, or gls_study_fit.",
-         call. = FALSE)
   }
   control <- .validate_gls_control(control)
   if (is.null(truth_pairs)) {
@@ -542,6 +549,7 @@ gls_dss <- function(object, validation_rows, control = object$control) {
     stop("validation_rows must be valid rows outside the training set.",
          call. = FALSE)
   }
+  object <- gls_load_draws(object)
   ans <- if (inherits(object, "gls_study_fit")) {
     .gls_study_run_dss(
       object, object$X[object$train_rows, , drop = FALSE],
@@ -599,7 +607,7 @@ predict.gls_fit <- function(object, rows, conditioning_rows = integer(),
          call. = FALSE)
   }
   ans <- predict_gls(
-    object, object$X, object$time_covariate, object$season_covariate,
+    gls_load_draws(object), object$X, object$time_covariate, object$season_covariate,
     object$Y, rows, conditioning_rows, d, label, object$signal, control
   )
   ans$rows <- rows
@@ -641,6 +649,7 @@ gls_score <- function(prediction, Y, truth = Y, signal = 0,
 #' @param side Square-grid side length.
 #' @param control Optional explicit control object. When supplied, `profile` is
 #'   ignored.
+#' @inheritParams gls_fit
 #' @return A `gls_example` bundle containing simulation, fit, diagnostics, DSS,
 #'   predictions, and score tables.
 #' @export
@@ -651,7 +660,8 @@ gls_score <- function(prediction, Y, truth = Y, signal = 0,
 #' }
 gls_run_multihop_example <- function(profile = c("smoke", "quick", "default"),
                                       signal = 0.20, side = 3L,
-                                      control = NULL) {
+                                      control = NULL, draw_dir = NULL,
+                                      chunk_size = 100L) {
   profile <- match.arg(profile)
   if (is.null(control)) control <- gls_control(profile)
   design <- gls_simulate_multihop(signal, side, control)
@@ -661,16 +671,18 @@ gls_run_multihop_example <- function(profile = c("smoke", "quick", "default"),
     pre_history = sim$pre_history, pairs = design$pairs,
     time_covariate = sim$time_covariate,
     season_covariate = sim$season_covariate, means = sim$means,
-    lag_reference_scale = sim$scale, signal = signal, control = control
+    lag_reference_scale = sim$scale, signal = signal, control = control,
+    draw_dir = draw_dir, chunk_size = chunk_size
   )
-  diagnostics <- gls_diagnostics(fit, design$long_pairs, control = control)
-  dss <- gls_dss(fit, design$split$validation, control)
+  posterior <- gls_load_draws(fit)
+  diagnostics <- gls_diagnostics(posterior, design$long_pairs, control = control)
+  dss <- gls_dss(posterior, design$split$validation, control)
   continuous <- predict(
-    fit, design$split$test, design$split$validation,
+    posterior, design$split$test, design$split$validation,
     label = "GLS", control = control
   )
   sparse <- predict(
-    fit, design$split$test, design$split$validation, d = dss$d,
+    posterior, design$split$test, design$split$validation, d = dss$d,
     label = "GLSS", control = control
   )
   scores <- rbind(
@@ -691,13 +703,14 @@ print.gls_fit <- function(x, ...) {
   cat("  series:", ncol(x$Y), "\n")
   cat("  training times:", length(x$train_rows), "\n")
   cat("  candidate pairs:", nrow(x$pairs), "\n")
-  cat("  posterior draws:", nrow(x$alpha), "across", length(x$chains), "chains\n")
+  cat("  posterior draws:", .gls_retained_draw_count(x), "across", length(x$chains), "chains\n")
   cat("  elapsed seconds:", format(x$elapsed, digits = 4L), "\n")
   invisible(x)
 }
 
 #' @export
 summary.gls_fit <- function(object, ...) {
+  object <- gls_load_draws(object)
   diagnostics <- gls_diagnostics(object)
   structure(list(
     label = object$label,

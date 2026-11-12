@@ -15,9 +15,20 @@ if (.Platform$OS.type == "windows" && isTRUE(parallel::detectCores(logical = FAL
     stopifnot(length(unique(pids)) == 2L, all(pids != Sys.getpid()),
         identical(parallel_fit$chain_id, rep(1:2, each = 2L)))
 
+    disk_fit <- gls_fit_general(Y, graph, Q, control = control,
+        draw_dir = tempdir(), chunk_size = 1L)
+    disk_pids <- vapply(disk_fit$chains, `[[`, integer(1), "worker_pid")
+    stopifnot(length(unique(disk_pids)) == 2L, all(disk_pids != Sys.getpid()),
+        is.null(disk_fit$B),
+        all(lengths(lapply(disk_fit$chains, function(chain) chain$draw_chunks$files)) == 2L))
+    loaded <- gls_load_draws(disk_fit)
+    stopifnot(identical(vapply(loaded$chains, `[[`, integer(1), "worker_pid"), disk_pids),
+        identical(loaded$chain_id, parallel_fit$chain_id))
+
     control$parallel_chains <- FALSE
     serial_fit <- gls_fit_general(Y, graph, Q, control = control)
     for (field in c("B", "L", "beta_path", "tau", "coefficient_trace")) {
-        stopifnot(isTRUE(all.equal(parallel_fit[[field]], serial_fit[[field]], tolerance = 1e-12)))
+        stopifnot(isTRUE(all.equal(parallel_fit[[field]], serial_fit[[field]], tolerance = 1e-12)),
+            isTRUE(all.equal(loaded[[field]], serial_fit[[field]], tolerance = 1e-12)))
     }
 }

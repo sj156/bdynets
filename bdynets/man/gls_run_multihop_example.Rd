@@ -8,7 +8,9 @@ gls_run_multihop_example(
   profile = c("smoke", "quick", "default"),
   signal = 0.2,
   side = 3L,
-  control = NULL
+  control = NULL,
+  draw_dir = NULL,
+  chunk_size = 100L
 )
 }
 \arguments{
@@ -20,6 +22,11 @@ gls_run_multihop_example(
 
 \item{control}{Optional explicit control object. When supplied, \code{profile} is
 ignored.}
+
+\item{draw_dir}{Optional directory for posterior draw storage. Each fit
+creates a separate run subdirectory. With \code{NULL}, draws remain in RAM.}
+
+\item{chunk_size}{Maximum retained draws per chain per disk chunk.}
 }
 \value{
 A \code{gls_example} bundle containing simulation, fit, diagnostics, DSS,

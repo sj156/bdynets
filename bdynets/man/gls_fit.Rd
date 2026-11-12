@@ -17,7 +17,9 @@ gls_fit(
   lag_reference_scale = NULL,
   signal = 0,
   label = "GLS dynamic nonlocal domain",
-  control = gls_control()
+  control = gls_control(),
+  draw_dir = NULL,
+  chunk_size = 100L
 )
 }
 \arguments{
@@ -48,9 +50,15 @@ reproduction; ordinary analyses should leave it \code{NULL}.}
 \item{label}{Human-readable fit label.}
 
 \item{control}{A \code{\link[=gls_control]{gls_control()}} object.}
+
+\item{draw_dir}{Optional directory for posterior draw storage. Each fit
+creates a separate run subdirectory. With \code{NULL}, draws remain in RAM.}
+
+\item{chunk_size}{Maximum retained draws per chain per disk chunk.}
 }
 \value{
-A \code{gls_fit} object containing posterior draws and frozen inputs.
+A \code{gls_fit} object containing frozen inputs and posterior draws or
+a disk draw index. Use \code{\link[=gls_load_draws]{gls_load_draws()}} to access the full arrays.
 }
 \description{
 Counts are transformed with \code{log1p()} lag features centered and scaled from

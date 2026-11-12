@@ -110,7 +110,8 @@ update_general_targets_with_reference <- function(ystar, X, Q, Y, beta, omega,
     c(current, list(reference = ref, accepted = accepted, proposed = proposed))
 }
 
-fit_general_chain <- function(Y, X, Q, pairs, means, chain_id, signal, cfg = CFG) {
+fit_general_chain <- function(Y, X, Q, pairs, means, chain_id, signal, cfg = CFG,
+    draw_store = NULL) {
     set.seed(method_seed("general MCMC", paste(signal, chain_id), cfg))
     start <- Sys.time()
     TT <- nrow(Y)
@@ -161,7 +162,10 @@ fit_general_chain <- function(Y, X, Q, pairs, means, chain_id, signal, cfg = CFG
     v <- tau_initial^2
     nu <- rinvgamma(P, 1, 1 + 1/u)
     xi <- rinvgamma(1, 1, 1/tau_prior_scale^2 + 1/v)
-    S <- floor((cfg$n_iter - cfg$burn_mcmc)/cfg$thin)
+    n_saved <- floor((cfg$n_iter - cfg$burn_mcmc)/cfg$thin)
+    buffer <- .gls_draw_buffer(draw_store, chain_id, n_saved)
+    S <- buffer$capacity
+    write_draws <- !is.null(buffer$directory)
     alpha_save <- matrix(NA_real_, S, k)
     gamma_save <- array(NA_real_, c(S, k, pQ))
     beta_save <- array(NA_real_, c(S, TT, r))
@@ -171,12 +175,19 @@ fit_general_chain <- function(Y, X, Q, pairs, means, chain_id, signal, cfg = CFG
     tau_save <- network_rms <- numeric(S)
     B_save <- matrix(NA_real_, S, P)
     discount_save <- reference_mean <- reference_variance <- initial_beta <- numeric(S)
+    draw_arrays <- function() list(
+        B = B_save, discount = discount_save, initial_beta = initial_beta,
+        reference_mean = reference_mean, reference_variance = reference_variance,
+        alpha = alpha_save, gamma = gamma_save, beta_path = beta_save,
+        final_beta = final_beta, L = L_save, amplitude = amplitude,
+        theta_average = theta_average, tau = tau_save, network_rms = network_rms)
     covariance_accepted <- covariance_proposed <- 0L
     static_log_step <- log(cfg$static_pcn_initial_step)
     coefficient_trace <- data.frame(iteration = seq_len(cfg$n_iter), accepted = 0L,
         proposed = 0L, acceptance = 0, pcn_step = NA_real_, next_pcn_step = NA_real_,
         warmup = seq_len(cfg$n_iter) <= cfg$burn_mcmc)
     si <- 0L
+    last_saved_iteration <- 0L
     move_sd <- log(cfg$scale_move_initial_sd)
     accepted <- proposed <- 0L
     for (iter in seq_len(cfg$n_iter)) {
@@ -259,6 +270,13 @@ fit_general_chain <- function(Y, X, Q, pairs, means, chain_id, signal, cfg = CFG
             theta_average[si, ] <- B + mean_dynamic
             tau_save[si] <- sqrt(v)
             network_rms[si] <- sqrt(mean((static_network(X, pairs, B) + network_contribution(build_network_array(X, pairs, L, r, k), beta))^2))
+            if (write_draws) {
+                last_saved_iteration <- iter
+                if (si == S) {
+                    buffer <- .gls_write_draw_chunk(buffer, draw_arrays(), si, iter)
+                    si <- 0L
+                }
+            }
         }
         if (iter == 1L || iter%%cfg$progress_every == 0L || iter == cfg$n_iter) {
             progress_with_eta(sprintf("general GLS; q=%.2f; chain %d", signal, chain_id), iter, cfg$n_iter, start)
@@ -266,18 +284,20 @@ fit_general_chain <- function(Y, X, Q, pairs, means, chain_id, signal, cfg = CFG
                 covariance_accepted, covariance_proposed, pcn_step))
         }
     }
+    if (write_draws && si > 0L)
+        buffer <- .gls_write_draw_chunk(buffer, draw_arrays(), si, last_saved_iteration)
     coefficient_trace$chain <- chain_id
-    list(B = B_save, discount = discount_save, initial_beta = initial_beta, reference_mean = reference_mean, reference_variance = reference_variance, covariance_acceptance = covariance_accepted/max(covariance_proposed, 1L),
+    metadata <- list(covariance_acceptance = covariance_accepted/max(covariance_proposed, 1L),
         coefficient_trace = coefficient_trace, static_pcn_final_step = exp(static_log_step),
         covariance_accepted = covariance_accepted, covariance_proposed = covariance_proposed,
-        chain_id = chain_id, worker_pid = Sys.getpid(), alpha = alpha_save, gamma = gamma_save,
-        beta_path = beta_save, final_beta = final_beta, L = L_save,
-        amplitude = amplitude, theta_average = theta_average, tau = tau_save, network_rms = network_rms, r_nb_t = r_nb_t,
+        chain_id = chain_id, worker_pid = Sys.getpid(), r_nb_t = r_nb_t,
         tau_initial = tau_initial, tau_prior_scale = tau_prior_scale, scale_move_acceptance = accepted/proposed, elapsed = as.numeric(difftime(Sys.time(),
             start, units = "secs")))
+    if (write_draws) return(c(metadata, list(draw_chunks = .gls_draw_chunks(buffer))))
+    .gls_merge_chain_draws(draw_arrays(), metadata)
 }
 
-fit_general_chains_psock <- function(ids, workers, Y, X, Q, pairs, means, signal, cfg) {
+fit_general_chains_psock <- function(ids, workers, Y, X, Q, pairs, means, signal, cfg, draw_store) {
     cluster <- parallel::makePSOCKcluster(workers, rscript_args = "--vanilla", outfile = "")
     on.exit(try(parallel::stopCluster(cluster), silent = TRUE), add = TRUE)
 
@@ -293,28 +313,41 @@ fit_general_chains_psock <- function(ids, workers, Y, X, Q, pairs, means, signal
     environment(initialize) <- baseenv()
     parallel::clusterCall(cluster, initialize, unique(c(dirname(package_path), .libPaths())), package_path)
     # Use argument names distinct from both parLapply() and clusterApply().
-    worker <- function(chain_id, observations, lags, covariates, pairs, means, signal, cfg) {
-        fit_general_chain(observations, lags, covariates, pairs, means, chain_id, signal, cfg)
+    worker <- function(chain_id, observations, lags, covariates, pairs, means, signal, cfg, draw_store) {
+        fit_general_chain(observations, lags, covariates, pairs, means, chain_id, signal, cfg,
+            draw_store = draw_store)
     }
     environment(worker) <- environment(fit_general_chain)
     parallel::parLapply(cluster, ids, worker,
-        observations = Y, lags = X, covariates = Q, pairs = pairs, means = means, signal = signal, cfg = cfg)
+        observations = Y, lags = X, covariates = Q, pairs = pairs, means = means,
+        signal = signal, cfg = cfg, draw_store = draw_store)
 }
 
-fit_general_gls <- function(Y, X, Q, pairs, means, signal, cfg = CFG) {
+fit_general_gls <- function(Y, X, Q, pairs, means, signal, cfg = CFG, draw_store = NULL) {
     start <- Sys.time()
     ids <- seq_len(cfg$n_chains)
-    worker <- function(ch) fit_general_chain(Y, X, Q, pairs, means, ch, signal, cfg)
+    worker <- function(ch) fit_general_chain(Y, X, Q, pairs, means, ch, signal, cfg,
+        draw_store = draw_store)
     cores <- parallel::detectCores(logical = FALSE)
     if (is.na(cores) || cores < 1L) cores <- 1L
     workers <- if (isTRUE(cfg$parallel_chains)) min(length(ids), cores) else 1L
     chains <- if (workers == 1L) {
         lapply(ids, worker)
     } else if (.Platform$OS.type == "windows") {
-        fit_general_chains_psock(ids, workers, Y, X, Q, pairs, means, signal, cfg)
+        fit_general_chains_psock(ids, workers, Y, X, Q, pairs, means, signal, cfg, draw_store)
     } else {
         parallel::mclapply(ids, worker, mc.cores = workers)
     }
+    .gls_check_chains(chains, ids)
+    if (!is.null(draw_store)) {
+        return(list(label = "GLS, all ordered pairs", pairs = pairs, chains = chains,
+            draw_store = draw_store, elapsed = as.numeric(difftime(Sys.time(), start, units = "secs"))))
+    }
+    .gls_combine_general_chains(chains, pairs, cfg,
+        as.numeric(difftime(Sys.time(), start, units = "secs")))
+}
+
+.gls_combine_general_chains <- function(chains, pairs, cfg, elapsed) {
     list(label = "GLS, all ordered pairs", B = do.call(rbind, lapply(chains, `[[`, "B")), discount = unlist(lapply(chains, `[[`, "discount")), initial_beta = unlist(lapply(chains, `[[`, "initial_beta")), reference_mean = unlist(lapply(chains, `[[`, "reference_mean")), reference_variance = unlist(lapply(chains, `[[`, "reference_variance")), covariance_acceptance = vapply(chains, `[[`, numeric(1), "covariance_acceptance"),
         coefficient_trace = do.call(rbind, lapply(chains, `[[`, "coefficient_trace")),
         static_pcn_final_step = vapply(chains, `[[`, numeric(1), "static_pcn_final_step"),
@@ -325,8 +358,7 @@ fit_general_gls <- function(Y, X, Q, pairs, means, signal, cfg = CFG) {
         "gamma")), final_beta = do.call(rbind, lapply(chains, `[[`, "final_beta")), beta_path = bind_array3(lapply(chains,
         `[[`, "beta_path")), L = bind_array3(lapply(chains, `[[`, "L")), amplitude = do.call(rbind, lapply(chains, `[[`,
         "amplitude")), theta_average = do.call(rbind, lapply(chains, `[[`, "theta_average")), tau = unlist(lapply(chains,
-        `[[`, "tau")), network_rms = unlist(lapply(chains, `[[`, "network_rms")), r_nb_t = chains[[1L]]$r_nb_t, elapsed = as.numeric(difftime(Sys.time(),
-        start, units = "secs")))
+        `[[`, "tau")), network_rms = unlist(lapply(chains, `[[`, "network_rms")), r_nb_t = chains[[1L]]$r_nb_t, elapsed = elapsed)
 }
 
 predict_general_gls <- function(fit, X, Q, Y, rows, conditioning_rows = integer(0), d = NULL, label = fit$label, signal,

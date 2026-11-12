@@ -247,8 +247,12 @@
 .gls_study_local_scale_shape <- function(r) (r + 2) / 2
 .gls_study_global_scale_shape <- function(r, P) ((r + 1) * P + 1) / 2
 
+.gls_study_merge_chain_draws <- function(draws, metadata) {
+  c(metadata["chain_id"], draws, metadata[names(metadata) != "chain_id"])
+}
+
 .gls_study_fit_chain <- function(Y, X, Q, pairs, Fg, means, signal, chain_id,
-                              cfg) {
+                              cfg, draw_store = NULL) {
   if (!requireNamespace("BayesLogit", quietly = TRUE))
     stop("Package 'BayesLogit' is required.")
   set.seed(.gls_study_seed("MCMC", paste(signal, chain_id), cfg)); start <- Sys.time()
@@ -282,7 +286,10 @@
   # unobserved prior trajectory here can explode before L has moved.
   beta <- ref$m
   r_nb_t <- .gls_study_choose_r_nb_time(Y, cfg); RNB <- matrix(r_nb_t, TT, k)
-  Ssave <- floor((cfg$n_iter - cfg$burn_mcmc) / cfg$thin)
+  n_saved <- floor((cfg$n_iter - cfg$burn_mcmc) / cfg$thin)
+  buffer <- .gls_draw_buffer(draw_store, chain_id, n_saved)
+  Ssave <- buffer$capacity
+  disk <- !is.null(buffer$directory)
   alpha_save <- matrix(NA_real_, Ssave, k)
   gamma_save <- array(NA_real_, c(Ssave, k, pQ))
   bar_save <- matrix(NA_real_, Ssave, P)
@@ -295,10 +302,21 @@
                                                                 length(cfg$discount_grid))
   ref_m_T_save <- matrix(NA_real_, Ssave, r)
   ref_C_T_save <- array(NA_real_, c(Ssave, r, r))
+  draw_arrays <- function() {
+    list(alpha = alpha_save, gamma = gamma_save, theta_bar = bar_save,
+      L = L_save, beta_path = beta_save,
+      final_beta = matrix(beta_save[, TT + 1L, , drop = TRUE],
+                          nrow = Ssave, ncol = r),
+      amplitude = amp_save, theta_average = mean_save,
+      lambda_pair = lambda_save, tau = tau_save, chi = chi_save,
+      discount = discount_save, discount_probability = discount_prob_save,
+      network_rms = network_save, ref_m_T = ref_m_T_save, ref_C_T = ref_C_T_save)
+  }
   static_accept <- static_propose <- chi_accept <- chi_propose <- 0L
   scale_accept <- scale_propose <- 0L; scale_total_jump <- 0
   interweave_accept <- interweave_propose <- 0L; interweave_total_jump <- 0
   save_id <- 0L
+  last_saved_iteration <- 0L
   scale_log_sd <- log(cfg$scale_move_initial_sd)
   interweave_log_sd <- log(cfg$interweave_initial_sd)
   chi_log_sd <- log(cfg$chi_proposal_sd)
@@ -431,19 +449,28 @@
       network_save[save_id] <- sqrt(mean(net^2))
       ref_m_T_save[save_id, ] <- ref$m[TT + 1L, ]
       ref_C_T_save[save_id, , ] <- ref$C[, , TT + 1L]
+      if (disk) {
+        last_saved_iteration <- iter
+        if (save_id == Ssave) {
+          buffer <- .gls_write_draw_chunk(buffer, draw_arrays(), save_id, iter)
+          save_id <- 0L
+        }
+      }
     }
     if (iter == 1L || iter %% cfg$progress_every == 0L || iter == cfg$n_iter)
       progress_with_eta(sprintf("GLS q=%.2f chain=%d", signal, chain_id),
                    iter, cfg$n_iter, start)
   }
-  list(chain_id = chain_id, alpha = alpha_save, gamma = gamma_save,
-    theta_bar = bar_save, L = L_save, beta_path = beta_save,
-    final_beta = matrix(beta_save[, TT + 1L, , drop = TRUE],
-                        nrow = Ssave, ncol = r),
-    amplitude = amp_save, theta_average = mean_save, lambda_pair = lambda_save,
-    tau = tau_save, chi = chi_save, discount = discount_save,
-    discount_probability = discount_prob_save, network_rms = network_save,
-    ref_m_T = ref_m_T_save, ref_C_T = ref_C_T_save, r_nb_t = r_nb_t,
+  draws <- if (disk) {
+    if (save_id > 0L) {
+      buffer <- .gls_write_draw_chunk(buffer, draw_arrays(), save_id,
+                                      last_saved_iteration)
+    }
+    list(draw_chunks = .gls_draw_chunks(buffer))
+  } else {
+    draw_arrays()
+  }
+  metadata <- list(chain_id = chain_id, r_nb_t = r_nb_t,
     static_acceptance = static_accept / max(static_propose, 1L),
     static_pcn_final_step = exp(static_log_step),
     chi_acceptance = chi_accept / max(chi_propose, 1L),
@@ -457,6 +484,7 @@
     interweave_final_sd = exp(interweave_log_sd),
     initial_theta_bar = init$theta_bar,
     elapsed = as.numeric(difftime(Sys.time(), start, units = "secs")))
+  .gls_study_merge_chain_draws(draws, metadata)
 }
 
 .gls_study_bind_array_first <- function(items) {
@@ -470,16 +498,28 @@
   out
 }
 
-.gls_study_fit_impl <- function(Y, X, Q, pairs, Fg, means, signal, cfg) {
+.gls_study_fit_impl <- function(Y, X, Q, pairs, Fg, means, signal, cfg,
+                               draw_store = NULL) {
   ids <- seq_len(cfg$n_chains); worker <- function(ch)
-    .gls_study_fit_chain(Y, X, Q, pairs, Fg, means, signal, ch, cfg)
+    .gls_study_fit_chain(Y, X, Q, pairs, Fg, means, signal, ch, cfg,
+                         draw_store = draw_store)
   chains <- if (cfg$parallel_chains && cfg$n_chains > 1L && .Platform$OS.type != "windows")
     parallel::mclapply(ids, worker, mc.cores = min(cfg$n_chains,
       max(1L, parallel::detectCores(logical = FALSE)))) else lapply(ids, worker)
+  if (!is.null(draw_store)) {
+    .gls_check_chains(chains, ids)
+    return(list(label = "GLS", pairs = pairs, Fg = Fg, chains = chains,
+                draw_store = draw_store))
+  }
   failed <- vapply(chains, inherits, logical(1), what = "try-error")
   if (any(failed))
     stop("MCMC chain failure(s): ", paste(ids[failed], collapse = ", "), "\n",
          paste(vapply(chains[failed], as.character, character(1)), collapse = "\n"))
+  .gls_study_combine_chains(chains, pairs, Fg, cfg)
+}
+
+.gls_study_combine_chains <- function(chains, pairs, Fg, cfg) {
+  ids <- seq_len(cfg$n_chains)
   nsave <- vapply(chains, function(z) nrow(z$alpha), integer(1))
   list(label = "GLS", pairs = pairs, Fg = Fg,
     chain_id = rep(ids, nsave), chains = chains,

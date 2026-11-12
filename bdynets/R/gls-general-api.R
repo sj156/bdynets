@@ -33,7 +33,9 @@ gls_all_pairs <- function(graph, control = gls_control()) {
 #' @param signal Numeric label used only to derive deterministic random seeds.
 #' @param label Human-readable fit label.
 #' @param control A [gls_control()] object.
-#' @return A `gls_general_fit` object with posterior draws and frozen inputs.
+#' @inheritParams gls_fit
+#' @return A `gls_general_fit` object with frozen inputs and posterior draws or
+#'   a disk draw index. Use [gls_load_draws()] to access the full arrays.
 #' @details Set `n_chains = 3L` and `parallel_chains = TRUE` in
 #'   [gls_control()] to fit three chains concurrently when at least three
 #'   physical cores are detected. Windows uses independent socket workers.
@@ -42,7 +44,8 @@ gls_all_pairs <- function(graph, control = gls_control()) {
 gls_fit_general <- function(
     Y, graph, covariates, train_rows = seq_len(nrow(Y)), pre_history = NULL,
     pairs = NULL, means = NULL, signal = 0,
-    label = "GLS, all ordered pairs", control = gls_control()) {
+    label = "GLS, all ordered pairs", control = gls_control(),
+    draw_dir = NULL, chunk_size = 100L) {
   Y <- .validate_count_matrix(Y)
   graph <- .validate_gls_graph(graph)
   control <- .validate_gls_control(control)
@@ -84,9 +87,11 @@ gls_fit_general <- function(
   if (length(means) != ncol(Y) || any(!is.finite(means)) || any(means <= 0)) {
     stop("means must contain one positive finite value per series.", call. = FALSE)
   }
+  draw_store <- .gls_prepare_draw_store(draw_dir, chunk_size)
   fit <- fit_general_gls(
     Y[train_rows, , drop = FALSE], X[train_rows, , drop = FALSE],
-    covariates[train_rows, , drop = FALSE], pairs, means, signal, control
+    covariates[train_rows, , drop = FALSE], pairs, means, signal, control,
+    draw_store
   )
   fit$label <- label
   fit$Y <- Y
@@ -133,7 +138,7 @@ predict.gls_general_fit <- function(
          call. = FALSE)
   }
   ans <- predict_general_gls(
-    object, object$X, object$covariates, object$Y, rows,
+    gls_load_draws(object), object$X, object$covariates, object$Y, rows,
     conditioning_rows, d, label, object$signal, control
   )
   ans$rows <- rows
@@ -149,13 +154,14 @@ print.gls_general_fit <- function(x, ...) {
   cat("  covariates:", ncol(x$covariates), "\n")
   cat("  training times:", length(x$train_rows), "\n")
   cat("  candidate pairs:", nrow(x$pairs), "\n")
-  cat("  posterior draws:", nrow(x$alpha), "across", length(x$chains), "chains\n")
+  cat("  posterior draws:", .gls_retained_draw_count(x), "across", length(x$chains), "chains\n")
   cat("  elapsed seconds:", format(x$elapsed, digits = 4L), "\n")
   invisible(x)
 }
 
 #' @export
 summary.gls_general_fit <- function(object, ...) {
+  object <- gls_load_draws(object)
   diagnostics <- gls_diagnostics(object)
   structure(list(
     label = object$label, series = ncol(object$Y),
