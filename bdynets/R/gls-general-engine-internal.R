@@ -270,20 +270,51 @@ fit_general_chain <- function(Y, X, Q, pairs, means, chain_id, signal, cfg = CFG
     list(B = B_save, discount = discount_save, initial_beta = initial_beta, reference_mean = reference_mean, reference_variance = reference_variance, covariance_acceptance = covariance_accepted/max(covariance_proposed, 1L),
         coefficient_trace = coefficient_trace, static_pcn_final_step = exp(static_log_step),
         covariance_accepted = covariance_accepted, covariance_proposed = covariance_proposed,
-        chain_id = chain_id, alpha = alpha_save, gamma = gamma_save, beta_path = beta_save, final_beta = final_beta, L = L_save,
+        chain_id = chain_id, worker_pid = Sys.getpid(), alpha = alpha_save, gamma = gamma_save,
+        beta_path = beta_save, final_beta = final_beta, L = L_save,
         amplitude = amplitude, theta_average = theta_average, tau = tau_save, network_rms = network_rms, r_nb_t = r_nb_t,
         tau_initial = tau_initial, tau_prior_scale = tau_prior_scale, scale_move_acceptance = accepted/proposed, elapsed = as.numeric(difftime(Sys.time(),
             start, units = "secs")))
+}
+
+fit_general_chains_psock <- function(ids, workers, Y, X, Q, pairs, means, signal, cfg) {
+    cluster <- parallel::makePSOCKcluster(workers, rscript_args = "--vanilla", outfile = "")
+    on.exit(try(parallel::stopCluster(cluster), silent = TRUE), add = TRUE)
+
+    # Set library paths before workers deserialize the package function.
+    package_path <- normalizePath(getNamespaceInfo(asNamespace("bdynets"), "path"), winslash = "/")
+    initialize <- function(paths, package_path) {
+        .libPaths(paths)
+        installed <- loadNamespace("bdynets")
+        worker_path <- normalizePath(getNamespaceInfo(installed, "path"), winslash = "/")
+        if (!identical(worker_path, package_path)) stop("Worker loaded a different bdynets installation.")
+        NULL
+    }
+    environment(initialize) <- baseenv()
+    parallel::clusterCall(cluster, initialize, unique(c(dirname(package_path), .libPaths())), package_path)
+    # Use argument names distinct from both parLapply() and clusterApply().
+    worker <- function(chain_id, observations, lags, covariates, pairs, means, signal, cfg) {
+        fit_general_chain(observations, lags, covariates, pairs, means, chain_id, signal, cfg)
+    }
+    environment(worker) <- environment(fit_general_chain)
+    parallel::parLapply(cluster, ids, worker,
+        observations = Y, lags = X, covariates = Q, pairs = pairs, means = means, signal = signal, cfg = cfg)
 }
 
 fit_general_gls <- function(Y, X, Q, pairs, means, signal, cfg = CFG) {
     start <- Sys.time()
     ids <- seq_len(cfg$n_chains)
     worker <- function(ch) fit_general_chain(Y, X, Q, pairs, means, ch, signal, cfg)
-    cores <- max(1L, parallel::detectCores(logical = FALSE))
-    chains <- if (cfg$parallel_chains && .Platform$OS.type != "windows")
-        parallel::mclapply(ids, worker, mc.cores = min(length(ids), cores))
-    else lapply(ids, worker)
+    cores <- parallel::detectCores(logical = FALSE)
+    if (is.na(cores) || cores < 1L) cores <- 1L
+    workers <- if (isTRUE(cfg$parallel_chains)) min(length(ids), cores) else 1L
+    chains <- if (workers == 1L) {
+        lapply(ids, worker)
+    } else if (.Platform$OS.type == "windows") {
+        fit_general_chains_psock(ids, workers, Y, X, Q, pairs, means, signal, cfg)
+    } else {
+        parallel::mclapply(ids, worker, mc.cores = workers)
+    }
     list(label = "GLS, all ordered pairs", B = do.call(rbind, lapply(chains, `[[`, "B")), discount = unlist(lapply(chains, `[[`, "discount")), initial_beta = unlist(lapply(chains, `[[`, "initial_beta")), reference_mean = unlist(lapply(chains, `[[`, "reference_mean")), reference_variance = unlist(lapply(chains, `[[`, "reference_variance")), covariance_acceptance = vapply(chains, `[[`, numeric(1), "covariance_acceptance"),
         coefficient_trace = do.call(rbind, lapply(chains, `[[`, "coefficient_trace")),
         static_pcn_final_step = vapply(chains, `[[`, numeric(1), "static_pcn_final_step"),

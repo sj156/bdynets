@@ -91,11 +91,14 @@ and DSS multipliers; it never fits, predicts or cleans up stored results.
 
 ## Core budgets and other projects
 
-`--cores` is an upper bound for chain workers. The current fitting API exposes
-an all-chains/serial switch. When the requested budget cannot accommodate its
-parallel schedule, these launchers run all declared chains serially rather
-than dropping chains. Windows also uses serial chains. Numeric-library thread
-settings are inherited from the R process.
+`--cores` limits the number of chain workers. The application launcher supports
+Windows socket workers with bdynets 0.2.1 or later and forked workers on Unix.
+For three parallel chains, set `n_chains = 3L` and `parallel_chains = TRUE` in the
+prepared input's `control` list and use `--cores=3` or higher. The plan shows the
+worker count. The saved application records the actual worker process IDs.
+When the requested budget cannot accommodate the parallel schedule, the
+launchers run all declared chains serially. On Windows the simulation launcher
+uses serial chains. Each worker inherits numeric-library thread settings.
 
 The `graphMoDE` project and its launchers are unchanged. These files do not
 launch new graphMoDE experiments. Shared scalar state-space helpers can be used

@@ -34,6 +34,10 @@ gls_all_pairs <- function(graph, control = gls_control()) {
 #' @param label Human-readable fit label.
 #' @param control A [gls_control()] object.
 #' @return A `gls_general_fit` object with posterior draws and frozen inputs.
+#' @details Set `n_chains = 3L` and `parallel_chains = TRUE` in
+#'   [gls_control()] to fit three chains concurrently when at least three
+#'   physical cores are detected. Windows uses independent socket workers.
+#'   Unix uses forked workers. Each chain records its worker process ID.
 #' @export
 gls_fit_general <- function(
     Y, graph, covariates, train_rows = seq_len(nrow(Y)), pre_history = NULL,

@@ -107,8 +107,9 @@ main <- function() {
   physical <- suppressWarnings(parallel::detectCores(logical = FALSE))
   if (length(physical) != 1L || is.na(physical) || physical < 1L) physical <- 1L
   possible <- min(control$n_chains, physical)
+  windows_parallel <- utils::packageVersion("bdynets") >= "0.2.1"
   control$parallel_chains <- isTRUE(control$parallel_chains) &&
-    .Platform$OS.type != "windows" && cores >= possible && possible > 1L
+    (.Platform$OS.type != "windows" || windows_parallel) && cores >= possible && possible > 1L
   workers <- if (control$parallel_chains) possible else 1L
   input_md5 <- unname(tools::md5sum(input_path))
   cat("Action:", action, "| profile:", profile, "| input:", input_path, "\n")
@@ -136,6 +137,10 @@ main <- function() {
     for (name in c("pre_history", "pairs", "means"))
       if (!is.null(input[[name]])) fit_args[[name]] <- input[[name]]
     fit <- do.call(bdynets::gls_fit_general, fit_args)
+    if (all(vapply(fit$chains, function(chain) !is.null(chain$worker_pid), logical(1)))) {
+      provenance$chain_worker_pids <- vapply(fit$chains, `[[`, integer(1), "worker_pid")
+      provenance$chain_workers <- length(unique(provenance$chain_worker_pids))
+    }
     dss <- bdynets::gls_dss(fit, split$validation)
     predictions <- list(
       continuous = stats::predict(fit, rows = split$test,

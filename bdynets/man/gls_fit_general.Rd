@@ -49,3 +49,9 @@ ordered lagged
 source-target pairs enter the graph-informed shrinkage model; there are no
 separate unpenalized self or physical-network lag terms.
 }
+\details{
+Set \code{n_chains = 3L} and \code{parallel_chains = TRUE} in
+\code{\link[=gls_control]{gls_control()}} to fit three chains concurrently when
+at least three physical cores are detected. Windows uses independent socket
+workers. Unix uses forked workers. Each chain records its worker process ID.
+}

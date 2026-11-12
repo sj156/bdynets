@@ -1,6 +1,6 @@
 Package: bdynets
 Title: Bayesian Dynamic Network Analysis
-Version: 0.2.0
+Version: 0.2.1
 Authors@R: 
     c(person("Ying", "Wu", role = "aut"),
       person("Sheng", "Jiang", , "jiangsheng@cuhk.edu.cn", role = c("aut", "cre")))
