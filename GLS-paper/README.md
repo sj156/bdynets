@@ -102,7 +102,8 @@ prepared <- list(
   graph = graph,                 # edges, A and W matching the series columns
   covariates = calendar_design,  # time x known covariates, including held-out times
   split = list(train = train_rows, validation = validation_rows, test = test_rows),
-  control = list(n_iter = 1500L, burn_mcmc = 750L, n_chains = 3L)
+  control = list(n_iter = 5000L, burn_mcmc = 4000L, thin = 1L,
+                 n_chains = 3L, parallel_chains = TRUE)
 )
 saveRDS(prepared, "prepared.rds")
 ```
@@ -116,16 +117,17 @@ forwarded to `gls_fit_general()`. Optional `control` contains named
 The package validates the full model input contract when fitting.
 
 For the projected Divvy application, transfer
-`bdynets_input_r1000_dt03h_long3.rds` to `$HOME/data/`. The prepared input
+`bdynets_input_r1000_dt03h_n5000_b4000_thin1_c3.rds` to `$HOME/data/`. The prepared input
 lives outside the source repository. For a different prepared RDS,
 set `input` to its path. The following block starts a full fit after printing
-its plan. The Divvy file specifies three chains with 3,500 iterations, 3,000
-warmup iterations and no thinning.
+its plan. The Divvy file specifies three chains with 5,000 iterations and
+4,000 warmup iterations per chain. With `thin = 1`, each chain retains
+iterations 4,001 through 5,000, for 3,000 retained draws in total.
 
 ```sh
 (
   set -e
-  input="$HOME/data/bdynets_input_r1000_dt03h_long3.rds"
+  input="$HOME/data/bdynets_input_r1000_dt03h_n5000_b4000_thin1_c3.rds"
   if [ ! -r "$input" ]; then
     printf 'Cannot read prepared input: %s\n' "$input" >&2
     exit 1
