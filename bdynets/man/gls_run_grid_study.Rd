@@ -4,12 +4,23 @@
 \alias{gls_run_grid_study}
 \title{Run the GLS directed-grid simulation study}
 \usage{
-gls_run_grid_study(control = gls_study_control(), output_dir = NULL)
+gls_run_grid_study(
+  control = gls_study_control(),
+  output_dir = NULL,
+  draw_dir = NULL,
+  chunk_size = 100L
+)
 }
 \arguments{
 \item{control}{A \code{\link[=gls_study_control]{gls_study_control()}} object.}
 
 \item{output_dir}{Optional directory passed to \code{\link[=gls_write_grid_study]{gls_write_grid_study()}}.}
+
+\item{draw_dir}{Optional directory for posterior draws. Each fit creates a
+separate run subdirectory when there are draws to save. With \code{NULL},
+draws remain in RAM.}
+
+\item{chunk_size}{Maximum retained draws per chain per disk chunk.}
 }
 \value{
 A \code{gls_grid_study} object.

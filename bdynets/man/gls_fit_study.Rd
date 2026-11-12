@@ -4,7 +4,13 @@
 \alias{gls_fit_study}
 \title{Fit the GLS study model to one simulated scenario}
 \usage{
-gls_fit_study(simulation, design, control = design$control)
+gls_fit_study(
+  simulation,
+  design,
+  control = design$control,
+  draw_dir = NULL,
+  chunk_size = 100L
+)
 }
 \arguments{
 \item{simulation}{A \code{\link[=gls_simulate_grid]{gls_simulate_grid()}} result.}
@@ -12,9 +18,16 @@ gls_fit_study(simulation, design, control = design$control)
 \item{design}{The matching \code{\link[=gls_study_design]{gls_study_design()}} object.}
 
 \item{control}{The matching \code{\link[=gls_study_control]{gls_study_control()}} object.}
+
+\item{draw_dir}{Optional directory for posterior draws. Each fit creates a
+separate run subdirectory when there are draws to save. With \code{NULL},
+draws remain in RAM.}
+
+\item{chunk_size}{Maximum retained draws per chain per disk chunk.}
 }
 \value{
-A \code{gls_study_fit} containing posterior draws and frozen inputs.
+A \code{gls_study_fit} containing frozen inputs and posterior draws or
+a disk draw index. Use \code{\link[=gls_load_draws]{gls_load_draws()}} to access the full arrays.
 }
 \description{
 Fit the GLS study model to one simulated scenario

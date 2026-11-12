@@ -9,19 +9,30 @@ root before using these scripts:
 R CMD INSTALL bdynets
 ```
 
-Both launchers default to `--action=plan --profile=smoke --cores=12`. A plan
-does not fit models, generate simulation data or create output files. `smoke`
-and `quick` are software checks, not converged posterior analyses. Explicitly
-select `--action=run` to fit. Store results in a new absolute directory outside
-the repository, with an existing parent directory. An existing destination is
-rejected for a new run; failed or completed runs are not overwritten or resumed.
+Both launchers default to `--action=plan --profile=smoke --cores=12` and
+`--chunk-size=100`. Plan mode prints the configuration. The `smoke` and `quick`
+profiles check execution. Select `--action=run` to fit, and supply a new
+absolute results directory outside the repository with an existing parent.
+
+During MCMC, each chain buffers at most `--chunk-size` retained draws at a
+time and writes completed batches under `<output>/draws/`. The chunk size is
+a positive integer and controls storage only. Iteration budgets, thinning,
+chain counts and model settings still come from the selected control. Draw
+chunks contain retained samples. A new run uses a new output directory.
+
+Postprocessing loads the current fit's retained history for DSS, prediction
+and diagnostics. Its memory use depends on the full history of that fit as
+well as the prediction arrays. Keep the `draws/` directory with the saved
+results. When moving an output directory, copy its full directory structure
+so report mode can find the adjacent draw files. Report mode also accepts
+earlier results that store posterior draws inside the fit object.
 
 ## Directed-grid simulation
 
 ```sh
 Rscript GLS-paper/run_simulation.R --action=plan --profile=smoke --cores=12
 Rscript GLS-paper/run_simulation.R --action=run --profile=smoke --cores=12 \
-  --output=/absolute/results/gls-simulation-smoke
+  --chunk-size=100 --output=/absolute/results/gls-simulation-smoke
 Rscript GLS-paper/run_simulation.R --action=report \
   --output=/absolute/results/gls-simulation-smoke
 ```
@@ -29,12 +40,12 @@ Rscript GLS-paper/run_simulation.R --action=report \
 Use `--profile=full` for the package's declared full study budget. The runner
 calls `gls_study_control()` and `gls_run_grid_study()`, including the package's
 GLS, selected GLS and PNAR comparisons and benchmark-data export. It preserves
-the profile's chain count and all model settings. Saved outputs include
-`GLS_simulation_summary.rds`, scenario checkpoints, tables, figures,
-`configuration.R`, and launcher provenance. Report mode calls
-`gls_write_grid_study()` on the saved study; it rebuilds these exports without
-refitting or recomputing predictions. It can replace the study's own exported
-tables and figures in that results directory.
+the profile's chain count and all model settings. Each scenario loads its fit
+for postprocessing and retains a draw index in the saved scenario and
+`GLS_simulation_summary.rds`. Draws live in `draws/`. Other outputs include
+tables, figures, `configuration.R`, and launcher provenance. Report mode calls
+`gls_write_grid_study()` on the saved study and rebuilds tables and figures
+from its saved outputs and draw files.
 
 The earlier GLS README named external runners such as `run_all.sh`,
 `run_benchmarks_only.sh`, sa-PGSS and deep-learning benchmark scripts. Those
@@ -69,7 +80,7 @@ The package validates the full model input contract when fitting.
 Rscript GLS-paper/run_application.R --action=plan --profile=full --cores=12 \
   --input=/absolute/data/prepared.rds
 Rscript GLS-paper/run_application.R --action=run --profile=full --cores=12 \
-  --input=prepared.rds --data-root=/absolute/data \
+  --chunk-size=100 --input=prepared.rds --data-root=/absolute/data \
   --output=/absolute/results/gls-application
 Rscript GLS-paper/run_application.R --action=report \
   --output=/absolute/results/gls-application
@@ -82,12 +93,13 @@ test prediction. Test observations are never used for DSS selection. No unknown
 latent intensities or synthetic truth are supplied, and no intensity-recovery
 score is reported.
 
-`application_results.rds` retains the fit, DSS, predictions, controls, split,
-input MD5, package version and session provenance. The full fit is intentionally
-retained for subsequent diagnostics and saved-result reporting. A failed run
-leaves its configuration and failure record. Report mode reads the saved object
-and exports prediction summaries, count intervals, observed counts, diagnostics
-and DSS multipliers; it never fits, predicts or cleans up stored results.
+The runner loads the retained draws once for DSS and both prediction sets.
+`application_results.rds` saves the fit and its draw index alongside DSS,
+predictions, controls, split, input MD5, package version and session
+provenance. The posterior draw files remain in `draws/`. A failed run leaves
+its configuration and failure record. Report mode uses the saved predictions
+and draws to export prediction summaries, count intervals, observed counts,
+diagnostics and DSS multipliers.
 
 ## Core budgets and other projects
 

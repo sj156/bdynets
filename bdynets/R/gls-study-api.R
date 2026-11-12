@@ -137,10 +137,16 @@ gls_simulate_grid <- function(signal, design = NULL,
 #' @param simulation A [gls_simulate_grid()] result.
 #' @param design The matching [gls_study_design()] object.
 #' @param control The matching [gls_study_control()] object.
-#' @return A `gls_study_fit` containing posterior draws and frozen inputs.
+#' @param draw_dir Optional directory for posterior draws. Each fit creates a
+#'   separate run subdirectory when there are draws to save. With `NULL`,
+#'   draws remain in RAM.
+#' @param chunk_size Maximum retained draws per chain per disk chunk.
+#' @return A `gls_study_fit` containing frozen inputs and posterior draws or
+#'   a disk draw index. Use [gls_load_draws()] to access the full arrays.
 #' @export
 gls_fit_study <- function(simulation, design,
-                          control = design$control) {
+                          control = design$control, draw_dir = NULL,
+                          chunk_size = 100L) {
   if (!inherits(simulation, "gls_study_simulation")) {
     stop("simulation must be a gls_study_simulation.", call. = FALSE)
   }
@@ -156,11 +162,13 @@ gls_fit_study <- function(simulation, design,
   Q <- .gls_study_fourier_design(
     control$n_total, control$season_period, control$fitted_fourier_order
   )
+  n_saved <- floor((control$n_iter - control$burn_mcmc) / control$thin)
+  draw_store <- if (n_saved > 0L) .gls_prepare_draw_store(draw_dir, chunk_size)
   fit <- .gls_study_fit_impl(
     simulation$Y[split$train, , drop = FALSE],
     X[split$train, , drop = FALSE], Q[split$train, , drop = FALSE],
     design$pairs, design$affinity_features, simulation$means,
-    simulation$signal, control
+    simulation$signal, control, draw_store
   )
   fit$Y <- simulation$Y
   fit$X <- X
@@ -204,6 +212,7 @@ predict.gls_study_fit <- function(
     stop("d must be NULL or one finite multiplier per candidate pair.",
          call. = FALSE)
   }
+  object <- gls_load_draws(object)
   draw_ids <- balanced_indices(
     object$chain_id, control$predictive_draws,
     .gls_study_seed(paste0("prediction: ", label), object$signal, control)
@@ -227,15 +236,18 @@ predict.gls_study_fit <- function(
 #' @param signal Scenario signal amplitude.
 #' @param design A [gls_study_design()] object.
 #' @param control A [gls_study_control()] object.
+#' @inheritParams gls_fit_study
 #' @return A `gls_study_scenario` with simulation, fit, DSS, predictions,
 #'   PNAR benchmarks, diagnostics, and summary tables.
 #' @export
 gls_run_grid_scenario <- function(signal, design,
-                                  control = design$control) {
+                                  control = design$control, draw_dir = NULL,
+                                  chunk_size = 100L) {
   control <- .gls_study_validate_control(control)
   message(sprintf("\nGLS directed-grid signal = %.2f", signal))
   simulation <- gls_simulate_grid(signal, design, control)
-  fit <- gls_fit_study(simulation, design, control)
+  stored_fit <- gls_fit_study(simulation, design, control, draw_dir, chunk_size)
+  fit <- gls_load_draws(stored_fit)
   split <- fit$split
   dss <- gls_dss(fit, split$validation, control)
   dss$table$signal <- signal
@@ -285,7 +297,7 @@ gls_run_grid_scenario <- function(signal, design,
   )
   structure(list(
     simulation = simulation, X = fit$X, covariates = fit$covariates,
-    fit = fit, dss = dss, performance = performance,
+    fit = stored_fit, dss = dss, performance = performance,
     selection = selection,
     convergence = gls_diagnostics(fit, control = control),
     dss_amplitude_association =
@@ -300,10 +312,12 @@ gls_run_grid_scenario <- function(signal, design,
 #'
 #' @param control A [gls_study_control()] object.
 #' @param output_dir Optional directory passed to [gls_write_grid_study()].
+#' @inheritParams gls_fit_study
 #' @return A `gls_grid_study` object.
 #' @export
 gls_run_grid_study <- function(control = gls_study_control(),
-                               output_dir = NULL) {
+                               output_dir = NULL, draw_dir = NULL,
+                               chunk_size = 100L) {
   control <- .gls_study_validate_control(control)
   design <- gls_study_design(control)
   if (!is.null(output_dir)) {
@@ -331,7 +345,7 @@ gls_run_grid_study <- function(control = gls_study_control(),
       }
     }
     if (is.null(scenario)) {
-      scenario <- gls_run_grid_scenario(signal, design, control)
+      scenario <- gls_run_grid_scenario(signal, design, control, draw_dir, chunk_size)
       if (!is.null(checkpoint)) {
         signal_dir <- dirname(checkpoint)
         dir.create(signal_dir, recursive = TRUE, showWarnings = FALSE)
@@ -399,49 +413,6 @@ gls_write_grid_study <- function(study, output_dir) {
     .gls_study_bind(scenarios, "dss_amplitude_association"),
     file.path(table_dir, "DSS_amplitude_association.csv"), row.names = FALSE
   )
-  acceptance <- do.call(rbind, lapply(scenarios, function(x) {
-    cbind(signal = x$simulation$signal, x$fit$acceptance)
-  }))
-  utils::write.csv(
-    acceptance, file.path(table_dir, "sampler_acceptance.csv"),
-    row.names = FALSE
-  )
-  discount <- do.call(rbind, lapply(scenarios, function(x) {
-    data.frame(
-      signal = x$simulation$signal, discount = control$discount_grid,
-      posterior_frequency = vapply(
-        control$discount_grid,
-        function(d) mean(abs(x$fit$discount - d) < 1e-12), numeric(1)
-      ),
-      mean_conditional_probability = colMeans(x$fit$discount_probability)
-    )
-  }))
-  utils::write.csv(
-    discount, file.path(table_dir, "discount_posterior.csv"),
-    row.names = FALSE
-  )
-  scale <- do.call(rbind, lapply(scenarios, function(x) {
-    tau <- data.frame(
-      signal = x$simulation$signal, parameter = "tau",
-      mean = mean(x$fit$tau), median = stats::median(x$fit$tau),
-      q025 = unname(stats::quantile(x$fit$tau, 0.025)),
-      q975 = unname(stats::quantile(x$fit$tau, 0.975))
-    )
-    chi <- if (ncol(x$fit$chi)) do.call(rbind, lapply(
-      seq_len(ncol(x$fit$chi)), function(j) data.frame(
-        signal = x$simulation$signal,
-        parameter = paste0("chi[", j, "]"),
-        mean = mean(x$fit$chi[, j]), median = stats::median(x$fit$chi[, j]),
-        q025 = unname(stats::quantile(x$fit$chi[, j], 0.025)),
-        q975 = unname(stats::quantile(x$fit$chi[, j], 0.975))
-      )
-    )) else NULL
-    rbind(tau, chi)
-  }))
-  utils::write.csv(
-    scale, file.path(table_dir, "scale_parameter_summary.csv"),
-    row.names = FALSE
-  )
   utils::write.csv(
     do.call(rbind, lapply(scenarios, function(x) x$dss$table)),
     file.path(table_dir, "DSS_path.csv"), row.names = FALSE
@@ -462,18 +433,46 @@ gls_write_grid_study <- function(study, output_dir) {
     scenarios, design$graph, control, output_dir
   )
   dput(unclass(control), file.path(output_dir, "configuration.R"))
-  for (scenario in scenarios) {
-    signal_dir <- file.path(
-      output_dir, sprintf("signal_%.2f", scenario$simulation$signal)
-    )
+  draw_tables <- lapply(scenarios, function(scenario) {
+    signal <- scenario$simulation$signal
+    signal_dir <- file.path(output_dir, sprintf("signal_%.2f", signal))
     dir.create(signal_dir, recursive = TRUE, showWarnings = FALSE)
-    saveRDS(scenario, file.path(signal_dir, "scenario_results.rds"),
-            compress = "xz")
+    saveRDS(scenario, file.path(signal_dir, "scenario_results.rds"), compress = "xz")
+    scenario$fit <- gls_load_draws(scenario$fit)
     .gls_study_save_figures(scenario, signal_dir, control)
+    .gls_study_draw_tables(scenario$fit, signal, control$discount_grid)
+  })
+  for (name in c("sampler_acceptance", "discount_posterior", "scale_parameter_summary")) {
+    utils::write.csv(.gls_study_bind(draw_tables, name),
+                     file.path(table_dir, paste0(name, ".csv")), row.names = FALSE)
   }
   saveRDS(
     study, file.path(output_dir, "GLS_simulation_summary.rds"),
     compress = "xz"
   )
   invisible(normalizePath(output_dir))
+}
+
+.gls_study_draw_tables <- function(fit, signal, discount_grid) {
+  scale_row <- function(draws, parameter) {
+    data.frame(signal = signal, parameter = parameter,
+      mean = mean(draws), median = stats::median(draws),
+      q025 = unname(stats::quantile(draws, 0.025)),
+      q975 = unname(stats::quantile(draws, 0.975)))
+  }
+  tau <- scale_row(fit$tau, "tau")
+  chi <- lapply(seq_len(ncol(fit$chi)), function(j) {
+    scale_row(fit$chi[, j], paste0("chi[", j, "]"))
+  })
+  list(
+    sampler_acceptance = cbind(signal = signal, fit$acceptance),
+    discount_posterior = data.frame(
+      signal = signal, discount = discount_grid,
+      posterior_frequency = vapply(discount_grid, function(d) {
+        mean(abs(fit$discount - d) < 1e-12)
+      }, numeric(1)),
+      mean_conditional_probability = colMeans(fit$discount_probability)
+    ),
+    scale_parameter_summary = do.call(rbind, c(list(tau), chi))
+  )
 }

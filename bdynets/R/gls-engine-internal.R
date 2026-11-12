@@ -526,7 +526,7 @@ update_common_time_effects <- function(ystar, X, WX, net, omega, alpha, self_coe
 }
 
 fit_chain <- function(Y, X, time_covariate, season_covariate, W, pairs, means, chain_id, signal, model_label = "GLS dynamic nonlocal domain", 
-    cfg = CFG) {
+    cfg = CFG, draw_store = NULL) {
     set.seed(method_seed("MCMC", paste(model_label, signal, chain_id), cfg))
     start <- Sys.time()
     TT <- nrow(Y)
@@ -571,7 +571,10 @@ fit_chain <- function(Y, X, time_covariate, season_covariate, W, pairs, means, c
     v <- tau_initial^2
     nu <- rinvgamma(P, 1, 1 + 1/u)
     xi <- rinvgamma(1, 1, 1/tau_prior_scale^2 + 1/v)
-    S <- floor((cfg$n_iter - cfg$burn_mcmc)/cfg$thin)
+    n_saved <- floor((cfg$n_iter - cfg$burn_mcmc)/cfg$thin)
+    buffer <- .gls_draw_buffer(draw_store, chain_id, n_saved)
+    S <- buffer$capacity
+    write_draws <- !is.null(buffer$directory)
     alpha_save <- self_save <- w_save <- matrix(NA_real_, S, k)
     common_save <- matrix(NA_real_, S, 2L, dimnames = list(NULL, names(common_coef)))
     final_beta <- matrix(NA_real_, S, r)
@@ -581,8 +584,18 @@ fit_chain <- function(Y, X, time_covariate, season_covariate, W, pairs, means, c
     tau_save <- network_rms <- numeric(S)
     B_save <- matrix(NA_real_, S, P)
     discount_save <- reference_mean <- reference_variance <- initial_beta <- numeric(S)
+    draw_arrays <- function() list(
+        B = B_save, discount = discount_save, initial_beta = initial_beta,
+        reference_mean = reference_mean, reference_variance = reference_variance,
+        alpha = alpha_save, trend_coef = common_save[, "time_trend", drop = FALSE],
+        season_coef = common_save[, "seasonal_sin", drop = FALSE],
+        common_coef = common_save, self_coef = self_save, w_coef = w_save,
+        final_beta = final_beta, beta_path = beta_save, L = L_save,
+        amplitude = amplitude, theta_average = theta_average,
+        tau = tau_save, network_rms = network_rms)
     covariance_accepted <- covariance_proposed <- 0L
     si <- 0L
+    last_saved_iteration <- 0L
     scale_move_log_sd <- log(cfg$scale_move_initial_sd)
     scale_move_accepted <- scale_move_proposed <- 0L
     scale_move_post_accepted <- scale_move_post_proposed <- 0L
@@ -670,17 +683,35 @@ fit_chain <- function(Y, X, time_covariate, season_covariate, W, pairs, means, c
             theta_average[si, ] <- rowMeans(theta_path)
             tau_save[si] <- sqrt(v)
             network_rms[si] <- sqrt(mean((static_network(X, pairs, B) + network_contribution(build_network_array(X, pairs, L, r, k), beta))^2))
+            if (write_draws) {
+                last_saved_iteration <- iter
+                if (si == S) {
+                    buffer <- .gls_write_draw_chunk(buffer, draw_arrays(), si, iter)
+                    si <- 0L
+                }
+            }
         }
         if (iter == 1L || iter%%cfg$progress_every == 0L || iter == cfg$n_iter) {
             progress_with_eta(sprintf("%s; signal %.2f; chain %d", model_label, signal, chain_id), iter, cfg$n_iter, start)
         }
     }
-    list(B = B_save, discount = discount_save, initial_beta = initial_beta, reference_mean = reference_mean, reference_variance = reference_variance, covariance_acceptance = covariance_accepted/covariance_proposed, chain_id = chain_id, alpha = alpha_save, trend_coef = common_save[, "time_trend", drop = FALSE], season_coef = common_save[, 
-        "seasonal_sin", drop = FALSE], common_coef = common_save, self_coef = self_save, w_coef = w_save, final_beta = final_beta, 
-        beta_path = beta_save, L = L_save, amplitude = amplitude, theta_average = theta_average, tau = tau_save, network_rms = network_rms, 
+    if (write_draws && si > 0L)
+        buffer <- .gls_write_draw_chunk(buffer, draw_arrays(), si, last_saved_iteration)
+    metadata <- list(covariance_acceptance = covariance_accepted/covariance_proposed,
+        chain_id = chain_id,
         r_nb_t = r_nb_t, tau_initial = tau_initial, tau_prior_scale = tau_prior_scale, scale_move_acceptance = scale_move_accepted/scale_move_proposed, 
         scale_move_post_acceptance = scale_move_post_accepted/scale_move_post_proposed, scale_move_final_sd = exp(scale_move_log_sd), 
         elapsed = as.numeric(difftime(Sys.time(), start, units = "secs")))
+    if (write_draws) return(c(metadata, list(draw_chunks = .gls_draw_chunks(buffer))))
+    .gls_merge_chain_draws(draw_arrays(), metadata)
+}
+
+.gls_merge_chain_draws <- function(draws, metadata) {
+    # Restore the in-memory field order after loading separate draw arrays.
+    draw_prefix <- seq_len(match("reference_variance", names(draws)))
+    chain_prefix <- seq_len(match("chain_id", names(metadata)))
+    c(draws[draw_prefix], metadata[chain_prefix], draws[-draw_prefix],
+      metadata[-chain_prefix])
 }
 
 bind_array3 <- function(xs) {
@@ -696,16 +727,27 @@ bind_array3 <- function(xs) {
 }
 
 fit_gls <- function(Y, X, time_covariate, season_covariate, W, pairs, means, signal, model_label = "GLS dynamic nonlocal domain", 
-    cfg = CFG) {
+    cfg = CFG, draw_store = NULL) {
     start <- Sys.time()
     ids <- seq_len(cfg$n_chains)
-    worker <- function(ch) fit_chain(Y, X, time_covariate, season_covariate, W, pairs, means, ch, signal, model_label, cfg)
+    worker <- function(ch) fit_chain(Y, X, time_covariate, season_covariate, W,
+        pairs, means, ch, signal, model_label, cfg, draw_store = draw_store)
     cores <- suppressWarnings(parallel::detectCores(logical = FALSE))
     if (length(cores) != 1L || !is.finite(cores)) 
         cores <- 1L
     chains <- if (cfg$parallel_chains && cfg$n_chains > 1L && .Platform$OS.type != "windows") 
         parallel::mclapply(ids, worker, mc.cores = min(cfg$n_chains, cores))
     else lapply(ids, worker)
+    if (!is.null(draw_store)) {
+        .gls_check_chains(chains, ids)
+        return(list(label = model_label, W = W, pairs = pairs, chains = chains,
+            draw_store = draw_store, elapsed = as.numeric(difftime(Sys.time(), start, units = "secs"))))
+    }
+    .gls_combine_chains(chains, W, pairs, model_label, cfg,
+        as.numeric(difftime(Sys.time(), start, units = "secs")))
+}
+
+.gls_combine_chains <- function(chains, W, pairs, model_label, cfg, elapsed) {
     list(label = model_label, B = do.call(rbind, lapply(chains, `[[`, "B")), discount = unlist(lapply(chains, `[[`, "discount")), initial_beta = unlist(lapply(chains, `[[`, "initial_beta")), reference_mean = unlist(lapply(chains, `[[`, "reference_mean")), reference_variance = unlist(lapply(chains, `[[`, "reference_variance")), covariance_acceptance = vapply(chains, `[[`, numeric(1), "covariance_acceptance"), factor_evolution = cfg$factor_evolution, static_network = cfg$static_network, discount_occupancy = discount_occupancy(chains, cfg), pairs = pairs, chains = chains, chain_id = unlist(lapply(chains, function(z) rep(z$chain_id, 
         nrow(z$alpha)))), alpha = do.call(rbind, lapply(chains, `[[`, "alpha")), trend_coef = do.call(rbind, lapply(chains, 
         `[[`, "trend_coef")), season_coef = do.call(rbind, lapply(chains, `[[`, "season_coef")), common_coef = do.call(rbind, 
@@ -716,8 +758,7 @@ fit_gls <- function(Y, X, time_covariate, season_covariate, W, pairs, means, sig
         `[[`, "tau")), network_rms = unlist(lapply(chains, `[[`, "network_rms")), r_nb_t = chains[[1L]]$r_nb_t, tau_initial = vapply(chains, 
         `[[`, numeric(1), "tau_initial"), tau_prior_scale = vapply(chains, `[[`, numeric(1), "tau_prior_scale"), scale_move_acceptance = vapply(chains, 
         `[[`, numeric(1), "scale_move_acceptance"), scale_move_post_acceptance = vapply(chains, `[[`, numeric(1), "scale_move_post_acceptance"), 
-        scale_move_final_sd = vapply(chains, `[[`, numeric(1), "scale_move_final_sd"), elapsed = as.numeric(difftime(Sys.time(), 
-            start, units = "secs")))
+        scale_move_final_sd = vapply(chains, `[[`, numeric(1), "scale_move_final_sd"), elapsed = elapsed)
 }
 
 split_rhat <- function(draw_matrix) {
