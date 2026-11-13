@@ -97,3 +97,9 @@ importFrom(magrittr,"%>%")
 importFrom(utils,head)
 importFrom(utils,tail)
 useDynLib(bdynets, .registration = TRUE)
+export(gmde_discount_guide)
+export(gmde_transition_log_density)
+
+export(gmde_dynamic_fit)
+
+export(gmde_dynamic_diagnostics)

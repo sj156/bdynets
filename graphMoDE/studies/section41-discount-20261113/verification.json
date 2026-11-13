@@ -1,0 +1,21 @@
+{
+  "tests": "Fixed-input independent numerical checks, no RNG",
+  "guide_assertions_passed": 26,
+  "new_assertions_passed": 29,
+  "failures": 0,
+  "skips": 0,
+  "coverage": [
+    "Complete multivariate Gaussian mean and covariance from a dense joint precision matrix",
+    "All full/first/interior/final temporal block boundaries, including time zero",
+    "Poisson/NB normalized density-ratio comparison",
+    "Full-K raw graph covariance/density against dense matrix algebra",
+    "Label and baseline MH ratios against complete target ratios",
+    "Guide zero counts, empty classes, causal dependencies, nonidentity G, independent root solver"
+  ],
+  "unverified": [
+    "Full sampler stochastic behavior until registered smoke run",
+    "Convergence",
+    "Held-out predictive simulation"
+  ],
+  "backend": "Rcpp/C++17; existing BayesLogit 2.1 integer Devroye; R base LAPACK eigensolver for graph spectrum"
+}

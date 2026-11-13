@@ -1,0 +1,7 @@
+"dataset","method","ARI","representative_groups","training_intensity_RMSE","interpretation"
+"D01","Exp-W",0.51058756590171,3,0.429210285218974,"Unconverged development descriptor, not a method comparison"
+"D01","SE-W",0.502187188375516,3,0.439650385312065,"Unconverged development descriptor, not a method comparison"
+"D01","C",0.49244889095467,3,0.428087941024701,"Unconverged development descriptor, not a method comparison"
+"D02","Exp-W",0.410688520476541,3,0.472111544299474,"Unconverged development descriptor, not a method comparison"
+"D02","SE-W",0.389197898543893,3,0.474249440092233,"Unconverged development descriptor, not a method comparison"
+"D02","C",0.404010020297282,3,0.47552067103091,"Unconverged development descriptor, not a method comparison"

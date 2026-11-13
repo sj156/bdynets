@@ -1,0 +1,13 @@
+component,location,disposition,reason
+Input validation and summary statistics,bdynets/R/gmde-validation.R; gmde-allocation.R,Reuse,Existing validation reused by the new wrappers; N and S calculations remain reusable.
+Softmax probability arithmetic,bdynets/R/gmde-allocation.R,Reuse,Stable log-softmax can be reused; categorical draws alone are not the new label update.
+Scalar root solver,bdynets/inst/include/bdynets/scalar_state_space.h,Reused,Existing safeguarded solver used for log-scale inverse trigamma.
+Poisson guide,bdynets/src/gmde-discount.cpp,Added,Multivariate Gamma log-moment matching; separate from the existing Laplace reference filter.
+Transition density,bdynets/src/gmde-discount.cpp,Added,Full time-varying covariance determinant and innovation quadratic; includes time-zero state input.
+Three-state FFBS,bdynets/src/gmde-dynamic.cpp,Added and checked,Information-form multivariate conditioning; dense joint mean/covariance checks cover time zero and every block boundary.
+PG draws,bdynets/R/gmde-dynamic.R,Reused,Integer-shape Devroye checks migrated by function; existing BayesLogit 2.1 backend unchanged.
+Raw graph covariance,bdynets/src/gmde-dynamic.cpp; bdynets/R/gmde-dynamic.R,Added and checked,Raw Laplacian kernel and base LAPACK spectral algebra; no trace or edge normalization.
+Independent GP fields,bdynets/R/gmde-dynamic.R,Implemented,Sequential independent-column ESS at fixed labels; all K columns retained.
+Discount and label MH,bdynets/R/gmde-dynamic.R,Implemented and checked,Complete guide replay; full-target ratio checks and exact terminal cache checks. Empirical occupancy mixing fails.
+Covariance parameter MH,bdynets/R/gmde-dynamic.R,Implemented,Centered all-K field density; fixed u0; log-coordinate priors include Jacobians once. Poor finite-run mixing reported.
+Experiments and reporting,graphMoDE/scripts; graphMoDE/studies/section41-discount-20261113,Completed development pilot,30 tasks complete; 0 of 28 convergence flags pass. No formal comparison or prediction claim.

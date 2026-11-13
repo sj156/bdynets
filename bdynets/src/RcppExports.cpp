@@ -39,6 +39,118 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// gmde_inverse_trigamma_cpp
+NumericVector gmde_inverse_trigamma_cpp(NumericVector variance, double tolerance, int max_iterations);
+RcppExport SEXP _bdynets_gmde_inverse_trigamma_cpp(SEXP varianceSEXP, SEXP toleranceSEXP, SEXP max_iterationsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type variance(varianceSEXP);
+    Rcpp::traits::input_parameter< double >::type tolerance(toleranceSEXP);
+    Rcpp::traits::input_parameter< int >::type max_iterations(max_iterationsSEXP);
+    rcpp_result_gen = Rcpp::wrap(gmde_inverse_trigamma_cpp(variance, tolerance, max_iterations));
+    return rcpp_result_gen;
+END_RCPP
+}
+// gmde_discount_guide_cpp
+Rcpp::List gmde_discount_guide_cpp(NumericVector sums, double exposure, NumericMatrix design, NumericMatrix transition, NumericVector initial_mean, NumericMatrix initial_covariance, double baseline, double adjustment, double tolerance, int max_iterations);
+RcppExport SEXP _bdynets_gmde_discount_guide_cpp(SEXP sumsSEXP, SEXP exposureSEXP, SEXP designSEXP, SEXP transitionSEXP, SEXP initial_meanSEXP, SEXP initial_covarianceSEXP, SEXP baselineSEXP, SEXP adjustmentSEXP, SEXP toleranceSEXP, SEXP max_iterationsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type sums(sumsSEXP);
+    Rcpp::traits::input_parameter< double >::type exposure(exposureSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type design(designSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type transition(transitionSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type initial_mean(initial_meanSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type initial_covariance(initial_covarianceSEXP);
+    Rcpp::traits::input_parameter< double >::type baseline(baselineSEXP);
+    Rcpp::traits::input_parameter< double >::type adjustment(adjustmentSEXP);
+    Rcpp::traits::input_parameter< double >::type tolerance(toleranceSEXP);
+    Rcpp::traits::input_parameter< int >::type max_iterations(max_iterationsSEXP);
+    rcpp_result_gen = Rcpp::wrap(gmde_discount_guide_cpp(sums, exposure, design, transition, initial_mean, initial_covariance, baseline, adjustment, tolerance, max_iterations));
+    return rcpp_result_gen;
+END_RCPP
+}
+// gmde_transition_log_density_cpp
+double gmde_transition_log_density_cpp(NumericMatrix state, NumericMatrix transition, NumericVector innovation_covariance);
+RcppExport SEXP _bdynets_gmde_transition_log_density_cpp(SEXP stateSEXP, SEXP transitionSEXP, SEXP innovation_covarianceSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type state(stateSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type transition(transitionSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type innovation_covariance(innovation_covarianceSEXP);
+    rcpp_result_gen = Rcpp::wrap(gmde_transition_log_density_cpp(state, transition, innovation_covariance));
+    return rcpp_result_gen;
+END_RCPP
+}
+// gmde_information_ffbs_cpp
+NumericMatrix gmde_information_ffbs_cpp(NumericMatrix state, NumericMatrix design, NumericVector precision, NumericVector natural, NumericMatrix transition, NumericVector initial_mean, NumericMatrix initial_covariance, NumericVector W, int start, int end, NumericMatrix normals);
+RcppExport SEXP _bdynets_gmde_information_ffbs_cpp(SEXP stateSEXP, SEXP designSEXP, SEXP precisionSEXP, SEXP naturalSEXP, SEXP transitionSEXP, SEXP initial_meanSEXP, SEXP initial_covarianceSEXP, SEXP WSEXP, SEXP startSEXP, SEXP endSEXP, SEXP normalsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type state(stateSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type design(designSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type precision(precisionSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type natural(naturalSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type transition(transitionSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type initial_mean(initial_meanSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type initial_covariance(initial_covarianceSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type W(WSEXP);
+    Rcpp::traits::input_parameter< int >::type start(startSEXP);
+    Rcpp::traits::input_parameter< int >::type end(endSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type normals(normalsSEXP);
+    rcpp_result_gen = Rcpp::wrap(gmde_information_ffbs_cpp(state, design, precision, natural, transition, initial_mean, initial_covariance, W, start, end, normals));
+    return rcpp_result_gen;
+END_RCPP
+}
+// gmde_poisson_block_ratio_cpp
+double gmde_poisson_block_ratio_cpp(NumericVector sums, double N, NumericVector r, NumericVector old_eta, NumericVector new_eta);
+RcppExport SEXP _bdynets_gmde_poisson_block_ratio_cpp(SEXP sumsSEXP, SEXP NSEXP, SEXP rSEXP, SEXP old_etaSEXP, SEXP new_etaSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type sums(sumsSEXP);
+    Rcpp::traits::input_parameter< double >::type N(NSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type r(rSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type old_eta(old_etaSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type new_eta(new_etaSEXP);
+    rcpp_result_gen = Rcpp::wrap(gmde_poisson_block_ratio_cpp(sums, N, r, old_eta, new_eta));
+    return rcpp_result_gen;
+END_RCPP
+}
+// gmde_poisson_emission_cpp
+NumericMatrix gmde_poisson_emission_cpp(NumericMatrix Y, NumericMatrix eta);
+RcppExport SEXP _bdynets_gmde_poisson_emission_cpp(SEXP YSEXP, SEXP etaSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type Y(YSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type eta(etaSEXP);
+    rcpp_result_gen = Rcpp::wrap(gmde_poisson_emission_cpp(Y, eta));
+    return rcpp_result_gen;
+END_RCPP
+}
+// gmde_softmax_loglik_cpp
+double gmde_softmax_loglik_cpp(NumericMatrix field, Rcpp::IntegerVector labels);
+RcppExport SEXP _bdynets_gmde_softmax_loglik_cpp(SEXP fieldSEXP, SEXP labelsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type field(fieldSEXP);
+    Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type labels(labelsSEXP);
+    rcpp_result_gen = Rcpp::wrap(gmde_softmax_loglik_cpp(field, labels));
+    return rcpp_result_gen;
+END_RCPP
+}
+// gmde_raw_laplacian_cpp
+NumericMatrix gmde_raw_laplacian_cpp(NumericMatrix adjacency, NumericMatrix distance, std::string method, double h);
+RcppExport SEXP _bdynets_gmde_raw_laplacian_cpp(SEXP adjacencySEXP, SEXP distanceSEXP, SEXP methodSEXP, SEXP hSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type adjacency(adjacencySEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type distance(distanceSEXP);
+    Rcpp::traits::input_parameter< std::string >::type method(methodSEXP);
+    Rcpp::traits::input_parameter< double >::type h(hSEXP);
+    rcpp_result_gen = Rcpp::wrap(gmde_raw_laplacian_cpp(adjacency, distance, method, h));
+    return rcpp_result_gen;
+END_RCPP
+}
 // poisson_reference_cpp
 Rcpp::List poisson_reference_cpp(Rcpp::NumericMatrix counts, Rcpp::NumericMatrix loadings, Rcpp::NumericMatrix offset, double discount, double initial_mean, double initial_variance, double tolerance, int max_iterations);
 RcppExport SEXP _bdynets_poisson_reference_cpp(SEXP countsSEXP, SEXP loadingsSEXP, SEXP offsetSEXP, SEXP discountSEXP, SEXP initial_meanSEXP, SEXP initial_varianceSEXP, SEXP toleranceSEXP, SEXP max_iterationsSEXP) {
@@ -78,6 +190,14 @@ END_RCPP
 static const R_CallMethodDef CallEntries[] = {
     {"_bdynets_gls_reference_path_native", (DL_FUNC) &_bdynets_gls_reference_path_native, 6},
     {"_bdynets_gls_ffbs_rank1_cpp", (DL_FUNC) &_bdynets_gls_ffbs_rank1_cpp, 4},
+    {"_bdynets_gmde_inverse_trigamma_cpp", (DL_FUNC) &_bdynets_gmde_inverse_trigamma_cpp, 3},
+    {"_bdynets_gmde_discount_guide_cpp", (DL_FUNC) &_bdynets_gmde_discount_guide_cpp, 10},
+    {"_bdynets_gmde_transition_log_density_cpp", (DL_FUNC) &_bdynets_gmde_transition_log_density_cpp, 3},
+    {"_bdynets_gmde_information_ffbs_cpp", (DL_FUNC) &_bdynets_gmde_information_ffbs_cpp, 11},
+    {"_bdynets_gmde_poisson_block_ratio_cpp", (DL_FUNC) &_bdynets_gmde_poisson_block_ratio_cpp, 5},
+    {"_bdynets_gmde_poisson_emission_cpp", (DL_FUNC) &_bdynets_gmde_poisson_emission_cpp, 2},
+    {"_bdynets_gmde_softmax_loglik_cpp", (DL_FUNC) &_bdynets_gmde_softmax_loglik_cpp, 2},
+    {"_bdynets_gmde_raw_laplacian_cpp", (DL_FUNC) &_bdynets_gmde_raw_laplacian_cpp, 4},
     {"_bdynets_poisson_reference_cpp", (DL_FUNC) &_bdynets_poisson_reference_cpp, 8},
     {"_bdynets_ffbs_scalar_cpp", (DL_FUNC) &_bdynets_ffbs_scalar_cpp, 8},
     {NULL, NULL, 0}

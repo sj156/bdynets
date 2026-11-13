@@ -9,6 +9,38 @@
     .Call(`_bdynets_gls_ffbs_rank1_cpp`, response, H, omega, W)
 }
 
+.gmde_inverse_trigamma_cpp <- function(variance, tolerance, max_iterations) {
+    .Call(`_bdynets_gmde_inverse_trigamma_cpp`, variance, tolerance, max_iterations)
+}
+
+.gmde_discount_guide_cpp <- function(sums, exposure, design, transition, initial_mean, initial_covariance, baseline, adjustment, tolerance, max_iterations) {
+    .Call(`_bdynets_gmde_discount_guide_cpp`, sums, exposure, design, transition, initial_mean, initial_covariance, baseline, adjustment, tolerance, max_iterations)
+}
+
+.gmde_transition_log_density_cpp <- function(state, transition, innovation_covariance) {
+    .Call(`_bdynets_gmde_transition_log_density_cpp`, state, transition, innovation_covariance)
+}
+
+.gmde_information_ffbs_cpp <- function(state, design, precision, natural, transition, initial_mean, initial_covariance, W, start, end, normals) {
+    .Call(`_bdynets_gmde_information_ffbs_cpp`, state, design, precision, natural, transition, initial_mean, initial_covariance, W, start, end, normals)
+}
+
+.gmde_poisson_block_ratio_cpp <- function(sums, N, r, old_eta, new_eta) {
+    .Call(`_bdynets_gmde_poisson_block_ratio_cpp`, sums, N, r, old_eta, new_eta)
+}
+
+.gmde_poisson_emission_cpp <- function(Y, eta) {
+    .Call(`_bdynets_gmde_poisson_emission_cpp`, Y, eta)
+}
+
+.gmde_softmax_loglik_cpp <- function(field, labels) {
+    .Call(`_bdynets_gmde_softmax_loglik_cpp`, field, labels)
+}
+
+.gmde_raw_laplacian_cpp <- function(adjacency, distance, method, h) {
+    .Call(`_bdynets_gmde_raw_laplacian_cpp`, adjacency, distance, method, h)
+}
+
 .poisson_reference_cpp <- function(counts, loadings, offset, discount, initial_mean, initial_variance, tolerance, max_iterations) {
     .Call(`_bdynets_poisson_reference_cpp`, counts, loadings, offset, discount, initial_mean, initial_variance, tolerance, max_iterations)
 }

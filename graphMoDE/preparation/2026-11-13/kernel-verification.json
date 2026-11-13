@@ -1,0 +1,12 @@
+{
+  "native_library_compiles": true,
+  "registered_native_calls": ["_bdynets_gls_reference_path_native", "_bdynets_gls_ffbs_rank1_cpp", "_bdynets_gmde_inverse_trigamma_cpp", "_bdynets_gmde_discount_guide_cpp", "_bdynets_gmde_transition_log_density_cpp", "_bdynets_poisson_reference_cpp", "_bdynets_ffbs_scalar_cpp"],
+  "existing_native_entries_preserved": true,
+  "focused_test_groups": 8,
+  "focused_expectations": 26,
+  "independent_R_reference_agreement": true,
+  "existing_scalar_reference_smoke": true,
+  "no_MCMC": true,
+  "no_random_draws": true,
+  "no_package_install": true
+}
