@@ -1,0 +1,129 @@
+{
+  "schema": "graphmode-discount-development-v1",
+  "role": "Nonformal development pilot of current Section 4.1 on preserved D01/D02 inputs",
+  "datasets": [
+    "D01",
+    "D02"
+  ],
+  "methods": [
+    "Exp-W",
+    "SE-W",
+    "C"
+  ],
+  "scientific_config": {
+    "K": 10,
+    "initial_mean": [
+      3.2188758248682006,
+      0,
+      0
+    ],
+    "initial_covariance_diagonal": [
+      1,
+      0.5,
+      0.5
+    ],
+    "discount_prior": [
+      49,
+      1
+    ],
+    "adjustment": 0.6931471805599453,
+    "nu": 3,
+    "tau": 1
+  },
+  "computation": {
+    "rho": 1,
+    "block_size": 24,
+    "discount_step": 0.4,
+    "kappa_step": 0.25,
+    "h_step": 0.15,
+    "ess_limit": 10000
+  },
+  "smoke": {
+    "iterations": 12,
+    "warmup": 6,
+    "initial_groups": [
+      3
+    ],
+    "initial_h": [
+      1
+    ],
+    "log_kappa_offset": [
+      0
+    ],
+    "seeds": [
+      2036111301,
+      2036111302,
+      2036111303,
+      2036111304,
+      2036111305,
+      2036111306
+    ]
+  },
+  "development": {
+    "iterations": 200,
+    "warmup": 100,
+    "initial_groups": [
+      1,
+      3,
+      7,
+      10
+    ],
+    "initial_h": [
+      0.5,
+      1,
+      1.5,
+      2
+    ],
+    "log_kappa_offset": [
+      -0.25,
+      0,
+      0.25,
+      0.5
+    ],
+    "seeds": [
+      2036111401,
+      2036111402,
+      2036111403,
+      2036111404,
+      2036111405,
+      2036111406,
+      2036111407,
+      2036111408,
+      2036111409,
+      2036111410,
+      2036111411,
+      2036111412,
+      2036111413,
+      2036111414,
+      2036111415,
+      2036111416,
+      2036111417,
+      2036111418,
+      2036111419,
+      2036111420,
+      2036111421,
+      2036111422,
+      2036111423,
+      2036111424
+    ]
+  },
+  "launch_gate": {
+    "all_smoke_tasks_complete": true,
+    "maximum_projected_serial_seconds": 7200,
+    "projection_multiplier": 2,
+    "development_sweeps": 4800,
+    "workers": 2
+  },
+  "diagnostic_thresholds": {
+    "rhat_less_than": 1.01,
+    "bulk_ess_at_least": 400,
+    "tail_ess_at_least": 400,
+    "constant_chains": "fail; retain in report"
+  },
+  "stopping_policy": "Stop an affected task on nonfinite values, nonpositive factors, edge-weight underflow or invalid exact PG shapes; retain all failures. No retry, adaptation, threshold relaxation or old-checkpoint resume. Continue independent registered tasks.",
+  "sensitivity_status": "Beta(99,1) reserved for a later sensitivity analysis, not run in this baseline pilot.",
+  "prediction_status": "This pilot evaluates computation and training fit; no held-out predictive comparison until a separate predictive implementation is verified.",
+  "graph_policy": "Raw full-rank covariance, all K fields, no jitter, no trace normalization, no edge normalization, no clipping or spectral truncation.",
+  "initialization_policy": "Training-only harmonic feature clustering; occupied starting counts 1/3/7/10 in development; no true labels, future counts, historical fit or checkpoints.",
+  "configuration_rationale": "rho=1 uses exact integer PG shapes at the smallest initial size. Blocks of 24 observations cover one seasonal cycle and condition on both boundaries. Computational choices are explicit development settings; no outcome-dependent selection."
+}

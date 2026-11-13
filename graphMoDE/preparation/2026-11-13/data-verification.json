@@ -1,0 +1,49 @@
+{
+  "source_role": "historical input data only; no fit or checkpoint reuse",
+  "manuscript_basis": "Section 4.1, 2026-11-13",
+  "datasets": {
+    "D01": {
+      "files": {
+        "blind.rds": "0ba7d51b4de1eee6ad8fb5c33484f3e648da2ba8a78ee0f35f08cba342c24d76",
+        "design.rds": "44ff473fe64bec22980d8b98453445b84548b44b5b30069754ee4e25cce833cf",
+        "evaluation-only.rds": "26c96c7a2ccbbe6a0ba98395321c5080fc24cba477a889b7d49451d1258f96cc"
+      },
+      "input_object_sha256": "f593d17a979cac8e188916b27795afea5aee06b14957a364005e82b41c92891e",
+      "n": 121,
+      "edges": 120,
+      "train": 168,
+      "test": 48,
+      "group_sizes": [30, 20, 21, 20, 30],
+      "edge_distance_range": [0.05193277396575624, 1.1773787242840115],
+      "edge_distance_median": 0.31201551285316453,
+      "maximum_profile_error": 1.4210854715202004e-14,
+      "passed": true
+    },
+    "D02": {
+      "files": {
+        "blind.rds": "a235b436f3d9374f75980da3e917ae1f94c08a1df87e7fb3f47cee3c20ca29b4",
+        "design.rds": "a9f415a4a339061dade520574781c0c00a647252c7a6d7968ad7acab4f8edc84",
+        "evaluation-only.rds": "567d1fb53a40d574194266468997e083f3a448fda42f3541482213c4f50c925e"
+      },
+      "input_object_sha256": "36a4e456b7472126b3ae080f741f139923c71ecdf8696baff413e6fc0fba47f5",
+      "n": 121,
+      "edges": 120,
+      "train": 168,
+      "test": 48,
+      "group_sizes": [30, 20, 21, 20, 30],
+      "edge_distance_range": [0.067426383536066226, 1.1773787242840115],
+      "edge_distance_median": 0.30171428120865018,
+      "maximum_profile_error": 1.4210854715202004e-14,
+      "passed": true
+    }
+  },
+  "n": 121,
+  "K": 10,
+  "p": 3,
+  "amplitude": 0.050000000000000003,
+  "period": 24,
+  "cycle_mean": 25,
+  "no_data_regeneration": true,
+  "no_sampling": true,
+  "original_files_unchanged": true
+}

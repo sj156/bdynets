@@ -1,0 +1,21 @@
+{
+  "upstream_repository": "sj156/bdynets",
+  "upstream_commit": "3f2df3907cd3898f0d657ace862a34ea98e31f9d",
+  "branch": "codex/graphmode-simulation-preparation",
+  "new_working_source_sha256": {
+    "bdynets/NAMESPACE": "f32c920047e125f0a816d80e21c8031def397a7b057b65acfbf2d71245fbbdff",
+    "bdynets/man/gmde_transition_log_density.Rd": "96eef2c7a6146e6265b7a5db1334f3b317f4767cb263d81745fb70f699201cbf",
+    "bdynets/man/gmde_discount_guide.Rd": "fe0d7bdc5ace57c0c2c47186db8a68872ab27bd7d66a5b2400986ff2e1dac234",
+    "bdynets/tests/testthat/test-gmde-discount.R": "5811bbc2324609791a7edbe930d78dbae35b5a801355cba788066a242715c2dc",
+    "bdynets/R/RcppExports.R": "e7c6072200722baa7c0aa1651d178ed52b395078c909d586853a8bcb21278451",
+    "bdynets/R/gmde-discount.R": "ee65e9b1c5af205f09c3c93313c72c13ce3ea618b699db656b58e295bd257999",
+    "bdynets/src/gmde-discount.cpp": "154673323b555ceb49069075bdbb606d183c1f9f716b9e06a9536a1fba075910",
+    "bdynets/src/RcppExports.cpp": "194b7fb3c2a8169e8b6a6a4d4400b3a95d82852f0ed2a125821d54fc1895be85",
+    "graphMoDE/scripts/evaluate-section41-priors.R": "6a6669729284e1337b8057f0f02099c7e01a688efd1927c03eed9e8e4fff7f6a",
+    "graphMoDE/scripts/check-section41-inputs.R": "6793603c88e917c100716b29870419a2cb52684b289f8da3f636cc5c8044a136"
+  },
+  "independent_geometry_calibration_max_difference": 1.5201173653167643e-12,
+  "source_policy": "Shared package integration candidate. Old local working trees and historical results are unchanged.",
+  "code_freeze_for_run": false,
+  "simulation_started": false
+}

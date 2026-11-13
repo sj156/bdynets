@@ -1,0 +1,129 @@
+{
+  "schema": "graphmode-section41-preparation-v1",
+  "status": "scientific_inputs_approved; implementation_validation_before_launch",
+  "launch_enabled": false,
+  "upstream_commit": "3f2df3907cd3898f0d657ace862a34ea98e31f9d",
+  "manuscript_sha256": {
+    "graphMoDE-main.tex": "33db146434cd4c104101cfaeb85b4fe53bd8680165a2826b2cf07fc43949a0c4",
+    "graphMoDE-model.tex": "8fb33d8a27cf09d17e535467f587ac2757137575d20568a8b2f58d8faaa3cd65",
+    "graphMoDE-computation.tex": "5e8f9209eab8b441e532567c430da7477d767b914e3f586c52ea1f003f6d3143",
+    "graphMoDE-scale-updates.tex": "2dcba2f6341a9dc1a4419417709e69e6f347564bdf6f4760218f1baacfc70ad5",
+    "graphMoDE-Appendix.tex": "52899939776e76348e4317da627a065fde762ecd8a79e0a3ae3ed8f39f409388",
+    "graphMoDE-experiments.tex": "a6a28d5122eb35b04dfca4c5c06c7755c77ffbcd0784f978754a8485634f9325",
+    "graphMoDE-main.pdf": "224c1d395d45511fee67e0fda0d2af56f78b9adf2c4960c1b102d90d22b3cea1"
+  },
+  "data": {
+    "mode": "reuse_verified_saved_inputs",
+    "datasets": [
+      "D01",
+      "D02"
+    ],
+    "n": 121,
+    "edges": 120,
+    "true_groups": 5,
+    "group_sizes": [
+      30,
+      20,
+      21,
+      20,
+      30
+    ],
+    "boundary_gap_factors": [
+      3,
+      4,
+      3,
+      2
+    ],
+    "amplitude": 0.05,
+    "period": 24,
+    "cycle_mean": 25,
+    "train": [
+      1,
+      168
+    ],
+    "test": [
+      169,
+      216
+    ],
+    "distance_unit": "unchanged synthetic arc-length unit from the saved design",
+    "new_data_generation": false,
+    "old_fits_or_states_reused": false
+  },
+  "model": {
+    "family": "poisson",
+    "expert": "dynamic",
+    "K": 10,
+    "p": 3,
+    "design": [
+      "intercept",
+      "sin(2*pi*t/24)",
+      "cos(2*pi*t/24)"
+    ],
+    "transition": "identity",
+    "gate": "softmax",
+    "gate_fallback": "robust-max only after an explicit reviewed decision",
+    "score_prior": "K independent full-rank zero-mean GP columns",
+    "nu": 3,
+    "tau": 1,
+    "rank": 121,
+    "edge_normalization": "none",
+    "covariance_trace_normalization": "none",
+    "initial_covariance_diagonal": [
+      1,
+      0.5,
+      0.5
+    ],
+    "initial_mean": [
+      3.2188758248682006,
+      0,
+      0
+    ],
+    "baseline_discount_prior": {
+      "family": "beta",
+      "shape1": 49,
+      "shape2": 1
+    },
+    "poisson_adjustment_c": 0.6931471805599453,
+    "h_prior": {
+      "family": "gamma",
+      "shape": 0.5,
+      "rate": 0.5
+    },
+    "log_kappa_prior_sd": 1,
+    "log_kappa_center_source": "geometry-calibration.csv",
+    "initial_mean_information": "Design-informed synthetic population level, not fitted using labels or test data."
+  },
+  "computation": {
+    "state_proposal_protocol": null,
+    "rho": null,
+    "PG_backend": "candidate: exact integer-shape Devroye",
+    "baseline_logit_proposal_sd": null,
+    "log_kappa_proposal_sd": 0.25,
+    "log_h_proposal_sd": 0.15,
+    "chain_count": null,
+    "iterations": null,
+    "warmup": null,
+    "seeds": null,
+    "output_directory": null,
+    "historical_budget_reference_only": {
+      "chains": 4,
+      "iterations": 4000,
+      "warmup": 2000
+    },
+    "graph_numerical_underflow_policy": null
+  },
+  "implementation": {
+    "deterministic_guide": "implemented; fixed-input verification recorded in the study",
+    "transition_density": "implemented; fixed-input verification recorded in the study",
+    "complete_sampler": "implemented; fixed-input verification recorded in the study",
+    "three_state_cpp_FFBS": "implemented; fixed-input verification recorded in the study",
+    "state_MH": "implemented; fixed-input verification recorded in the study",
+    "baseline_MH": "implemented; fixed-input verification recorded in the study",
+    "allocation_guide_replay_MH": "implemented; fixed-input verification recorded in the study",
+    "independent_field_ESS": "implemented; fixed-input verification recorded in the study",
+    "raw_graph_parameter_MH": "implemented; fixed-input verification recorded in the study",
+    "forecast": "pending"
+  },
+  "scientific_inputs_pending": [],
+  "calibration_policy": "User accepted the discussed baseline. New development runs are governed by studies/section41-discount-20261113/plan.json; no formal simulation."
+}
