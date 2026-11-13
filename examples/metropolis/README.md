@@ -1,23 +1,37 @@
-# metropolis
+# City-traffic-M source method
 
-Yekaterinburg on 2024-10-18; 720 saved segments, 96 frames, volume, speed, congestion and saved summary series.
+The source is City Traffic Benchmarks v4, Yekaterinburg, 2024-10-18. The supplied 720-road register and fifteen-minute source method are retained. The historical selection used a 34 × 22 midpoint grid, the highest-volume road in each of 497 occupied cells and 223 remaining maximum-volume choices. The source date was the highest-total-volume complete day for this register. The conversion reads the supplied register and does not select new roads or dates.
 
-metropolis-traffic-report.Rmd is the executable static report; its self-contained `metropolis-traffic-report.html`
-is beside it. prepare.R maps data/source.rds to data/input.rds without downloading
-or resampling data. The report includes the executed preparation, input fields,
-statistics, static maps, interpretation and source identities.
+`read_parquet.py` reads the native columns and full-history speed calibration. It uses the source map's pandas quarter means and interpolation, then NumPy summaries before per-road rounding. Those supplied summaries are retained alongside unrounded native observations. `metropolis_input()` constructs standard flow, speed/index measurements, trends and native masks from these source quantities. The complete day follows the source fill rule; a short excerpt without day-boundary context does not invent unsupported boundary observations.
 
-run.R installs ../../bdynets into a temporary library and renders this report in
-a fresh R session. The default time is 08:00; another supplied HH:MM is an optional
-argument. A second --export argument requests the shared PNG/PDF and data export
-in a new output directory. Existing export directories are refused. No common
-runner or preinstalled trafficmap package is used.
+```sh
+Rscript prepare.R --raw original/city-traffic-benchmarks rebuilt
+```
 
-R 4.1 or later and the imports in ../../bdynets/DESCRIPTION are required, together
-with knitr, rmarkdown and Pandoc. VS Code Code Runner executes the complete run.R.
-Normal rendering regenerates only data/input.rds and the named HTML. Temporary
-libraries, intermediate documents and figures are removed.
+Python 3, NumPy, pandas and PyArrow are required for both the Parquet teaching import and the complete original-file reconstruction. Normal rendering reads the included Parquet projections, so it does not require the large original archives. The raw reader checks both complete source clocks and the exact selected day. The lesson uses the existing two teaching IDs and declared six-slot excerpt with its original full-reference calibration; complete reconstruction keeps all 720 supplied IDs. The physical volume unit and timezone remain unspecified. The derived index retains the source speed P90 and frame-volume P95 formula, without introducing a new threshold.
 
-The report acquires OpenStreetMap context from its input coordinates through
-traffic_basemap. No background geometry is bundled. Initial acquisition needs
-network access; data/basemap-cache supports later reuse.
+`data/source.rds` preserves native five-minute values, unrounded calibration and source regional summaries. `data/input.rds` retains the original fifteen-minute road values and all original trend values exactly.
+
+## Original-format source lesson
+
+The report begins with `data/raw` source files and calls the same original-file reader used by the complete reconstruction command above. `data/raw/source-manifest.csv` identifies the original files, projected columns or selected rows, reference inputs and checksums. The report displays the imported native fields before standardization, writes the intermediate data to a new temporary destination, reads it back, and compares prepared source-record values with the supplied day. The complete source and prepared files remain unchanged.
+
+## Fields and conversion in the report
+
+The [report](metropolis-traffic-report-demo.html) presents the source fields, an editable configuration, real original-format rows, the intermediate representation, canonical tables and the `traffic_input()` constructor. It includes an invalid-input example and correction, standard output rows, source coverage and validation results, and prepared-data export with readback.
+
+The renamed-column demonstration identifies source roles explicitly. The source adapters remain in `prepare.R`; the package consumes the resulting standard tables. Small conversion examples are compared with the supplied day-level `data/input.rds`, which supplies the map. Rendering keeps source data unchanged and writes reconstruction and export demonstrations to temporary directories.
+
+## Reports and prepared output
+
+`run.R` renders `metropolis-traffic-report-demo.html` from `metropolis-traffic-report-demo.Rmd`. VS Code **Run Code** on `run.R` invokes the same entry point as `Rscript run.R`. Each case installs the bundled package into a temporary library for that R session. Dependencies are R, the package imports, `rmarkdown`, `knitr` and Pandoc.
+
+`Rscript run.R --offline` performs the source conversion checks and data plots without background streets. Street rendering first reuses matching verified files in the visible `data/basemap-cache`. New or missing requests obtain OpenStreetMap context from the input coordinates and cache the result. The rendered report embeds its figures.
+
+`Rscript run.R 17:00` selects an existing frame for the map, without changing the data interval. `Rscript run.R 08:00 --export` also creates the source-method PNG/PDF figures and selected tables in fresh directories under `output`.
+
+`Rscript prepare.R prepared` exports the standard RDS, readable tables, ordered geometry, dictionary, validation, metadata, actual source identities and checksums into a new directory. Existing destinations, source files and protected aliases are rejected. Source data and previous prepared objects are not replaced by the preparation function.
+
+`data/input.rds` contains the standard plotting object. `data/data-dictionary.csv` describes all its fields; `validation.csv` records counts and checks. `source-files.csv` identifies its actual immediate preparation inputs; `original-sources.csv` identifies original archives separately. `metadata.json` records units, timing and source metadata. The reports show the raw fields, their conversion, actual standard rows, concise component tables and verified CSV/RDS readback.
+
+`Rscript tests/validation.R .` checks the original case method and standard values, relevant invalid inputs and source protection in temporary directories. The [common format](../../bdynets/inst/INPUT-FORMAT.md) defines how the plotting interface reads the prepared tables; [source records](../DATA-SOURCES.md) state archive access and known sharing conditions.

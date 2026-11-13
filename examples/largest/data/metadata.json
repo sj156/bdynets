@@ -1,0 +1,51 @@
+{
+  "schema": "bdynets-traffic-input-v1",
+  "crs": "EPSG:4326",
+  "timezone": null,
+  "nodes": null,
+  "od": null,
+  "od_unit": null,
+  "od_time_kind": null,
+  "od_interval_seconds": null,
+  "times": [1781568000, 1781571600, 1781575200, 1781578800, 1781582400, 1781586000, 1781589600, 1781593200, 1781596800, 1781600400, 1781604000, 1781607600, 1781611200, 1781614800, 1781618400, 1781622000, 1781625600, 1781629200, 1781632800, 1781636400, 1781640000, 1781643600, 1781647200, 1781650800],
+  "time_labels": ["2026-06-16 00:00", "2026-06-16 01:00", "2026-06-16 02:00", "2026-06-16 03:00", "2026-06-16 04:00", "2026-06-16 05:00", "2026-06-16 06:00", "2026-06-16 07:00", "2026-06-16 08:00", "2026-06-16 09:00", "2026-06-16 10:00", "2026-06-16 11:00", "2026-06-16 12:00", "2026-06-16 13:00", "2026-06-16 14:00", "2026-06-16 15:00", "2026-06-16 16:00", "2026-06-16 17:00", "2026-06-16 18:00", "2026-06-16 19:00", "2026-06-16 20:00", "2026-06-16 21:00", "2026-06-16 22:00", "2026-06-16 23:00"],
+  "interval_seconds": [3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600],
+  "unit": "vehicles/hour",
+  "measurements": null,
+  "metric_info": [],
+  "trends": null,
+  "provenance": {
+    "source_dataset": "PeMS and CHP",
+    "day": "2026-06-16",
+    "clock": "Supplied source wall clock; numeric encoding does not establish a UTC offset.",
+    "source_position_hours": 98688,
+    "d04_source_records": 659808,
+    "d04_retained_records": 658944,
+    "d04_count_before": 161819951,
+    "d04_count_after": 161819951,
+    "excluded_d04_stations": ["400665", "406767", "418817"],
+    "source_incidents": 1023,
+    "included_incidents": 1019,
+    "outside_scope": 4,
+    "missing_link_hours": 1344,
+    "measurement": "Original LA station-position means and D04 sums of twelve native five-minute counts; available endpoint station means for display links.",
+    "preparation_sources": [
+      {
+        "file": "source.rds",
+        "bytes": 1000556,
+        "sha256": "f0234c4ca823ea699b65d27047d33604ed46d58ff1d2923b0814eeac65b59368"
+      }
+    ]
+  },
+  "title": "PeMS traffic flow and reported events | 2026-06-16",
+  "description": "",
+  "preparation": [],
+  "notes": [],
+  "basemap": null,
+  "csv": {
+    "missing": "\\N",
+    "timestamp": "POSIXct times are Unix seconds; numeric times retain the declared source clock.",
+    "identifiers": "Read identifier fields as character.",
+    "data": "input.rds preserves original types, geometry, timezones and nested provenance."
+  }
+}

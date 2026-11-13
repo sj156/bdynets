@@ -1,0 +1,2 @@
+file,provider,role,bytes,sha256
+202601-divvy-tripdata.csv,Divvy January 2026 system data,one-day extract source,27856985,45727d18d0bd45f794651c8abccaf039483e540da8fcf8b1fcc7df9378e3b7e0

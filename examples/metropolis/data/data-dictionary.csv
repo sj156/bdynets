@@ -1,0 +1,27 @@
+"table","field","type","meaning","unit","required"
+"roads","id","integer","Zero-based static Parquet row ID.","",FALSE
+"roads","length","double","Source road length in metres, rounded to one decimal.","",FALSE
+"roads","source_region","integer","Source region_id category.","",FALSE
+"roads","category","integer","Source category code.","",FALSE
+"roads","edgeType","integer","Source edge_type code.","",FALSE
+"roads","speedLimitCode","integer","Source speed_limit category.","",FALSE
+"roads","speedLimit","character","Source speed-limit category decoded using the source map lookup.","",FALSE
+"roads","freeFlowSpeed","double","Full-history nonzero speed P90, rounded for display; unrounded calibration is retained in provenance.","",FALSE
+"roads","maxVolume","double","Full-history maximum source volume, rounded to one decimal.","",FALSE
+"roads","road_id","character","Stable road identifier joining roads, flow and measurements.","",TRUE
+"flow","road_id","character","Stable road identifier joining roads, flow and measurements.","",TRUE
+"flow","time","double","Observation time. POSIXct values are Unix seconds in CSV; numeric values retain the supplied source clock.","seconds",TRUE
+"flow","flow","double","Primary value in the declared unit. An observed zero and a missing value have separate meanings.","source volume",TRUE
+"measurements","road_id","character","Stable road identifier joining roads, flow and measurements.","",TRUE
+"measurements","time","double","Observation time. POSIXct values are Unix seconds in CSV; numeric values retain the supplied source clock.","seconds",TRUE
+"measurements","metric","character","Measurement key joining metric_info.","",TRUE
+"measurements","value","double","Numeric measurement in the unit declared for its metric.","",TRUE
+"trends","time","double","Observation time. POSIXct values are Unix seconds in CSV; numeric values retain the supplied source clock.","seconds",FALSE
+"trends","metric","character","Measurement key joining metric_info.","",FALSE
+"trends","value","double","Numeric measurement in the unit declared for its metric.","",FALSE
+"trends","definition","character","Definition of this derived source summary.","",FALSE
+"trends","label","character","Display label for the summary metric.","",FALSE
+"road-vertices","road_id","character","Stable road identifier joining roads, flow and measurements.","",TRUE
+"road-vertices","vertex","integer","One-based vertex order within the road, preserving its direction.","",TRUE
+"road-vertices","longitude","double","WGS84 longitude, degrees east.","degrees",TRUE
+"road-vertices","latitude","double","WGS84 latitude, degrees north.","degrees",TRUE

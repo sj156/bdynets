@@ -1,0 +1,2 @@
+"file","role","source_file","selection","bytes","sha256","source_sha256"
+"202601-trip-excerpt.csv","Original trip rows","202601-divvy-tripdata.csv","All thirteen original columns; all 1,950 January 1 departures and one real January 2 row to demonstrate date filtering. Station-name trailing spaces are retained exactly as in the monthly archive.",398791,"7f5d85ad95f0d7f2635422d3cc615669e1b3e5dbd81e44943c099fc771867c08","45727d18d0bd45f794651c8abccaf039483e540da8fcf8b1fcc7df9378e3b7e0"

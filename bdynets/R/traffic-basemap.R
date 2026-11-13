@@ -31,8 +31,98 @@
   list(c(west=xr[1]-.045*diff(xr),east=xr[2]+.045*diff(xr),south=yr[1]-.045*diff(yr),north=yr[2]+.045*diff(yr)))
 }
 .bm_hash <- function(x) {
+  # XDR v2 has a fixed representation across supported R releases. Its
+  # writer-version field describes the serializer, rather than the content.
+  bytes<-serialize(x,NULL,version=2)
+  bytes[7:10]<-raw(4L)
+  .bm_md5(bytes)
+}
+.bm_md5 <- function(bytes) {
   p<-tempfile("basemap-identity-");on.exit(unlink(p),add=TRUE)
-  writeBin(serialize(x,NULL,version=3),p);unname(tools::md5sum(p))
+  writeBin(bytes,p);unname(tools::md5sum(p))
+}
+.bm_legacy_hash <- function(x,info) {
+  # v1 hashed the complete XDR v3 stream, including the R writer version
+  # and native-encoding header. Reconstruct those fields from the RDS file
+  # before comparing its checksum; never accept unverified legacy geometry.
+  .tm_assert(identical(info$version,3L)&&identical(info$format,"xdr")&&
+    is.character(info$native_encoding)&&length(info$native_encoding)==1L,
+    "Invalid basemap cache; unsupported legacy serialization")
+  version<-as.integer(strsplit(as.character(info$writer_version),".",fixed=TRUE)[[1]])
+  .tm_assert(length(version)==3L&&!anyNA(version),"Invalid basemap cache; missing legacy writer version")
+  bytes<-serialize(x,NULL,version=3)
+  bytes[7:10]<-writeBin(version[1]*65536L+version[2]*256L+version[3],raw(),size=4,endian="big")
+  n<-readBin(bytes[15:18],"integer",n=1L,size=4,endian="big")
+  encoding<-charToRaw(info$native_encoding)
+  bytes<-c(bytes[1:14],writeBin(length(encoding),raw(),size=4,endian="big"),
+    encoding,bytes[seq.int(19L+n,length(bytes))])
+  .bm_md5(bytes)
+}
+.bm_cache_key <- function(bounds,selector) {
+  .bm_hash(list(schema=2L,bounds=bounds,selector=selector))
+}
+.bm_cache_validate <- function(cached,path) {
+  invalid<-"Invalid basemap cache; refresh it rather than using altered geometry"
+  .tm_assert(is.list(cached)&&is.character(cached$schema)&&length(cached$schema)==1L&&
+    cached$schema%in%c("trafficmap-basemap-cache-v1","trafficmap-basemap-cache-v2")&&
+    is.numeric(cached$bounds)&&length(cached$bounds)==4L&&all(is.finite(cached$bounds))&&
+    is.character(cached$selector)&&length(cached$selector)==1L&&!is.na(cached$selector)&&
+    is.character(cached$checksum)&&length(cached$checksum)==1L&&!is.na(cached$checksum),invalid)
+  expected<-if(identical(cached$schema,"trafficmap-basemap-cache-v1")) {
+    .bm_legacy_hash(cached$basemap,infoRDS(path))
+  } else {
+    .tm_assert(identical(cached$checksum_format,"md5-xdr-v2-without-writer-v1"),invalid)
+    .bm_hash(cached$basemap)
+  }
+  .tm_assert(identical(cached$checksum,expected),invalid)
+  .tm_basemap(cached$basemap)
+  cached
+}
+.bm_cache_read <- function(path) {
+  cached<-tryCatch(readRDS(path),error=function(e)stop("Invalid basemap cache; unreadable RDS",call.=FALSE))
+  .bm_cache_validate(cached,path)
+}
+.bm_cache_find <- function(path,cache_dir,bounds,selector) {
+  if(file.exists(path)) {
+    cached<-.bm_cache_read(path)
+    .tm_assert(identical(cached$bounds,bounds)&&identical(cached$selector,selector),
+      "Invalid basemap cache; request metadata does not match")
+    return(cached)
+  }
+  # Old filenames depend on the R writer. Search metadata, then verify the
+  # original checksum using that file's writer, without changing the cache.
+  files<-list.files(cache_dir,pattern="^osm-[[:xdigit:]]{32}[.]rds$",full.names=TRUE)
+  for(candidate in files) {
+    cached<-tryCatch(readRDS(candidate),error=function(e)NULL)
+    if(is.list(cached)&&identical(cached$bounds,bounds)&&identical(cached$selector,selector))
+      return(.bm_cache_validate(cached,candidate))
+  }
+  NULL
+}
+.bm_cache_save <- function(cached,cache_dir) {
+  path<-file.path(cache_dir,paste0("osm-",.bm_cache_key(cached$bounds,cached$selector),".rds"))
+  cached$schema<-"trafficmap-basemap-cache-v2"
+  cached$checksum_format<-"md5-xdr-v2-without-writer-v1"
+  cached$checksum<-.bm_hash(cached$basemap)
+  dir.create(cache_dir,recursive=TRUE,showWarnings=FALSE)
+  .tm_assert(dir.exists(cache_dir),"Basemap cache directory is unavailable")
+  temporary<-tempfile("basemap-cache-",tmpdir=cache_dir);on.exit(unlink(temporary),add=TRUE)
+  saveRDS(cached,temporary,compress="xz",version=2)
+  .tm_assert(file.rename(temporary,path),"Unable to save basemap cache")
+  path
+}
+.bm_migrate_cache <- function(path,cache_dir=dirname(path)) {
+  # Explicit migration leaves the source file and every basemap field intact.
+  cached<-.bm_cache_read(path)
+  target<-file.path(cache_dir,paste0("osm-",.bm_cache_key(cached$bounds,cached$selector),".rds"))
+  if(file.exists(target)) {
+    existing<-.bm_cache_read(target)
+    .tm_assert(identical(existing$bounds,cached$bounds)&&identical(existing$selector,cached$selector)&&
+      identical(existing$basemap,cached$basemap)&&identical(existing$query,cached$query),
+      "Invalid basemap cache; migration target contains different content")
+    return(target)
+  }
+  .bm_cache_save(cached,cache_dir)
 }
 .bm_detail <- function(bounds,road_classes,detail,view_size) {
   .tm_assert(is.numeric(bounds)&&length(bounds)==4L&&all(is.finite(bounds))&&bounds[1]<bounds[2]&&bounds[3]<bounds[4]&&all(abs(bounds[1:2])<=180)&&all(abs(bounds[3:4])<=85.0511),"Bounds must be west,east,south,north within longitude/latitude limits")
@@ -91,13 +181,11 @@
   bounds<-as.numeric(bounds);level<-.bm_detail(bounds,road_classes,detail,view_size)
   query<-.bm_query(bounds,timeout,level$classes)
   selector<-if(identical(level$filter,'["highway"]'))"osm-highway-skel-geom-v1" else paste0("osm-scale-highway-v1:",level$filter)
-  key<-.bm_hash(list(schema=1L,bounds=bounds,selector=selector))
+  key<-.bm_cache_key(bounds,selector)
   path<-file.path(cache_dir,paste0("osm-",key,".rds"))
-  if(file.exists(path)&&!refresh) {
-    cached<-readRDS(path)
-    .tm_assert(is.list(cached)&&identical(cached$schema,"trafficmap-basemap-cache-v1")&&identical(cached$bounds,bounds)&&identical(cached$selector,selector)&&identical(cached$checksum,.bm_hash(cached$basemap)),"Invalid basemap cache; refresh it rather than using altered geometry")
-    .tm_basemap(cached$basemap)
-    return(cached$basemap)
+  if(!refresh) {
+    cached<-.bm_cache_find(path,cache_dir,bounds,selector)
+    if(!is.null(cached))return(cached$basemap)
   }
   .tm_assert(!offline,"No matching basemap cache; initial acquisition needs a network connection")
   failures<-character();answer<-NULL
@@ -122,11 +210,7 @@
       retrieved_utc=format(Sys.time(),"%Y-%m-%dT%H:%M:%SZ",tz="UTC"),osm_base=answer$data$osm3s$timestamp_osm_base,
       response_md5=answer$md5,ways=length(features),cache_file=basename(path)))
   .tm_basemap(base)
-  dir.create(cache_dir,recursive=TRUE,showWarnings=FALSE)
-  .tm_assert(dir.exists(cache_dir),"Basemap cache directory is unavailable")
-  temporary<-tempfile("basemap-cache-",tmpdir=cache_dir);on.exit(unlink(temporary),add=TRUE)
-  saveRDS(list(schema="trafficmap-basemap-cache-v1",bounds=bounds,selector=selector,query=query,basemap=base,checksum=.bm_hash(base)),temporary,compress="xz")
-  .tm_assert(file.rename(temporary,path),"Unable to save basemap cache")
+  .bm_cache_save(list(bounds=bounds,selector=selector,query=query,basemap=base),cache_dir)
   base
 }
 

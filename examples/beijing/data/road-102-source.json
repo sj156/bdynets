@@ -1,0 +1,15 @@
+{
+  "minutes": [
+    {"day_no": 10, "timestamp_in_min": 0, "link_id_from_to": "27->6632", "link_volume_in_veh_per_hour_for_all_lanes": 60.0},
+    {"day_no": 10, "timestamp_in_min": 1, "link_id_from_to": "27->6632", "link_volume_in_veh_per_hour_for_all_lanes": 60.0},
+    {"day_no": 10, "timestamp_in_min": 2, "link_id_from_to": "27->6632", "link_volume_in_veh_per_hour_for_all_lanes": 0.0},
+    {"day_no": 10, "timestamp_in_min": 3, "link_id_from_to": "27->6632", "link_volume_in_veh_per_hour_for_all_lanes": 0.0},
+    {"day_no": 10, "timestamp_in_min": 4, "link_id_from_to": "27->6632", "link_volume_in_veh_per_hour_for_all_lanes": 0.0},
+    {"day_no": 10, "timestamp_in_min": 5, "link_id_from_to": "27->6632", "link_volume_in_veh_per_hour_for_all_lanes": 0.0},
+    {"day_no": 10, "timestamp_in_min": 6, "link_id_from_to": "27->6632", "link_volume_in_veh_per_hour_for_all_lanes": 0.0},
+    {"day_no": 10, "timestamp_in_min": 7, "link_id_from_to": "27->6632", "link_volume_in_veh_per_hour_for_all_lanes": 0.0},
+    {"day_no": 10, "timestamp_in_min": 8, "link_id_from_to": "27->6632", "link_volume_in_veh_per_hour_for_all_lanes": 0.0},
+    {"day_no": 10, "timestamp_in_min": 9, "link_id_from_to": "27->6632", "link_volume_in_veh_per_hour_for_all_lanes": 0.0}
+  ],
+  "network": {"type": "FeatureCollection", "features": [{"type": "Feature", "geometry": {"type": "LineString", "coordinates": [[116.5505624, 39.8482014], [116.5495799, 39.8477978]]}, "properties": {"edge_index": 102, "edge_id": "27->6632", "from_node_id": 27, "to_node_id": 6632, "length_km": 0.0953, "lanes": 9, "speed_limit": 10.0, "link_type_name": "小区引线"}}]}
+}

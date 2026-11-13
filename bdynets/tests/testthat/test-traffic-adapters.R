@@ -82,9 +82,10 @@ test_that('canonical OD rejects invalid declared times and node sizes', {
  z<-od_fixture();z$nodes$member_weight<-c(-1,1)
  expect_error(traffic_od_data(z$nodes,z$flows),'sizes')
 })
-test_that('frozen reference bodies match recorded original AST fingerprints', {
+# OD layers are clipped to the plot panel; the aggregation reference is unchanged.
+test_that('reference bodies match recorded implementation fingerprints', {
  fingerprint<-function(f) {p<-tempfile();on.exit(unlink(p));writeLines(deparse(body(f),width.cutoff=500L),p);unname(tools::md5sum(p))}
- expect_identical(fingerprint(bdynets:::.tm_od_map_reference),'be8a4747539389b9656bfb2066cf4e95')
+ expect_identical(fingerprint(bdynets:::.tm_od_map_reference),'cededa227e43611a132fe866531b15ad')
  expect_identical(fingerprint(bdynets:::.tm_aggregate_od_reference),'37a2460150a0ae6d80387764378e240c')
 })
 test_that('canonical OD stores one shared schema independent of source names', {

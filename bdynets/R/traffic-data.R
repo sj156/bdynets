@@ -337,10 +337,80 @@ extract_traffic_data <- function(path,file=NULL,assignment=NULL,format='auto') {
   .tm_add_metrics(out,measurements,metric_info,trends)
 }
 
+#' Standard input shared by road, point-event and directed OD examples
+#' @export
+#' @noRd
+traffic_input <- function(roads = NULL, flow = NULL, events = NULL, nodes = NULL,
+                          od = NULL, times = NULL, time_labels = NULL,
+                          interval_seconds = NULL, unit = "unit unspecified",
+                          timezone = NULL, od_interval_seconds = NULL,
+                          od_time_kind = NULL, measurements = NULL,
+                          metric_info = list(), trends = NULL, provenance = list(),
+                          title = "Traffic map", description = "", preparation = character(),
+                          notes = character(), basemap = NULL, crs = "EPSG:4326") {
+  .tm_crs(crs)
+  if (!is.null(timezone) && !(length(timezone) == 1L && timezone %in% OlsonNames())) {
+    stop("timezone must be an IANA timezone or NULL.")
+  }
+  if (xor(is.null(nodes), is.null(od))) stop("OD input requires both nodes and od.")
+  if (is.null(roads) && is.null(events) && is.null(nodes)) stop("Supply roads, events or OD tables.")
+  if (!is.list(provenance)) stop("provenance must be a named list of source information.")
+
+  roads <- .tm_rename_table(roads, NULL, "roads")
+  flow <- .tm_rename_table(flow, NULL, "flow")
+  events <- .tm_rename_table(events, NULL, "events")
+  if (!is.null(roads)) roads$road_id <- as.character(roads$road_id)
+  if (!is.null(flow)) flow$road_id <- as.character(flow$road_id)
+  road_args <- list(roads = roads, flow = flow, events = events, times = times,
+    time_labels = time_labels, interval_seconds = interval_seconds, unit = unit,
+    measurements = measurements, metric_info = metric_info, trends = trends,
+    provenance = provenance, title = title, description = description,
+    preparation = preparation, notes = notes, basemap = basemap)
+  if (!is.null(roads) || !is.null(flow) || !is.null(events)) {
+    do.call(traffic_data, road_args)
+  }
+
+  if (!is.null(nodes)) {
+    nodes <- as.data.frame(.tm_read_table(nodes, "nodes"))
+    od <- as.data.frame(.tm_read_table(od, "od"))
+    if (!all(c("node_id", "longitude", "latitude") %in% names(nodes)) ||
+        !all(c("origin_id", "destination_id", "flow") %in% names(od))) {
+      stop("Expected node_id, longitude, latitude and origin_id, destination_id, flow.")
+    }
+    if ("time" %in% names(od) && !inherits(od$time, "POSIXt") && is.null(timezone)) {
+      stop("Supply a timezone for text OD timestamps or pass parsed POSIXct instants.")
+    }
+    canonical <- traffic_od_data(nodes, od, timezone = if (is.null(timezone)) "UTC" else timezone)
+    # Keep source station indices, display labels and ride identifiers alongside the common fields.
+    nodes[names(canonical$nodes)] <- canonical$nodes
+    od[names(canonical$flows)] <- canonical$flows
+    if (is.null(od_time_kind)) od_time_kind <- if ("time" %in% names(od)) "unspecified" else "untimed"
+    if (!is.character(od_time_kind) || length(od_time_kind) != 1L ||
+        !od_time_kind %in% c("instant", "interval_start", "unspecified", "untimed") ||
+        (od_time_kind == "untimed") != !("time" %in% names(od))) stop("Invalid OD time interpretation.")
+    if (!is.null(od_interval_seconds) && (od_time_kind != "interval_start" ||
+        length(od_interval_seconds) != 1L || !is.numeric(od_interval_seconds) ||
+        !is.finite(od_interval_seconds) || od_interval_seconds <= 0)) stop("Invalid OD interval width.")
+  } else if (!is.null(od_time_kind) || !is.null(od_interval_seconds)) {
+    stop("OD time options require an OD table.")
+  }
+
+  c(list(schema = "bdynets-traffic-input-v1", crs = "EPSG:4326", timezone = timezone,
+         nodes = nodes, od = od, od_unit = if (!is.null(od)) "trips" else NULL,
+         od_time_kind = od_time_kind, od_interval_seconds = od_interval_seconds), road_args)
+}
+
 #' @export
 #' @noRd
 read_traffic <- function(file) {
   input <- readRDS(file)
+  if (is.list(input) && identical(input$schema, "bdynets-traffic-input-v1")) {
+    if (is.null(input$roads) && is.null(input$events)) {
+      stop("This input contains OD tables. Use traffic_od_data(input$nodes, input$od).")
+    }
+    road_fields <- intersect(names(input), names(formals(traffic_data)))
+    return(do.call(traffic_data, input[road_fields]))
+  }
   .tm_assert(is.list(input)&&identical(input$schema,'trafficmap-input-v1'),'Unsupported traffic input schema')
   input$schema <- NULL
   .tm_assert(all(names(input)%in%names(formals(traffic_data))),'Unknown traffic input fields')

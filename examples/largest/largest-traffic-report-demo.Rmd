@@ -1,0 +1,621 @@
+---
+title: "PeMS Regional Flow and CHP Starts: A Complete bdynets Tutorial"
+output:
+  html_document:
+    self_contained: true
+    md_extensions: "-tex_math_dollars"
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    mathjax: null
+params:
+  time_label: "08:00"
+  basemap: true
+  export: false
+  export_dir: "output/tutorial-export"
+---
+
+<style>
+body{font-size:16px;line-height:1.72;color:#25364a}.main-container{max-width:1040px}h1,h2,h3{color:#17324d}pre{font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}table{font-size:14px;display:block;overflow-x:auto}th,td{padding:7px 10px!important}img{max-width:100%;height:auto}.note{padding:12px 16px;background:#f3f7fa;border-left:4px solid #3b718f;margin:18px 0}.result{padding:12px 16px;background:#f3faf5;border-left:4px solid #3d8b57;margin:18px 0}
+</style>
+
+```{r setup, include=FALSE}
+render_started <- proc.time()[["elapsed"]]
+library(bdynets)
+source("prepare.R", local = TRUE)
+
+plain_output <- knitr::knit_hooks$get("output")
+knitr::knit_hooks$set(output = function(x, options) {
+  plain_output(gsub("[ \t]+\n", "\n", x, perl = TRUE), options)
+})
+
+figure_dir <- tempfile("largest-demo-figures-")
+dir.create(figure_dir)
+knitr::opts_chunk$set(
+  echo = TRUE, message = FALSE, warning = FALSE, cache = FALSE,
+  fig.path = file.path(figure_dir, "figure-"), fig.width = 10,
+  fig.height = 7.5, dpi = 150, out.width = "100%"
+)
+
+prepared_file <- "data/input.rds"
+register_file <- "data/raw/links.rds"
+archive_files <- setNames(
+  file.path("data/raw", c(
+    "detector.txt.gz", "stations.txt", "station-map.csv",
+    "flow_2026_06.binz", "manifest.json", "geometry.html",
+    "incidents.txt.gz", "details.txt.gz"
+  )),
+  c("detector", "metadata", "station_map", "hourly", "manifest",
+    "geometry", "incidents", "details")
+)
+source_files <- list.files("data", full.names = TRUE, recursive = TRUE)
+source_files <- source_files[!grepl("/basemap-cache/", source_files)]
+source_before <- tools::md5sum(source_files)
+day_standard <- readRDS(prepared_file)
+```
+
+This tutorial follows the same complete workflow as the Beijing tutorial:
+
+**understand the source → inspect and validate raw records → construct `standard` with `traffic_input()` → visualize `standard` with `traffic_map()` → validate → export and read back.**
+
+PeMS-specific code reads detector, binary archive, road, and CHP records. The public `traffic_input()` and `traffic_map()` interfaces remain general.
+
+## Data, source, and preparation goal
+
+The case combines road flow and reported event starts on 16 June 2026:
+
+- Caltrans PeMS D04 supplies native five-minute mainline detector counts;
+- a project PeMS archive supplies hourly Los Angeles position values;
+- project road records supply directed link geometry and endpoint station IDs;
+- Caltrans CHP supplies reported incident starts and locations.
+
+D04 counts are summed over twelve complete five-minute slots to obtain station-hour totals. Los Angeles values already have hourly resolution and are averaged over available active positions within each station. Each display-link value is the mean of its available endpoint station values, in `vehicles/hour`.
+
+```{r source-summary, echo=FALSE}
+source_summary <- data.frame(
+  Source = c("Caltrans PeMS D04", "Project PeMS archive", "Project road records", "Caltrans CHP"),
+  Native_data = c("Five-minute detector counts", "Hourly active-position values", "Directed links and endpoint stations", "Reported event starts and coordinates"),
+  Standard_result = c("Hourly station totals", "Hourly station means", "roads and endpoint-mean flow", "events")
+)
+knitr::kable(source_summary, caption = "Source roles", format = "html", row.names = FALSE)
+
+knitr::kable(
+  data.frame(
+    Item = c("Roads", "Hourly frames", "Road-hour records", "Reported starts", "Regions", "Flow unit"),
+    Value = c(
+      nrow(day_standard[["roads"]]), length(day_standard[["times"]]),
+      nrow(day_standard[["flow"]]), nrow(day_standard[["events"]]),
+      length(unique(day_standard[["roads"]][["region"]])), day_standard[["unit"]]
+    )
+  ),
+  caption = "Complete prepared dataset",
+  format = "html", row.names = FALSE
+)
+```
+
+The source clock has no inferred UTC offset. Event records establish reported starts only; the example does not infer duration, road matching, or a causal traffic effect.
+
+The preparation goal is to validate native station and time keys, preserve station-level counts and coverage, aggregate D04 counts into hourly totals, average available endpoint-station values for display links, retain missing link values as `NA`, and visualize reported CHP starts without inferring their duration or effect.
+
+## Raw input, field meanings, and editable configuration
+
+### Configuration to edit
+
+File paths, the selected clock hour, source-role mappings, and display choices are kept together. The D04 mapping uses the original unnamed archive columns.
+
+```{r configuration}
+prepared_file <- "data/input.rds"
+register_file <- "data/raw/links.rds"
+archive_files <- setNames(
+  file.path("data/raw", c(
+    "detector.txt.gz", "stations.txt", "station-map.csv",
+    "flow_2026_06.binz", "manifest.json", "geometry.html",
+    "incidents.txt.gz", "details.txt.gz"
+  )),
+  c("detector", "metadata", "station_map", "hourly", "manifest",
+    "geometry", "incidents", "details")
+)
+d04_fields <- c(time = "V1", station = "V2", count = "V10")
+selected_hour <- params$time_label
+```
+
+### Inspect the original-format teaching excerpt
+
+The teaching excerpt retains two D04 detectors, two Los Angeles binary positions, three display links, and one CHP record at 08:00.
+
+```{r read-raw}
+native <- read_pems_archives(
+  register_file = register_file,
+  files = archive_files
+)
+
+d04_raw <- read.csv(
+  archive_files[["detector"]], header = FALSE,
+  colClasses = "character"
+)
+la_columns <- read.csv("data/raw/binary-columns.csv", colClasses = "character")
+chp_raw <- read.csv(
+  archive_files[["incidents"]], header = FALSE,
+  colClasses = "character", na.strings = NULL
+)
+```
+
+```{r show-raw, echo=FALSE}
+knitr::kable(
+  d04_raw[1:6, c("V1", "V2", "V3", "V6", "V10")],
+  caption = "Original-format D04 records (first six rows)",
+  format = "html", row.names = FALSE
+)
+
+la_preview <- la_columns
+la_preview$value_at_selected_hour <- as.numeric(native[["la"]][["position_values"]][1, ])
+knitr::kable(
+  la_preview,
+  caption = "Decoded binary positions, station IDs, and selected-hour values",
+  format = "html", row.names = FALSE
+)
+
+knitr::kable(
+  chp_raw[c("V1", "V4", "V5", "V6", "V7", "V10", "V11", "V12")],
+  caption = "Original CHP summary fields",
+  format = "html", row.names = FALSE
+)
+
+field_dictionary <- data.frame(
+  Source_field = c("D04 V1", "D04 V2", "D04 V10", "LA binary value", "CHP V4", "CHP V10/V11", "CHP V12"),
+  Meaning = c("Five-minute source timestamp", "Detector station ID", "Five-minute total flow", "Unsigned hourly position value; 65535 means missing", "Reported start", "Longitude and latitude", "District"),
+  Standard_destination = c("Hourly frame", "Endpoint station join", "Station-hour total", "Station mean and link flow", "events time", "events lon/lat", "events region")
+)
+knitr::kable(field_dictionary, caption = "Key source fields", format = "html", row.names = FALSE)
+```
+
+The raw sources use different storage formats and clocks. The example reader preserves their IDs and values in a native object before constructing canonical package tables.
+
+#### Native source object and readback {.unnumbered}
+
+The intermediate `source.rds` retains native IDs, clocks and observations. This sample snapshot is saved and read back in a temporary directory; the supplied day-level snapshot stays unchanged.
+
+```{r native-source, echo=FALSE}
+native_directory <- tempfile("native-source-")
+dir.create(native_directory)
+native_file <- file.path(native_directory, "source.rds")
+stopifnot(!file.exists(native_file))
+```
+
+```{r native-source-2, echo=TRUE}
+saveRDS(native, native_file, compress = "xz", version = 3)
+restored_native <- readRDS(native_file)
+```
+
+```{r native-source-3, echo=FALSE}
+stopifnot(identical(restored_native, native))
+native <- restored_native
+invisible(capture.output(str(native, max.level = 1, give.attr = FALSE)))
+knitr::kable(data.frame(file = basename(native_file), schema = native$schema, exact_readback = TRUE),
+    caption = "Native source snapshot before standard-input construction", format = "html", row.names = FALSE)
+```
+
+The intermediate object retains source detail; the next step constructs the common road, value and time tables.
+
+### Deliberately invalid input and correction
+
+A D04 station and five-minute timestamp must identify exactly one observed count. The following in-memory copy duplicates the first mainline record; no source file is changed.
+
+```{r invalid-input}
+d04_labels <- format(
+  as.POSIXct(
+    rep(native$settings$times, each = 12) +
+      rep(seq(0, 3300, 300), length(native$settings$times)),
+    origin = "1970-01-01", tz = "UTC"
+  ),
+  "%m/%d/%Y %H:%M:%S", tz = "UTC"
+)
+d04_mainline <- d04_raw[d04_raw$V6 == "ML", , drop = FALSE]
+bad_d04 <- rbind(d04_mainline, d04_mainline[1, ])
+
+cat(tryCatch(
+  {
+    pems_counts(
+      bad_d04,
+      station_ids = native$d04$station_id,
+      labels = d04_labels,
+      fields = d04_fields
+    )
+    "No error was raised."
+  },
+  error = conditionMessage
+))
+```
+
+Removing the duplicate restores the complete station–timestamp grid. Missing source counts are not silently replaced with zero.
+
+```{r corrected-input-check}
+correct_counts <- pems_counts(
+  d04_mainline,
+  station_ids = native$d04$station_id,
+  labels = d04_labels,
+  fields = d04_fields
+)
+stopifnot(identical(unname(correct_counts), unname(native$d04$counts)))
+data.frame(
+  stations = nrow(correct_counts),
+  five_minute_slots = ncol(correct_counts),
+  duplicate_keys = 0L,
+  missing_counts = sum(is.na(correct_counts))
+)
+```
+
+## Convert with the general bdynets interface
+
+`pems_input()` is an **example adapter**, not a public package API. It implements the PeMS-specific hourly calculations, endpoint joins, event parsing, and source validation. Its output tables are extracted below as the canonical inputs required by the public constructor.
+
+### Prepare canonical tables
+
+```{r prepare-canonical-tables}
+adapter_output <- pems_input(native)
+
+roads <- adapter_output[["roads"]]
+flow <- adapter_output[["flow"]]
+events <- adapter_output[["events"]]
+times <- adapter_output[["times"]]
+time_labels <- adapter_output[["time_labels"]]
+interval_seconds <- adapter_output[["interval_seconds"]]
+```
+
+Once the canonical tables exist, this public function call is the same interface used by other road-flow datasets:
+
+### Construct `standard` with `traffic_input()`
+
+```{r construct-standard-input}
+standard <- bdynets::traffic_input(
+  roads = roads,
+  flow = flow,
+  events = events,
+  times = times,
+  time_labels = time_labels,
+  interval_seconds = interval_seconds,
+  unit = adapter_output[["unit"]],
+  provenance = adapter_output[["provenance"]],
+  title = adapter_output[["title"]],
+  description = "Hourly endpoint-station mean flow with CHP reported starts.",
+  preparation = c(
+    "Sum twelve complete D04 five-minute counts into station-hour totals.",
+    "Average available active positions within Los Angeles stations.",
+    "Average available endpoint stations for each display link.",
+    "Retain CHP records as reported starts without inferred duration or effect."
+  )
+)
+```
+
+The returned object is a named list with schema `bdynets-traffic-input-v1`. Optional components that do not apply to this road-and-event example remain `NULL`.
+
+### What does `standard` contain?
+
+```{r standard-structure}
+str(standard, max.level = 1, give.attr = FALSE)
+```
+
+```{r show-standard, echo=FALSE}
+knitr::kable(
+  standard[["roads"]][c("road_id", "from_station", "to_station", "region")],
+  caption = "Standard roads table",
+  format = "html", row.names = FALSE
+)
+knitr::kable(
+  standard[["flow"]], caption = "Standard road-hour flow table",
+  format = "html", row.names = FALSE
+)
+knitr::kable(
+  standard[["events"]], caption = "Standard reported-start event table",
+  format = "html", row.names = FALSE
+)
+```
+
+For the teaching excerpt, the two D04 station-hour totals are 4,601 and 4,789, giving endpoint mean 4,695. The Los Angeles endpoints give 1,402 and 1,791, producing 1,596.5. Both endpoints of road 765 are unavailable, so that road-hour remains `NA`; it is not replaced by zero.
+
+The transformation has four levels:
+
+- **Sensor observations:** D04 five-minute values remain native station counts before aggregation.
+- **Station-hour values:** twelve D04 counts are summed; Los Angeles active positions are averaged within station.
+- **Display links:** available endpoint-station values are averaged, which can produce fractional values and does not create a directly observed link sensor.
+- **Events and metadata:** CHP records retain their reported-start meaning, source IDs, source clock, region, and provenance.
+
+<div class="note"><code>bdynets::traffic_input()</code> is the public constructor. The PeMS adapter is source-specific, but the resulting <code>roads</code>, <code>flow</code>, <code>events</code>, and time arguments use the same package interface as every other standard road dataset.</div>
+
+### Adapt renamed detector columns
+
+The source-role mapping, rather than fixed column positions in downstream code, lets the validator read equivalent detector data with different headers.
+
+```{r renamed-detector-columns}
+renamed_d04 <- d04_mainline[c("V1", "V2", "V10")]
+names(renamed_d04) <- c("timestamp", "sensor_id", "five_minute_count")
+renamed_fields <- c(
+  time = "timestamp",
+  station = "sensor_id",
+  count = "five_minute_count"
+)
+mapped_counts <- pems_counts(
+  renamed_d04,
+  station_ids = native$d04$station_id,
+  labels = d04_labels,
+  fields = renamed_fields
+)
+stopifnot(identical(unname(mapped_counts), unname(correct_counts)))
+head(renamed_d04)
+```
+
+Only the mapping changes. The hourly aggregation, endpoint averaging, standard constructor, plotting, and export interfaces remain unchanged.
+
+## Pass the standard object to `traffic_map()`
+
+The teaching object above contains only three links and one hour. The supplied full-day object was produced through the same standard interface and is used for meaningful regional maps. It is passed directly to `traffic_map()`; `read_traffic()` is only used to create the analytical view required by `traffic_trend()`.
+
+```{r plot-prepare}
+index <- match(
+  params[["time_label"]],
+  sub("^.* ", "", day_standard[["time_labels"]])
+)
+if (is.na(index)) stop("The selected source hour is not present.")
+
+day_traffic <- read_traffic(prepared_file)
+
+# Each regional background is requested explicitly: the global auto option is
+# switched off below, so an "auto" argument would silently render without one.
+basemap_la <- basemap_bay <- NULL
+if (params[["basemap"]]) {
+  basemap_la <- traffic_basemap(day_traffic, region = "Los Angeles Area", road_classes = character())
+  basemap_bay <- traffic_basemap(day_traffic, region = "San Francisco Bay Area", road_classes = character())
+}
+options(bdynets.basemap.auto = FALSE)
+```
+
+### Los Angeles Area
+
+```{r la-map, fig.width=10, fig.height=6, fig.alt="Los Angeles hourly endpoint-mean flow and CHP reported starts."}
+traffic_map(
+  day_standard,
+  index = index,
+  region = "Los Angeles Area",
+  basemap = basemap_la,
+  title = "PeMS flow and CHP reported starts",
+  caption = "Los Angeles hourly endpoint-mean flow and reported event starts."
+)
+```
+
+```{r la-trend, fig.height=4.4}
+la_trend <- traffic_trend(day_traffic, region = "Los Angeles Area")
+plot(la_trend, metric = "mean", index = index)
+```
+
+### San Francisco Bay Area
+
+```{r bay-map, fig.width=7.5, fig.height=9.5, fig.alt="Bay Area hourly endpoint-mean flow and CHP reported starts."}
+traffic_map(
+  day_standard,
+  index = index,
+  region = "San Francisco Bay Area",
+  basemap = basemap_bay,
+  title = "PeMS flow and CHP reported starts",
+  caption = "Bay Area hourly endpoint-mean flow and reported event starts."
+)
+```
+
+```{r bay-trend, fig.height=4.4}
+bay_trend <- traffic_trend(day_traffic, region = "San Francisco Bay Area")
+plot(bay_trend, metric = "mean", index = index)
+```
+
+Map color represents hourly endpoint-mean flow. Diamonds represent reported starts in the selected hour; they do not imply that an event caused a change in flow. Each trend is a regional mean across available road values, not a regional vehicle total.
+
+## Validate the conversion
+
+```{r validation, echo=FALSE}
+sample_at <- match(
+  paste(standard[["flow"]][["road_id"]], standard[["flow"]][["time"]]),
+  paste(day_standard[["flow"]][["road_id"]], day_standard[["flow"]][["time"]])
+)
+event_at <- match(standard[["events"]][["id"]], day_standard[["events"]][["id"]])
+
+validation <- data.frame(
+  Check = c(
+    "Teaching flow records agree with the complete standard day",
+    "Teaching event agrees with the complete standard day",
+    "Complete flow row count equals roads multiplied by frames",
+    "No duplicated road_id-time keys are present",
+    "Fractional display-link values equal the documented total",
+    "Missing display-link values equal the documented total",
+    "Event IDs and reported starts are unique and retained",
+    "Observed flow values are finite and nonnegative",
+    "Source files remain unchanged during report generation"
+  ),
+  Passed = c(
+    !anyNA(sample_at) && identical(standard[["flow"]][["flow"]], day_standard[["flow"]][["flow"]][sample_at]),
+    !anyNA(event_at),
+    nrow(day_standard[["flow"]]) == nrow(day_standard[["roads"]]) * length(day_standard[["times"]]),
+    !anyDuplicated(day_standard[["flow"]][c("road_id", "time")]),
+    sum(day_standard$flow$flow %% 1 != 0, na.rm = TRUE) == 64261,
+    sum(is.na(day_standard$flow$flow)) == 1344,
+    !anyNA(day_standard$events$id) && !anyDuplicated(day_standard$events$id),
+    all(is.finite(day_standard[["flow"]][["flow"]][!is.na(day_standard[["flow"]][["flow"]])]) & day_standard[["flow"]][["flow"]][!is.na(day_standard[["flow"]][["flow"]])] >= 0),
+    identical(source_before, tools::md5sum(source_files))
+  )
+)
+knitr::kable(validation, caption = "Core validation results", format = "html", row.names = FALSE)
+
+coverage <- data.frame(
+  Roads = nrow(day_standard[["roads"]]),
+  Frames = length(day_standard[["times"]]),
+  `Interval (minutes)` = unique(day_standard[["interval_seconds"]]) / 60,
+  `Total records` = nrow(day_standard[["flow"]]),
+  `Missing records` = sum(is.na(day_standard[["flow"]][["flow"]])),
+  `Observed zeros` = sum(day_standard[["flow"]][["flow"]] == 0, na.rm = TRUE),
+  `Reported starts` = nrow(day_standard[["events"]]),
+  Unit = day_standard[["unit"]],
+  check.names = FALSE
+)
+knitr::kable(coverage, caption = "Complete-data coverage", format = "html", row.names = FALSE)
+```
+
+<div class="result">Every validation row must be <code>TRUE</code>. Fractional display-link values arise from endpoint averaging; missing links remain <code>NA</code>. Reported event starts are descriptive markers, not inferred incident durations or causal effects.</div>
+
+## Export, read back, and reuse
+
+The teaching `standard` object is published to a new temporary directory. The export includes RDS and CSV tables, ordered geometry vertices, a data dictionary, validation records, source identities, metadata, and checksums.
+
+```{r prepared-export}
+prepared_export_dir <- tempfile("largest-prepared-export-")
+dictionary <- read.csv("data/data-dictionary.csv", stringsAsFactors = FALSE)
+dictionary_key <- paste(dictionary$table, dictionary$field, sep = "/")
+standard_key <- unlist(lapply(
+  c("roads", "flow", "events"),
+  function(table) paste(table, names(standard[[table]]), sep = "/")
+))
+dictionary <- dictionary[dictionary_key %in% standard_key, ]
+
+declared_sources <- c(register_file, unname(archive_files))
+prepared_path <- write_traffic_input(
+  standard,
+  prepared_export_dir,
+  source_files = declared_sources,
+  native = native,
+  dictionary = dictionary
+)
+restored <- readRDS(prepared_path)
+```
+
+```{r prepared-export-checks, echo=FALSE}
+metadata <- jsonlite::read_json(file.path(prepared_export_dir, "metadata.json"), simplifyVector = TRUE)
+exported_flow <- read.csv(
+  file.path(prepared_export_dir, "flow.csv"),
+  na.strings = metadata$csv$missing,
+  colClasses = c(road_id = "character")
+)
+manifest <- read.csv(file.path(prepared_export_dir, "checksums.csv"), stringsAsFactors = FALSE)
+core_fields <- setdiff(names(standard), "provenance")
+export_checks <- data.frame(
+  Check = c(
+    "RDS core fields read back unchanged",
+    "CSV IDs, times, values, and missingness read back correctly",
+    "Dictionary and validation files are present",
+    "Prepared-export checksums agree",
+    "Source files remain unchanged"
+  ),
+  Passed = c(
+    all(vapply(core_fields, function(key) identical(restored[[key]], standard[[key]]), logical(1))),
+    identical(exported_flow$road_id, standard$flow$road_id) &&
+      identical(as.numeric(exported_flow$time), as.numeric(standard$flow$time)) &&
+      identical(is.na(exported_flow$flow), is.na(standard$flow$flow)) &&
+      isTRUE(all.equal(exported_flow$flow, standard$flow$flow, check.attributes = FALSE)),
+    all(file.exists(file.path(prepared_export_dir, c("data-dictionary.csv", "validation.csv")))),
+    identical(
+      unname(tools::md5sum(file.path(prepared_export_dir, manifest$file))),
+      manifest$md5
+    ),
+    identical(source_before, tools::md5sum(source_files))
+  )
+)
+knitr::kable(data.frame(file = sort(list.files(prepared_export_dir))), caption = "Prepared-data export files", format = "html", row.names = FALSE)
+knitr::kable(export_checks, caption = "Prepared-data readback checks", format = "html", row.names = FALSE)
+knitr::kable(read.csv(file.path(prepared_export_dir, "validation.csv")), caption = "Stored validation record", format = "html", row.names = FALSE)
+```
+
+### Export figures and selected records
+
+The figure export uses the same full standard day, selected hour, and Los Angeles scope as the displayed map.
+
+```{r figure-export}
+figure_export_dir <- tempfile("largest-figure-export-")
+traffic_export(
+  day_traffic,
+  figure_export_dir,
+  index = index,
+  region = "Los Angeles Area",
+  input_files = c(prepared = prepared_file)
+)
+```
+
+```{r figure-export-checks, echo=FALSE}
+figure_manifest <- read.csv(file.path(figure_export_dir, "checksums.csv"), stringsAsFactors = FALSE)
+figure_checks <- data.frame(
+  Check = c(
+    "PNG and PDF map files are present",
+    "Selected-frame data and provenance are present",
+    "Figure-export checksums agree"
+  ),
+  Passed = c(
+    all(c("map.png", "map.pdf") %in% list.files(figure_export_dir)),
+    all(c("selected-frame.rds", "provenance.json") %in% list.files(figure_export_dir)),
+    identical(
+      unname(tools::md5sum(file.path(figure_export_dir, figure_manifest$file))),
+      figure_manifest$md5
+    )
+  )
+)
+knitr::kable(data.frame(file = sort(list.files(figure_export_dir))), caption = "Figure-export files", format = "html", row.names = FALSE)
+knitr::kable(figure_checks, caption = "Figure-export checks", format = "html", row.names = FALSE)
+```
+
+```{r optional-persistent-export}
+if (params$export) {
+  if (file.exists(params$export_dir)) stop("The requested export directory already exists; choose a new directory.")
+  dir.create(params$export_dir, recursive = TRUE)
+  write_traffic_input(
+    standard,
+    file.path(params$export_dir, "prepared-data"),
+    source_files = declared_sources,
+    native = native,
+    dictionary = dictionary
+  )
+  traffic_export(
+    day_traffic,
+    file.path(params$export_dir, "figures"),
+    index = index,
+    region = "Los Angeles Area",
+    input_files = c(prepared = prepared_file)
+  )
+}
+```
+
+## Reproduction, source records, and troubleshooting
+
+Place this Rmd in `examples/largest/`. From the repository root, render it offline with:
+
+```bash
+Rscript -e "source('bdynets/inst/preparation-session.R'); preparation_session('examples/largest'); rmarkdown::render('examples/largest/largest-traffic-report-demo.Rmd', knit_root_dir='examples/largest', params=list(time_label='08:00', basemap=FALSE, export=FALSE))"
+```
+
+`basemap=FALSE` requires no network. With `basemap=TRUE`, verified caches may be reused; a new background request requires network access. The source records, road geometry, values, events, validation, and exports do not depend on a basemap.
+
+Common problems include duplicated or missing station–timestamp keys, source station IDs absent from the declared register, incomplete groups of twelve D04 slots, unmatched endpoint stations, and reuse of an existing export directory. Do not convert a missing sensor count into zero without a documented completeness rule.
+
+```{r reproducibility, echo=FALSE}
+stopifnot(identical(source_before, tools::md5sum(source_files)))
+knitr::kable(
+  read.csv("data/original-sources.csv", stringsAsFactors = FALSE)[c("file", "provider", "role")],
+  caption = "Original archives and source identities",
+  format = "html", row.names = FALSE
+)
+knitr::kable(
+  read.csv("data/raw/source-manifest.csv", stringsAsFactors = FALSE)[c("file", "selection")],
+  caption = "Bundled teaching sources and selections",
+  format = "html", row.names = FALSE
+)
+conversion_files <- intersect(c("prepare.R", "run.R"), list.files("."))
+knitr::kable(
+  data.frame(
+    file = conversion_files,
+    sha256 = vapply(conversion_files, digest::digest, "", file = TRUE, algo = "sha256", serialize = FALSE)
+  ),
+  caption = "Conversion and entry-point source identities",
+  format = "html", row.names = FALSE
+)
+bundle_dir <- file.path("..", "..", "bdynets")
+bundle_files <- list.files(bundle_dir, recursive = TRUE, full.names = FALSE)
+bundle_sha <- vapply(file.path(bundle_dir, bundle_files), digest::digest, "", file = TRUE, algo = "sha256", serialize = FALSE)
+revision <- digest::digest(paste(paste(bundle_files, bundle_sha, sep = " "), collapse = "\n"), algo = "sha256", serialize = FALSE)
+
+cat("Package version:", as.character(packageVersion("bdynets")), "\n")
+cat("Bundled source revision (SHA-256):", revision, "\n")
+cat("Report computation elapsed:", round(proc.time()[["elapsed"]] - render_started, 1), "seconds\n")
+sessionInfo()
+```

@@ -1,314 +1,1203 @@
 ---
-title: "Divvy OD Flows: 2 km Aggregation and Clock-Hour Pooling"
+title: "Divvy Station Departures: A Complete bdynets OD Tutorial"
 output:
   html_document:
-    toc: false
-    theme: flatly
     self_contained: true
+    md_extensions: "-tex_math_dollars"
+    toc: true
+    toc_depth: 3
+    number_sections: true
     mathjax: null
 params:
-  data_dir: "data"
-  node_file: "data/nodes_r2000.csv"
-  flow_file: "data/od_flow_2026_01_dt01h_r2000.csv"
-  aggregate_radius_m: 1000
-  hour_start: 0
-  hour_end: 3
-  map_file: null
-  figure_dir: null
-  work_dir: null
+  basemap: true
+  export: false
+  export_dir: "output/tutorial-export"
 ---
 
 <style>
-.main-container {
-  max-width: 1240px !important;
-  margin-left: auto !important;
-  margin-right: auto !important;
-  padding: 28px 48px 60px 48px;
-  font-size: 17px;
-  line-height: 1.62;
-}
-h1.title, h4.author, h4.date { text-align: center; }
-h1.title { font-size: 36px; margin-top: 18px; margin-bottom: 16px; }
-h2 { font-size: 27px; margin-top: 42px; padding-bottom: 7px; border-bottom: 1px solid #dbe3ea; }
-p, li, table { font-size: 17px; }
-pre, code { font-size: 14px; }
-pre {
-  border: 1px solid #cfd4da;
-  border-radius: 6px;
-  padding: 16px 20px;
-  margin-top: 10px;
-  margin-bottom: 18px;
-  background: #f7f7f7;
-}
-table { margin-left: auto; margin-right: auto; display:block; max-width:100%; overflow-x:auto; }
-th, td { overflow-wrap:anywhere; }
-img { display: block; margin-left: auto; margin-right: auto; }
-@media (max-width: 768px) {
-  .main-container { padding: 18px 20px 40px 20px; }
-  h1.title { font-size: 29px; }
-}
-table{display:block!important;max-width:100%!important;width:100%!important;overflow-x:auto!important}th,td{overflow-wrap:anywhere}
-    </style>
+body{font-size:16px;line-height:1.72;color:#25364a}.main-container{max-width:1040px}h1,h2,h3{color:#17324d}pre{font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}table{font-size:14px;display:block;overflow-x:auto}th,td{padding:7px 10px!important}img{max-width:100%;height:auto;display:block;margin:0 auto}.note{padding:12px 16px;background:#f3f7fa;border-left:4px solid #3b718f;margin:18px 0}.result{padding:12px 16px;background:#f3faf5;border-left:4px solid #3d8b57;margin:18px 0}
+</style>
 
 ```{r setup, include=FALSE}
+render_started <- proc.time()[["elapsed"]]
+library(bdynets)
+source("prepare.R", local = TRUE)
+
+plain_output <- knitr::knit_hooks$get("output")
+knitr::knit_hooks$set(output = function(x, options) {
+  plain_output(gsub("[ \t]+\n", "\n", x, perl = TRUE), options)
+})
+
+figure_dir <- tempfile("divvy-demo-figures-")
+dir.create(figure_dir)
 knitr::opts_chunk$set(
   echo = TRUE,
-  warning = FALSE,
   message = FALSE,
-  fig.align = "center",
-  dpi = 150
+  warning = FALSE,
+  cache = FALSE,
+  fig.path = file.path(figure_dir, "figure-"),
+  fig.width = 10,
+  fig.height = 7.5,
+  dpi = 150,
+  out.width = "100%"
 )
-library(bdynets)
-work_dir <- params$work_dir
-if(is.null(work_dir)){work_dir<-tempfile("od-work-");dir.create(work_dir)}
-figure_dir <- if(is.null(params$figure_dir))work_dir else params$figure_dir
-knitr::opts_chunk$set(fig.path=file.path(figure_dir,"figure-"),dev="png")
+
+raw_file <- "data/raw/202601-trip-excerpt.csv"
+day_reference <- "data/trips-2026-01-01.csv"
+prepared_file <- "data/input.rds"
+day <- "2026-01-01"
+timezone <- "America/Chicago"
+window <- c("00:00", "03:00")
+hourly_seconds <- 3600L
+aggregation_radius_m <- 1000
+
+divvy_fields <- c(
+  ride = "ride_id",
+  departure = "started_at",
+  origin = "start_station_id",
+  destination = "end_station_id",
+  origin_name = "start_station_name",
+  destination_name = "end_station_name",
+  origin_lat = "start_lat",
+  origin_lon = "start_lng",
+  destination_lat = "end_lat",
+  destination_lon = "end_lng"
+)
+
+source_files <- list.files("data", full.names = TRUE, recursive = TRUE)
+source_files <- source_files[!grepl("/basemap-cache/", source_files)]
+source_before <- tools::md5sum(source_files)
 ```
 
-## Purpose
+This tutorial follows the same complete workflow as the road examples, with OD-specific tables and interpretation:
 
-This example uses the supplied 2 km Divvy station groups in Chicago and January 2026 OD counts. The map pools 00:00–03:00 in America/Chicago across all dates in the input.
+**understand the source → inspect and validate trip records → construct `standard` from `nodes + od` → visualize a directed OD window → validate → export and read back.**
 
-Directed connections use five trip-count classes: 1, 2–3, 4–5, 6–7 and at least 8. Dashed connections represent one trip. The arrows join station groups and do not identify the route travelled.
+Unlike a road-flow example, Divvy has station nodes and directed origin–destination records. Curved arrows connect endpoints for display; they are not observed travel paths.
 
-## Read and validate the supplied 2 km data
+## Data, source, and preparation goal
 
-The supplied `r2000` CSV files are the processed inputs for this figure. Extra columns are allowed; only mapped identifiers, coordinates, timestamps, and counts are required.
+This case uses station-to-station bicycle departures on **1 January 2026** from Divvy's January trip archive (`202601-trip-excerpt.csv`). The daily slice retains all 13 original columns and 1,950 departure records. The raw archive excerpt also includes one record from 2 January 2026 to demonstrate date filtering.
 
-```{r read-data}
-nodes <- data.table::fread(params$node_file, showProgress = FALSE)
-flows <- data.table::fread(
-  params$flow_file,
-  showProgress = FALSE,
-  colClasses = list(character = "timestamp")
+Each retained record represents **one individual departure** (`flow = 1` in `trips`) with timestamps recorded in the `America/Chicago` timezone. Station coordinates are derived as the median of valid paired source coordinates per station on the selected day, and arrows represent directed station pairs rather than physical street trajectories.
+
+```{r source-summary, echo=FALSE}
+original_sources <- read.csv("data/original-sources.csv", stringsAsFactors = FALSE)
+knitr::kable(
+  original_sources[c("file", "provider", "role")],
+  caption = "Original data sources",
+  format = "html",
+  row.names = FALSE
 )
 
-required_node_columns <- c("node_idx", "longitude", "latitude")
-required_flow_columns <- c(
-  "timestamp", "origin_node_idx", "destination_node_idx", "trip_count"
+full_input <- readRDS(prepared_file)
+audit <- full_input$provenance
+excluded_total <- sum(
+  audit$missing_origin_only,
+  audit$missing_destination_only,
+  audit$missing_both,
+  audit$unmatched_coordinates
+)
+within_station_total <- sum(
+  full_input$od$flow[full_input$od$origin_id == full_input$od$destination_id]
 )
 
-stopifnot(
-  all(required_node_columns %in% names(nodes)),
-  all(required_flow_columns %in% names(flows)),
-  !anyDuplicated(nodes$node_idx),
-  all(flows$origin_node_idx %in% nodes$node_idx),
-  all(flows$destination_node_idx %in% nodes$node_idx),
-  all(is.finite(nodes$longitude)),
-  all(is.finite(nodes$latitude)),
-  all(flows$trip_count >= 0)
-)
-
-data.frame(
-  Input = c("2 km nodes", "Hourly OD rows"),
-  File = c(basename(params$node_file), basename(params$flow_file)),
-  Rows = c(nrow(nodes), nrow(flows)),
-  check.names = FALSE
-) |>
-  knitr::kable(align = c("l", "l", "r"))
-```
-
-## Pool all dates over 00:00–03:00
-
-`hour_window = c(0, 3)` is different from a single-date timestamp window. It selects clock hours 00, 01, and 02 from every date, then sums records with the same directed origin and destination. Self-loops remain in the summary but are not drawn as arrows.
-
-```{r pooled-window-check}
-parsed_time <- as.POSIXct(flows$timestamp, tz = "America/Chicago")
-clock_hour <- as.integer(format(parsed_time, "%H", tz = "America/Chicago"))
-selected <- flows[
-  clock_hour >= params$hour_start & clock_hour < params$hour_end,
-]
-
-pooled <- selected[
-  , .(flow = sum(trip_count)),
-  by = .(origin_node_idx, destination_node_idx)
-]
-nonloop <- pooled[origin_node_idx != destination_node_idx]
-
-data.frame(
-  Metric = c(
-    "Selected trips including within-node trips",
-    "Within-node trips",
-    "Nonloop trips",
-    "Active directed nonloop OD pairs"
+knitr::kable(
+  data.frame(
+    Item = c(
+      "Source departures on selected day",
+      "Located stations (nodes)",
+      "Retained station-to-station trips (OD rows)",
+      "Within-station trips",
+      "Excluded records (missing station ID or coordinates)",
+      "Timezone",
+      "OD unit"
+    ),
+    Value = c(
+      audit$source_departures,
+      nrow(full_input$nodes),
+      nrow(full_input$od),
+      within_station_total,
+      excluded_total,
+      full_input$timezone,
+      full_input$od_unit
+    )
   ),
-  Value = c(
-    sum(pooled$flow),
-    sum(pooled$flow[pooled$origin_node_idx == pooled$destination_node_idx]),
-    sum(nonloop$flow),
-    nrow(nonloop)
+  caption = "Complete prepared dataset",
+  format = "html",
+  row.names = FALSE
+)
+```
+
+Departure clocks retain fractional seconds in `America/Chicago`. Omitted station pairs or timestamps are not filled with zero because a complete dyad-observation domain is not assumed.
+
+The preparation goal is to filter the declared departure day, validate unique ride IDs and local clocks, construct a located station register, retain only trips whose two endpoints join that register, preserve within-station rides, optionally aggregate time or space without changing the trip total, and draw a descriptive directed OD map.
+
+## Raw input, field meanings, and editable configuration
+
+### Configuration to edit
+
+```{r configuration}
+raw_file <- "data/raw/202601-trip-excerpt.csv"
+prepared_file <- "data/input.rds"
+day <- "2026-01-01"
+timezone <- "America/Chicago"
+window <- c("00:00", "03:00")
+hourly_seconds <- 3600L
+aggregation_radius_m <- 1000
+
+divvy_fields <- c(
+  ride = "ride_id",
+  departure = "started_at",
+  origin = "start_station_id",
+  destination = "end_station_id",
+  origin_name = "start_station_name",
+  destination_name = "end_station_name",
+  origin_lat = "start_lat",
+  origin_lon = "start_lng",
+  destination_lat = "end_lat",
+  destination_lon = "end_lng"
+)
+```
+
+The mapping identifies source roles explicitly. `timezone` controls parsing of local clocks; `window` is a half-open visualization interval; and `aggregation_radius_m` changes the node definition, so it must be reported with any grouped result.
+
+### Inspect the raw trip excerpt
+
+The source reader filters the archive excerpt to departures on `2026-01-01` and strips trailing ASCII spaces from the two station-name columns while keeping all other source values unchanged.
+
+```{r read-raw}
+original_day <- read_divvy_source(raw_file, day = day, fields = divvy_fields)
+raw <- clean_divvy_station_names(original_day, divvy_fields)
+head(raw[c("ride_id", "started_at", "start_station_id", "end_station_id", "start_lat", "start_lng")])
+```
+
+```{r raw-field-description, echo=FALSE}
+raw_dictionary <- data.frame(
+  Source_field = c(
+    "ride_id",
+    "started_at, ended_at",
+    "start_station_id, end_station_id",
+    "start_station_name, end_station_name",
+    "start_lat, start_lng, end_lat, end_lng",
+    "rideable_type, member_casual"
+  ),
+  Meaning = c(
+    "Unique source ride identifier",
+    "Local departure and arrival timestamps in America/Chicago",
+    "Origin and destination station identifiers (kept as text)",
+    "Station names (trailing ASCII spaces removed)",
+    "Origin and destination coordinates reported with each trip",
+    "Vehicle type and rider membership category"
+  ),
+  Standard_destination = c(
+    "Retained as od$ride_id in individual-departure OD tables",
+    "started_at becomes od$time; ended_at stays in source CSV",
+    "Mapped to od$origin_id and od$destination_id, joining nodes$node_id",
+    "Most frequent nonblank name per station becomes nodes$display_name",
+    "Median valid coordinate pair per station becomes nodes longitude/latitude",
+    "Retained in the daily CSV; no extra map metric inferred"
+  ),
+  check.names = FALSE
+)
+names(raw_dictionary) <- c("Source field", "Meaning", "Standard destination")
+knitr::kable(raw_dictionary, caption = "Raw trip field definitions", format = "html", row.names = FALSE)
+```
+
+The preprocessing also records how many rows are selected by date and how many station-name entries had trailing spaces removed.
+
+```{r show-cleaning, echo=FALSE}
+archive <- as.data.frame(
+  data.table::fread(raw_file, colClasses = "character", na.strings = "", strip.white = FALSE, showProgress = FALSE)
+)
+name_fields <- unname(divvy_fields[c("origin_name", "destination_name")])
+changed_names <- vapply(
+  name_fields,
+  function(field) sum(original_day[[field]] != raw[[field]], na.rm = TRUE),
+  0L
+)
+
+cleaning_summary <- data.frame(
+  Stage = c(
+    "Original archive excerpt rows",
+    "Selected 2026-01-01 departure rows",
+    "Excluded next-day rows",
+    "Trimmed start_station_name values",
+    "Trimmed end_station_name values"
+  ),
+  Count = c(
+    nrow(archive),
+    nrow(raw),
+    nrow(archive) - nrow(raw),
+    unname(changed_names[1]),
+    unname(changed_names[2])
   )
-) |>
-  knitr::kable(align = c("l", "r"))
+)
+knitr::kable(cleaning_summary, caption = "Date selection and station-name cleaning summary", format = "html", row.names = FALSE)
+```
+
+#### Day CSV and readback {.unnumbered}
+
+```{r source-rows-2, echo=TRUE}
+original_day <- read_divvy_source(raw_file, day = day, fields = divvy_fields)
+cleaned_day <- clean_divvy_station_names(original_day, divvy_fields)
+```
+
+```{r source-rows-3, echo=FALSE}
+name_fields <- unname(divvy_fields[c("origin_name", "destination_name")])
+unchanged_fields <- setdiff(names(original_day), name_fields)
+changed_names <- vapply(name_fields, function(field) sum(original_day[[field]] != cleaned_day[[field]],
+    na.rm = TRUE), 0L)
+stopifnot(identical(unname(changed_names), c(13L, 11L)), identical(original_day[unchanged_fields], cleaned_day[unchanged_fields]))
+knitr::kable(data.frame(field = name_fields, changed_values = unname(changed_names)), caption = "Trailing-space cleaning in the selected source day", format = "html", row.names = FALSE)
+name_examples <- do.call(rbind, lapply(name_fields, function(field) {
+    at <- which(!is.na(original_day[[field]]) & original_day[[field]] != cleaned_day[[field]])[1]
+    data.frame(field = field, original = encodeString(original_day[[field]][at], quote = "\""), daily_csv = encodeString(cleaned_day[[field]][at],
+        quote = "\""))
+}))
+knitr::kable(name_examples, caption = "Quoted station names before and after trailing-space removal", format = "html", row.names = FALSE)
+day_directory <- tempfile("original-day-")
+dir.create(day_directory)
+day_file <- file.path(day_directory, "trips-2026-01-01.csv")
+```
+
+```{r source-rows-4, echo=TRUE}
+extract_divvy_day(raw_file, day_file, day = day, fields = divvy_fields)
+raw <- as.data.frame(data.table::fread(day_file, colClasses = "character", na.strings = "", showProgress = FALSE))
+```
+
+```{r source-rows-5, echo=FALSE}
+fixture_files <- c(raw_file, day_file)
+expected_day <- as.data.frame(data.table::fread(day_reference, colClasses = "character", na.strings = "",
+    showProgress = FALSE))
+stopifnot(identical(raw, cleaned_day), identical(raw, expected_day), identical(raw[unchanged_fields],
+    original_day[unchanged_fields]), nrow(raw) == 1950L, ncol(raw) == 13L)
+knitr::kable(data.frame(stage = c("Original archive excerpt", "Selected departure day", "Other source date"),
+    rows = c(nrow(archive), nrow(raw), nrow(archive) - nrow(raw))), caption = "Date selection before station or OD processing", format = "html", row.names = FALSE)
+knitr::kable(head(raw[c("ride_id", "started_at", "start_station_id", "end_station_id", "start_lat", "start_lng")]),
+    caption = "Day CSV read back with all original columns retained", format = "html", row.names = FALSE)
 ```
 
 
-```{r acquire-context, include=FALSE}
-active_ids <- unique(c(nonloop$origin_node_idx,nonloop$destination_node_idx))
-active_nodes <- nodes[nodes$node_idx%in%active_ids,]
-background <- traffic_basemap(active_nodes,cache_dir=file.path("data","basemap-cache"))
-runtime_context <- background
+The new day CSV retains all 13 columns and 1,950 records. Trailing spaces change 13 departure-name values and 11 arrival-name values. Every other field and the typed CSV readback are checked against the original selected rows; supplied files remain unchanged.
+
+### Deliberately invalid input and correction
+
+Each retained ride ID must be unique. The following in-memory copy repeats the first ride ID but changes a non-mapped descriptive field, so it is not an exact duplicate and must be rejected. The source CSV is unchanged.
+
+```{r invalid-input}
+bad_raw <- rbind(raw, raw[1, ])
+bad_raw$member_casual[nrow(bad_raw)] <- paste0(bad_raw$member_casual[nrow(bad_raw)], "_duplicate")
+cat(tryCatch(
+  {
+    ride_input(
+      bad_raw,
+      day = day,
+      timezone = timezone,
+      fields = divvy_fields
+    )
+    "No error was raised."
+  },
+  error = conditionMessage
+))
 ```
 
-## Directed OD map
+The corrected input is the cleaned, date-filtered `raw` table. Records lacking an identified and located origin or destination are excluded with explicit reason counts; they are not converted into zero-flow dyads.
 
-Curved arrows show trips between the displayed station groups. Only endpoints of the displayed connections are shown.
+```{r corrected-input-check}
+corrected_input <- ride_input(
+  raw,
+  day = day,
+  timezone = timezone,
+  fields = divvy_fields
+)
+data.frame(
+  source_departures = corrected_input$provenance$source_departures,
+  retained_trips = corrected_input$provenance$retained_trips,
+  unique_ride_ids = !anyDuplicated(corrected_input$od$ride_id),
+  endpoint_references_valid = all(
+    corrected_input$od$origin_id %in% corrected_input$nodes$node_id &
+      corrected_input$od$destination_id %in% corrected_input$nodes$node_id
+  )
+)
+```
 
-```{r od-map, fig.width=7.6, fig.height=9.2, out.width="86%"}
-map_result <- traffic_od_map(
-  nodes = params$node_file,
-  flows = params$flow_file,
-  basemap = background,
+## Convert with the general bdynets interface
+
+Raw trip files vary across bike-share and transit providers, so the source-specific helper `ride_input()` is used as an adapter to reconcile station coordinates, filter incomplete records, and produce the canonical `nodes` and `od` tables expected by the package.
+
+### Prepare canonical `nodes` and `od` tables
+
+```{r prepare-canonical-tables}
+adapter_output <- ride_input(
+  raw,
+  day = day,
+  timezone = timezone,
+  fields = divvy_fields
+)
+
+nodes <- adapter_output[["nodes"]]
+od <- adapter_output[["od"]]
+```
+
+Once the canonical `nodes` and `od` tables exist, the public constructor call is the same for Divvy and for any other OD dataset:
+
+### Construct `standard` with `traffic_input()`
+
+```{r construct-standard-input}
+standard <- bdynets::traffic_input(
+  nodes = nodes,
+  od = od,
+  timezone = timezone,
+  od_time_kind = adapter_output[["od_time_kind"]],
+  provenance = adapter_output[["provenance"]],
+  title = "Divvy station departures",
+  description = "Individual directed station-to-station departures on the selected source day.",
+  preparation = c(
+    "Filter the declared local departure day and validate unique ride IDs.",
+    "Build station coordinates from medians of valid paired endpoint coordinates.",
+    "Retain trips only when both station IDs join the located node register.",
+    "Keep within-station rides in OD totals while excluding them from arrow drawing."
+  )
+)
+```
+
+The returned object is a named list with schema `bdynets-traffic-input-v1`. Its complete top-level structure is shown below; optional road and event components that do not apply to this OD example are retained as `NULL`.
+
+### What does `standard` contain?
+
+```{r standard-structure}
+str(standard, max.level = 1, give.attr = FALSE)
+```
+
+The two main tables in the result are `nodes` and `od`.
+
+```{r show-standard, echo=FALSE}
+knitr::kable(
+  head(standard$nodes),
+  caption = "Standard station nodes table (first six rows)",
+  format = "html",
+  row.names = FALSE
+)
+knitr::kable(
+  head(standard$od),
+  caption = "Standard individual OD table (first six rows)",
+  format = "html",
+  row.names = FALSE
+)
+```
+
+The source-specific preprocessing makes the first three changes below; the general `traffic_input()` constructor validates and records the resulting tables and metadata:
+
+- **Station register (`nodes`):** 512 located stations receive unique `node_id` values, zero-based `node_idx` indices, representative `display_name` labels, and median `longitude`/`latitude` coordinates;
+- **Trip reconciliation (`od`):** 720 departures missing an origin ID (186), destination ID (288), or both (246) are excluded and logged in provenance, leaving 1,230 complete station-to-station departures (including 85 within-station rides);
+- **Time and flow:** each departure timestamp is parsed in `America/Chicago` (`od_time_kind = "instant"`) with `flow = 1` trip per ride;
+- **Metadata:** coordinate reference system, timezone, OD unit, and reconciliation provenance are retained in the standard object.
+
+There is no explicit table of every possible station pair at every instant. Therefore, an absent OD record means **not supplied**, not an observed zero. A zero can only be claimed when the eligible dyad and observation interval have been defined and observed completely.
+
+```{r standard-metadata, echo=FALSE}
+knitr::kable(
+  data.frame(
+    Field = c("schema", "crs", "timezone", "od_time_kind", "od_unit"),
+    Value = c(
+      standard$schema,
+      standard$crs,
+      standard$timezone,
+      standard$od_time_kind,
+      standard$od_unit
+    )
+  ),
+  caption = "Key standard-object metadata",
+  format = "html",
+  row.names = FALSE
+)
+```
+
+### Adapt a CSV with renamed columns
+
+Another provider can use different headers as long as the user maps the same required roles.
+
+```{r renamed-csv}
+incoming <- raw
+incoming_fields <- c(
+  ride = "trip_key",
+  departure = "departure_local",
+  origin = "from_station",
+  destination = "to_station",
+  origin_name = "from_name",
+  destination_name = "to_name",
+  origin_lat = "from_latitude",
+  origin_lon = "from_longitude",
+  destination_lat = "to_latitude",
+  destination_lon = "to_longitude"
+)
+names(incoming)[match(unname(divvy_fields), names(incoming))] <- unname(incoming_fields)
+
+mapped_input <- ride_input(
+  incoming,
+  day = day,
+  timezone = timezone,
+  fields = incoming_fields
+)
+stopifnot(
+  identical(mapped_input$nodes, standard$nodes),
+  identical(mapped_input$od, standard$od)
+)
+head(incoming[unname(incoming_fields[c("ride", "departure", "origin", "destination")])])
+```
+
+Only the mapping changes; ride identity, timestamps, endpoints, missingness, units, and the general constructor do not.
+
+### Optional temporal and spatial OD aggregation
+
+When coarse temporal or spatial resolution is needed, the same retained departures can be aggregated into hourly station intervals (`bin_seconds = 3600L`) or grouped spatially within a target radius (`aggregate_od_data()`) and wrapped with `bdynets::traffic_input()`:
+
+```{r derived-od}
+hourly_input <- ride_input(
+  raw,
+  day = day,
+  timezone = timezone,
+  bin_seconds = hourly_seconds,
+  fields = divvy_fields
+)
+
+aggregation <- aggregate_od_data(
+  nodes = standard$nodes,
+  flows = standard$od,
+  radius_m = aggregation_radius_m,
   node_columns = c(
-    id = "node_idx",
+    id = "node_id",
     longitude = "longitude",
     latitude = "latitude",
-    size = "n_raw_stations"
+    name = "display_name",
+    weight = NA_character_
   ),
   flow_columns = c(
-    origin = "origin_node_idx",
-    destination = "destination_node_idx",
-    count = "trip_count",
-    time = "timestamp"
+    origin = "origin_id",
+    destination = "destination_id",
+    count = "flow",
+    time = "time"
   ),
-  hour_window = c(params$hour_start, params$hour_end),
-  timezone = "America/Chicago",
-  top_n = Inf,
-  active_nodes_only = TRUE,
-  title = "Divvy directed OD flows | 2 km grid aggregation",
-  subtitle = paste(
-    "January 2026 · all dates pooled over 00:00–03:00 ·",
-    "active nodes only"
-  ),
-  caption = paste(
-    "Background: OpenStreetMap contributors; coordinate-based runtime acquisition.",
-    "Curved arrows connect aggregate endpoints; they are not observed paths."
-  ),
-  output_file = params$map_file,
-  width = 7.6,
-  height = 9.2,
-  dpi = 240
+  timezone = timezone
 )
-```
 
-## Displayed-network summary
+spatial_membership <- as.data.frame(aggregation$membership)
 
-```{r map-summary}
-class_counts <- map_result$summary$flow_classes
-summary_table <- data.frame(
-  Metric = c(
-    "Active nodes displayed",
-    "Directed OD pairs displayed",
-    "Nonloop trips represented",
-    paste0("Flow class: ", names(class_counts))
-  ),
-  Value = c(
-    map_result$summary$displayed_nodes,
-    map_result$summary$displayed_pairs,
-    map_result$summary$displayed_flow,
-    unname(class_counts)
+spatial_input <- bdynets::traffic_input(
+  nodes = as.data.frame(aggregation$nodes),
+  od = as.data.frame(aggregation$flows),
+  timezone = timezone,
+  od_time_kind = standard$od_time_kind,
+  provenance = list(
+    station_preparation = standard$provenance,
+    spatial_aggregation = c(aggregation$metadata, list(membership = spatial_membership))
   )
 )
-knitr::kable(summary_table, align = c("l", "r"))
 ```
 
-## Aggregation from raw station records
+#### Hourly station OD {.unnumbered}
 
-`aggregate_od_data()` reads the raw station and hourly OD tables, validates the
-mapped fields, groups nodes with an activity-prioritized radius cover, assigns
-each station to its nearest representative, remaps both endpoints and sums the
-counts for each time and directed pair. The radius parameter is 1000 m here, as in the generic aggregation example. This is a
-radius-cover algorithm; the supplied `r2000` table has an existing grouping and
-is retained for the preceding map. Different membership assignments can change
-the number of within-node trips while preserving total trips.
+Hourly station OD sums the retained departures by local hour, origin and destination. Intervals are half-open, `[start, start + 3600 seconds)`, in `America/Chicago`. Time selection chooses existing observations; aggregation constructs a different table.
 
-```{r aggregate-raw-stations}
-aggregated <- aggregate_od_data(
-  nodes=file.path(params$data_dir,"nodes_raw.csv"),
-  flows=file.path(params$data_dir,"od_flow_2026_01_dt01h_raw.csv"),
-  radius_m=params$aggregate_radius_m,
-  node_columns=c(id="node_idx",longitude="longitude",latitude="latitude",name="display_name",weight="n_raw_stations"),
-  flow_columns=c(origin="origin_node_idx",destination="destination_node_idx",count="trip_count",time="timestamp"),
-  timezone="America/Chicago",output_dir=file.path(work_dir,"prepared-od"))
+```{r hourly-checks, echo=FALSE}
+hourly_input$provenance$time_aggregation <- list(
+  method = 'Sum of retained departures by local hour and directed station pair.',
+  interval_seconds = hourly_seconds, boundary = '[start, start + interval_seconds)',
+  source_date = day, timezone = timezone)
+source_hour <- format(standard$od$time, '%Y-%m-%d %H', tz = timezone)
+hour_counts <- aggregate(list(flow = standard$od$flow),
+  list(hour = source_hour, origin_id = standard$od$origin_id,
+       destination_id = standard$od$destination_id), sum)
+expected_hour_counts <- setNames(hour_counts$flow,
+  paste(hour_counts$hour, hour_counts$origin_id, hour_counts$destination_id))
+actual_hour_counts <- setNames(hourly_input$od$flow,
+  paste(format(hourly_input$od$time, '%Y-%m-%d %H', tz = timezone),
+        hourly_input$od$origin_id, hourly_input$od$destination_id))
+stopifnot(identical(hourly_input$nodes, standard$nodes),
+  setequal(names(expected_hour_counts), names(actual_hour_counts)),
+  all(expected_hour_counts[names(actual_hour_counts)] == actual_hour_counts),
+  sum(hourly_input$od$flow) == sum(standard$od$flow),
+  hourly_input$od_time_kind == 'interval_start',
+  hourly_input$od_interval_seconds == hourly_seconds,
+  all(format(hourly_input$od$time, '%M:%S', tz = timezone) == '00:00'),
+  !anyDuplicated(hourly_input$od[c('time', 'origin_id', 'destination_id')]))
+example_row <- if (any(hourly_input$od$flow > 1)) which(hourly_input$od$flow > 1)[1] else 1L
+hour_example <- hourly_input$od[example_row, c('time', 'origin_id', 'destination_id', 'flow')]
+example_start <- as.numeric(hour_example$time)
+selected_departures <- standard$od$origin_id == hour_example$origin_id &
+  standard$od$destination_id == hour_example$destination_id &
+  as.numeric(standard$od$time) >= example_start &
+  as.numeric(standard$od$time) < example_start + hourly_seconds
+trip_example <- standard$od[selected_departures,
+  c('ride_id', 'time', 'origin_id', 'destination_id', 'flow')]
+stopifnot(sum(trip_example$flow) == hour_example$flow)
+trip_display <- trip_example
+trip_display$time <- format(trip_display$time, '%Y-%m-%d %H:%M:%OS6', tz = timezone)
+knitr::kable(trip_display, caption = 'Departures contributing to one hourly OD record',
+             format = 'html', row.names = FALSE)
+knitr::kable(hour_example, caption = 'The corresponding hourly OD record',
+             format = 'html', row.names = FALSE)
 knitr::kable(data.frame(
-  Item=c("Raw stations","Aggregate nodes","Source OD rows","Aggregate OD rows","Full-month trips","Maximum assignment distance (m)"),
-  Value=unlist(aggregated$metadata[c("raw_nodes","aggregate_nodes","raw_flow_rows","aggregate_flow_rows","total_flow","max_assignment_distance_m")])),
-  caption="Executed raw-station preparation",row.names=FALSE)
-knitr::kable(head(aggregated$nodes),caption="Standardized nodes")
-preview_flows <- as.data.frame(head(aggregated$flows))
-preview_flows$time <- format(preview_flows$time,"%Y-%m-%d %H:%M:%S %Z",tz="America/Chicago")
-knitr::kable(preview_flows,caption="Standardized time and OD counts")
+  representation = c('Individual departures', 'Hourly station OD'),
+  nodes = c(nrow(standard$nodes), nrow(hourly_input$nodes)),
+  records = c(nrow(standard$od), nrow(hourly_input$od)),
+  trips = c(sum(standard$od$flow), sum(hourly_input$od$flow)),
+  within_station_trips = c(sum(standard$od$flow[standard$od$origin_id == standard$od$destination_id]),
+    sum(hourly_input$od$flow[hourly_input$od$origin_id == hourly_input$od$destination_id]))),
+  caption = 'Time aggregation on the same retained departure day', format = 'html', row.names = FALSE)
 ```
 
-The prepared object and its saved CSV files retain the same time selection.
-Explicit UTC/offset timestamps denote absolute instants; timestamps without an
-offset use the supplied timezone. Re-reading CSV does not discard the time of
-day or reinterpret UTC as local time.
 
-```{r preparation-roundtrip-check}
-prepared_map <- traffic_od_map(aggregated,basemap=NULL,
-  hour_window=c(params$hour_start,params$hour_end),timezone="America/Chicago",
-  top_n=Inf,active_nodes_only=TRUE,draw=FALSE)
-roundtrip_map <- traffic_od_map(aggregated$files[["nodes"]],aggregated$files[["flows"]],
-  basemap=background,hour_window=c(params$hour_start,params$hour_end),
-  timezone="America/Chicago",top_n=Inf,active_nodes_only=TRUE,draw=FALSE)
-stopifnot(identical(prepared_map$summary,roundtrip_map$summary),
-  aggregated$metadata$total_flow==sum(flows$trip_count),
-  prepared_map$summary$selected_flow==sum(pooled$flow),
-  aggregated$metadata$max_assignment_distance_m<=aggregated$metadata$radius_m+1e-7)
+The hourly table has `r nrow(hourly_input$od)` records for `r sum(hourly_input$od$flow)` trips. Each record is an interval count; it no longer represents one ride or carries a single `ride_id`. Original ride IDs remain in the day CSV. Station IDs and the `r nrow(hourly_input$nodes)` station locations are unchanged. Absent hours or pairs are not filled with zero because source completeness and the complete dyad-observation domain are not established.
+
+The date remains part of each hourly timestamp. Pooling clock hours across dates would combine different dates and is a separate operation; the one-day example does not perform it.
+
+
+#### Spatially grouped OD {.unnumbered}
+
+The spatial example starts independently from the individual station departures. `aggregation_radius_m=1000` defines a 1000 metre station-to-representative distance bound. Its radius-cover method chooses representatives by endpoint activity and assigns stations to their nearest representative. The distance bound applies to a station and its representative, rather than every pair of stations within a group. Each group uses its representative station's existing coordinates.
+
+```{r spatial-checks, echo=FALSE}
+stopifnot(!anyDuplicated(spatial_membership$raw_node_id),
+  setequal(spatial_membership$raw_node_id, standard$nodes$node_id),
+  all(spatial_membership$aggregate_node_id %in% spatial_input$nodes$node_id),
+  all(spatial_membership$distance_to_representative_m <= aggregation_radius_m + 0.0005),
+  aggregation$metadata$max_assignment_distance_m <= aggregation_radius_m + 1e-7,
+  sum(spatial_input$nodes$raw_node_count) == nrow(standard$nodes),
+  sum(spatial_input$od$flow) == sum(standard$od$flow),
+  spatial_input$od_time_kind == standard$od_time_kind,
+  is.null(spatial_input$od_interval_seconds))
+member_map <- setNames(spatial_membership$aggregate_node_id, spatial_membership$raw_node_id)
+expected_spatial <- aggregate(list(flow = standard$od$flow),
+  list(time = as.numeric(standard$od$time),
+       origin_id = unname(member_map[standard$od$origin_id]),
+       destination_id = unname(member_map[standard$od$destination_id])), sum)
+expected_spatial_counts <- setNames(expected_spatial$flow,
+  paste(sprintf('%.17g', expected_spatial$time), expected_spatial$origin_id, expected_spatial$destination_id))
+actual_spatial_counts <- setNames(spatial_input$od$flow,
+  paste(sprintf('%.17g', as.numeric(spatial_input$od$time)), spatial_input$od$origin_id, spatial_input$od$destination_id))
+stopifnot(!anyDuplicated(names(expected_spatial_counts)), !anyDuplicated(names(actual_spatial_counts)),
+  setequal(names(expected_spatial_counts), names(actual_spatial_counts)),
+  all(expected_spatial_counts[names(actual_spatial_counts)] == actual_spatial_counts))
+source_loops <- sum(standard$od$flow[standard$od$origin_id == standard$od$destination_id])
+spatial_loops <- sum(spatial_input$od$flow[spatial_input$od$origin_id == spatial_input$od$destination_id])
+stopifnot(spatial_loops >= source_loops)
+knitr::kable(head(spatial_membership), caption = 'Source stations and their representative groups',
+             format = 'html', row.names = FALSE)
 knitr::kable(data.frame(
-  Check=c("Full-month trip counts conserved","Source clock-window trip counts conserved","CSV and in-memory plot selections match"),
-  Passed=c(aggregated$metadata$total_flow==sum(flows$trip_count),
-    prepared_map$summary$selected_flow==sum(pooled$flow),
-    identical(prepared_map$summary,roundtrip_map$summary))),caption="Executed end-to-end checks")
+  representation = c('Individual stations', paste(aggregation_radius_m, 'm radius groups')),
+  nodes = c(nrow(standard$nodes), nrow(spatial_input$nodes)),
+  records = c(nrow(standard$od), nrow(spatial_input$od)),
+  directed_pairs = c(nrow(unique(standard$od[c('origin_id', 'destination_id')])),
+                     nrow(unique(spatial_input$od[c('origin_id', 'destination_id')]))),
+  trips = c(sum(standard$od$flow), sum(spatial_input$od$flow)),
+  within_node_trips = c(source_loops, spatial_loops)),
+  caption = 'Spatial grouping on the same retained departure day', format = 'html', row.names = FALSE)
 ```
 
-## Reusing the functions with other OD data
 
-Column mappings make the functions independent of provider-specific names. `start_time` and `end_time` define an absolute date interval. `hour_window` pools the same clock hours across dates.
+The `r nrow(standard$nodes)` stations form `r nrow(spatial_input$nodes)` groups. Total trips remain `r sum(spatial_input$od$flow)`. Within-node trips increase from `r source_loops` to `r spatial_loops` because some trips between different source stations become trips within one group. Departure instants are retained; only records with the same instant and grouped directed pair are summed. No time aggregation is applied to this branch.
 
-```{r generic-map-example, eval=FALSE}
-traffic_od_map(
-  nodes = other_nodes,
-  flows = other_flows,
-  node_columns = c(
-    id = "station", longitude = "x", latitude = "y", size = NA
+`raw_node_count` counts member stations, `member_weight` sums their unit station weights, and `endpoint_activity` counts departures plus arrivals at member stations. A within-node trip contributes two endpoints. Group IDs are representative source station IDs; `spatial_membership` retains every station's assignment and distance. A different radius defines different groups and within-group totals.
+
+```{r show-derived-summary, echo=FALSE}
+derived_summary <- data.frame(
+  Representation = c(
+    "Individual station departures",
+    "Hourly station OD (3,600 s)",
+    "Spatially grouped OD (1,000 m radius)"
   ),
-  flow_columns = c(
-    origin = "from_station", destination = "to_station",
-    count = "rides", time = "departure_time"
+  Nodes = c(
+    nrow(standard$nodes),
+    nrow(hourly_input$nodes),
+    nrow(spatial_input$nodes)
   ),
-  hour_window = c(0, 3),
-  timezone = "America/Chicago"
+  OD_records = c(
+    nrow(standard$od),
+    nrow(hourly_input$od),
+    nrow(spatial_input$od)
+  ),
+  Total_trips = c(
+    sum(standard$od$flow),
+    sum(hourly_input$od$flow),
+    sum(spatial_input$od$flow)
+  ),
+  Within_node_trips = c(
+    sum(standard$od$flow[standard$od$origin_id == standard$od$destination_id]),
+    sum(hourly_input$od$flow[hourly_input$od$origin_id == hourly_input$od$destination_id]),
+    sum(spatial_input$od$flow[spatial_input$od$origin_id == spatial_input$od$destination_id])
+  ),
+  check.names = FALSE
+)
+names(derived_summary) <- c("Representation", "Nodes", "OD records", "Total trips", "Within-node trips")
+knitr::kable(derived_summary, caption = "Comparison of primary and aggregated OD representations", format = "html", row.names = FALSE)
+```
+
+<div class="note"><code>bdynets::traffic_input()</code> is the public, general constructor. Whether OD records represent individual trip instants, hourly station totals, or spatially grouped clusters, they use the same constructor and schema after producing canonical <code>nodes</code> and <code>od</code> tables.</div>
+
+## Aggregate stations for display and call `traffic_map()`
+
+The complete prepared day is stored in `data/input.rds`. The original station-level object remains the validated and exported source representation. For this map only, nearby stations are grouped within a **1.5 km radius** before OD pairs are counted. This reduces the number of single-trip green arrows without changing the retained trip total.
+
+```{r plot-prepare}
+day_standard <- readRDS(prepared_file)
+limits <- as.POSIXct(paste(day, window), tz = timezone)
+
+# Display helper: aggregate station nodes and remap every OD endpoint to a
+# 1.5 km spatial group. The original station-level standard object is unchanged.
+aggregate_od_for_map <- function(input, radius_m = 1500) {
+  grouped <- aggregate_od_data(
+    nodes = input$nodes,
+    flows = input$od,
+    radius_m = radius_m,
+    node_columns = c(
+      id = "node_id",
+      longitude = "longitude",
+      latitude = "latitude",
+      name = "display_name",
+      weight = NA_character_
+    ),
+    flow_columns = c(
+      origin = "origin_id",
+      destination = "destination_id",
+      count = "flow",
+      time = "time"
+    ),
+    timezone = input$timezone
+  )
+
+  bdynets::traffic_input(
+    nodes = as.data.frame(grouped$nodes),
+    od = as.data.frame(grouped$flows),
+    timezone = input$timezone,
+    od_time_kind = input$od_time_kind,
+    provenance = list(
+      station_level_source = input$provenance,
+      display_aggregation = grouped$metadata,
+      display_radius_m = radius_m
+    ),
+    title = paste0(input$title, " (", radius_m / 1000, " km groups)"),
+    description = paste0(
+      "Display-only OD aggregation of station nodes within ",
+      radius_m / 1000, " km."
+    )
+  )
+}
+
+map_radius_m <- 1500
+map_standard <- aggregate_od_for_map(day_standard, radius_m = map_radius_m)
+
+# Use the grouped endpoints to define a stable viewport with extra breathing room.
+# Supplying the same bounds to the on-screen and exported maps keeps all nodes,
+# curved arrows, the legend, and the north arrow inside the map panel.
+map_selection <- traffic_map(
+  map_standard,
+  start_time = limits[1],
+  end_time = limits[2],
+  basemap = NULL,
+  draw = FALSE
+)
+map_longitude_range <- range(map_selection$nodes$longitude)
+map_latitude_range <- range(map_selection$nodes$latitude)
+map_longitude_span <- max(diff(map_longitude_range), 1e-6)
+map_latitude_span <- max(diff(map_latitude_range), 1e-6)
+map_bounds <- c(
+  map_longitude_range[1] - 0.08 * map_longitude_span,
+  map_longitude_range[2] + 0.08 * map_longitude_span,
+  map_latitude_range[1] - 0.08 * map_latitude_span,
+  map_latitude_range[2] + 0.08 * map_latitude_span
+)
+
+# Load the existing Chicago cache with the original station-window bounds.
+# The broader cached context is then reused by the grouped-node map.
+reference_selection <- traffic_map(
+  day_standard,
+  start_time = limits[1],
+  end_time = limits[2],
+  basemap = NULL,
+  draw = FALSE
+)
+longitude_range <- range(reference_selection$nodes$longitude)
+latitude_range <- range(reference_selection$nodes$latitude)
+longitude_span <- max(diff(longitude_range), 1e-6)
+latitude_span <- max(diff(latitude_range), 1e-6)
+reference_bounds <- c(
+  longitude_range[1] - 0.045 * longitude_span,
+  longitude_range[2] + 0.045 * longitude_span,
+  latitude_range[1] - 0.045 * latitude_span,
+  latitude_range[2] + 0.045 * latitude_span
+)
+divvy_basemap <- if (params[["basemap"]]) {
+  traffic_basemap(bounds = reference_bounds, offline = TRUE)
+} else {
+  NULL
+}
+options(bdynets.basemap.auto = FALSE)
+
+# Same seven-colour green-to-red ramp and seven-row legend layout as the flow maps.
+# OD counts are small integers, so the rows follow the integer count ladder
+# (1, 2, ..., 6, >= 7) instead of the flow log1p grid, which would give
+# fractional boundaries that no trip count can take.
+od_palette <- c("#16a43a", "#7ad151", "#f7ea2a", "#ffc928",
+                "#f5a623", "#f36b2b", "#f01818")
+od_breaks <- 1:6
+od_labels <- c(as.character(1:6), ">= 7")
+```
+
+### Station-to-station OD map
+
+```{r od-map, fig.width=5.2, fig.height=8.4, out.width="72%", fig.alt="Station-to-station departures from midnight to 03:00 on January 1."}
+map <- traffic_map(
+  map_standard,
+  start_time = limits[1],
+  end_time = limits[2],
+  bounds = map_bounds,
+  basemap = divvy_basemap,
+  od_style = list(
+    flow_breaks = od_breaks,
+    flow_labels = od_labels,
+    flow_palette = od_palette
+  ),
+  title = "Divvy departures aggregated within 1.5 km",
+  subtitle = paste(day, paste(window, collapse = " to "), timezone),
+  caption = paste0(
+    "Directed OD counts. Curved arrows do not identify travel paths.",
+    if (params[["basemap"]]) "\nBackground: OpenStreetMap contributors (ODbL)."
+  )
 )
 ```
 
-The generic aggregation interface accepts other mapped node and OD fields:
-
-```{r generic-aggregation-example, eval=FALSE}
-aggregated <- aggregate_od_data(
-  nodes = raw_nodes,
-  flows = raw_flows,
-  radius_m = 1000,
-  node_columns = c(
-    id = "station", longitude = "x", latitude = "y",
-    name = "station_name", weight = NA
-  ),
-  flow_columns = c(
-    origin = "from_station", destination = "to_station",
-    count = "rides", time = "departure_time"
-  ),
-  timezone = "America/Chicago"
+```{r map-summary, echo=FALSE}
+window_summary <- data.frame(
+  Original_station_nodes = nrow(day_standard$nodes),
+  Grouped_nodes_1_5_km = nrow(map_standard$nodes),
+  Selected_trips = map$summary[["selected_flow"]],
+  Within_group_trips = map$summary[["within_node_flow"]],
+  Displayed_directed_pairs = map$summary[["displayed_pairs"]],
+  Displayed_nonloop_trips = map$summary[["displayed_flow"]],
+  check.names = FALSE
 )
+names(window_summary) <- c(
+  "Original station nodes", "Grouped nodes (1.5 km)", "Selected trips",
+  "Within-group trips", "Displayed directed pairs", "Displayed nonloop trips"
+)
+knitr::kable(window_summary, caption = "1.5 km grouped OD summary for 00:00 to 03:00", format = "html", row.names = FALSE)
 ```
 
-## Notes and limitations
+The half-open window `[00:00, 03:00)` contains `r map$summary$selected_flow` departures after the 1.5 km grouping, of which `r map$summary$within_node_flow` become within-group trips. The remaining `r map$summary$displayed_flow` nonloop trips are drawn across `r map$summary$displayed_pairs` directed group pairs. The grouping changes endpoints and the number of within-node trips, but not the selected trip total. The fixed seven classes remain `r paste(od_labels, collapse = ", ")`, with the green-to-red palette shown above. Curved arrows indicate direction between grouped endpoints rather than observed street routes.
 
-- Every OD endpoint must match one mapped node identifier.
-- `hour_window` pools matching clock hours across every date in the input.
-- Only endpoints of displayed nonloop routes are shown when `active_nodes_only = TRUE`.
-- Fixed flow classes make colours comparable across maps.
-- OD arrows are visual connections, not observed bicycle trajectories or map-matched routes.
+## Validate the conversion
+
+Validation is performed after the main workflow. The checks verify date filtering, agreement between the converted object and the prepared `input.rds` file, endpoint referential integrity, trip conservation across temporal and spatial aggregations, and source-file protection.
+
+```{r validation, echo=FALSE}
+validation <- data.frame(
+  Check = c(
+    "Date filtering retains 1,950 records on 2026-01-01",
+    "Converted nodes and OD tables agree with the prepared day file",
+    "Retained OD row count equals retained trips in provenance",
+    "Ride IDs are nonblank and unique",
+    "All OD endpoints exist in the station nodes table",
+    "Hourly and spatial aggregations conserve total retained trips",
+    "Spatial grouping does not reduce within-node trip totals",
+    "The 1.5 km display aggregation conserves all retained trips",
+    "The 1.5 km display aggregation reduces the node count",
+    "Selected half-open window totals reconcile",
+    "Source files remain unchanged during report generation"
+  ),
+  Passed = c(
+    nrow(raw) == 1950L && ncol(raw) == 13L,
+    isTRUE(all.equal(standard$nodes, full_input$nodes, check.attributes = FALSE)) &&
+      isTRUE(all.equal(standard$od, full_input$od, check.attributes = FALSE)),
+    nrow(full_input$od) == full_input$provenance$retained_trips && sum(full_input$od$flow) == full_input$provenance$retained_trips,
+    !anyNA(full_input$od$ride_id) && all(nzchar(full_input$od$ride_id)) && !anyDuplicated(full_input$od$ride_id),
+    all(full_input$od$origin_id %in% full_input$nodes$node_id) && all(full_input$od$destination_id %in% full_input$nodes$node_id),
+    sum(hourly_input$od$flow) == sum(full_input$od$flow) && sum(spatial_input$od$flow) == sum(full_input$od$flow),
+    sum(spatial_input$od$flow[spatial_input$od$origin_id == spatial_input$od$destination_id]) >= within_station_total,
+    sum(map_standard$od$flow) == sum(day_standard$od$flow),
+    nrow(map_standard$nodes) < nrow(day_standard$nodes),
+    map$summary$selected_flow == map$summary$within_node_flow + map$summary$nonloop_flow,
+    identical(source_before, tools::md5sum(source_files))
+  )
+)
+knitr::kable(validation, caption = "Core validation results", format = "html", row.names = FALSE)
+
+coverage <- data.frame(
+  `Source departures` = full_input$provenance$source_departures,
+  `Located stations` = nrow(full_input$nodes),
+  `Retained trips` = nrow(full_input$od),
+  `Within-station trips` = within_station_total,
+  `Missing origin only` = full_input$provenance$missing_origin_only,
+  `Missing destination only` = full_input$provenance$missing_destination_only,
+  `Missing both endpoints` = full_input$provenance$missing_both,
+  `Unmatched coordinates` = full_input$provenance$unmatched_coordinates,
+  Unit = full_input$od_unit,
+  check.names = FALSE
+)
+knitr::kable(coverage, caption = "Complete-data coverage", format = "html", row.names = FALSE)
+```
+
+<div class="result">Every validation row must be <code>TRUE</code>. The 1.5 km grouping preserves every trip but changes the display nodes and increases within-group trips. The map reports these loops separately because they have no directional arrow between distinct groups.</div>
+
+## Export, read back, and reuse
+
+`write_traffic_input()` publishes the teaching `standard` object to a new directory with RDS and CSV tables, a data dictionary, validation records, source identities, metadata, and checksums.
+
+```{r prepared-export}
+prepared_export_dir <- tempfile("divvy-prepared-export-")
+dictionary <- read.csv("data/data-dictionary.csv", stringsAsFactors = FALSE)
+dictionary_key <- paste(dictionary$table, dictionary$field, sep = "/")
+standard_key <- c(
+  paste("nodes", names(standard$nodes), sep = "/"),
+  paste("od", names(standard$od), sep = "/")
+)
+dictionary <- dictionary[dictionary_key %in% standard_key, ]
+
+prepared_path <- write_traffic_input(
+  standard,
+  prepared_export_dir,
+  source_files = raw_file,
+  native = raw,
+  dictionary = dictionary
+)
+restored <- readRDS(prepared_path)
+```
+
+```{r prepared-export-checks, echo=FALSE}
+metadata <- jsonlite::read_json(file.path(prepared_export_dir, "metadata.json"), simplifyVector = TRUE)
+exported_od <- read.csv(
+  file.path(prepared_export_dir, "od.csv"),
+  na.strings = metadata$csv$missing,
+  colClasses = c(
+    ride_id = "character",
+    origin_id = "character",
+    destination_id = "character"
+  )
+)
+manifest <- read.csv(file.path(prepared_export_dir, "checksums.csv"), stringsAsFactors = FALSE)
+core_fields <- setdiff(names(standard), "provenance")
+export_checks <- data.frame(
+  Check = c(
+    "RDS core fields read back unchanged",
+    "CSV ride IDs, endpoints, times, and trip values read back correctly",
+    "Dictionary and validation files are present",
+    "Prepared-export checksums agree",
+    "Source files remain unchanged"
+  ),
+  Passed = c(
+    all(vapply(core_fields, function(key) identical(restored[[key]], standard[[key]]), logical(1))),
+    identical(exported_od$ride_id, standard$od$ride_id) &&
+      identical(exported_od$origin_id, standard$od$origin_id) &&
+      identical(exported_od$destination_id, standard$od$destination_id) &&
+      identical(as.numeric(exported_od$time), as.numeric(standard$od$time)) &&
+      identical(as.numeric(exported_od$flow), as.numeric(standard$od$flow)),
+    all(file.exists(file.path(prepared_export_dir, c("data-dictionary.csv", "validation.csv")))),
+    identical(
+      unname(tools::md5sum(file.path(prepared_export_dir, manifest$file))),
+      manifest$md5
+    ),
+    identical(source_before, tools::md5sum(source_files))
+  )
+)
+knitr::kable(data.frame(file = sort(list.files(prepared_export_dir))), caption = "Prepared-data export files", format = "html", row.names = FALSE)
+knitr::kable(export_checks, caption = "Prepared-data readback checks", format = "html", row.names = FALSE)
+knitr::kable(read.csv(file.path(prepared_export_dir, "validation.csv")), caption = "Stored validation record", format = "html", row.names = FALSE)
+```
+
+#### Derived-data export and readback {.unnumbered}
+
+```{r derived-export-setup, echo=FALSE}
+hourly_dictionary <- read.csv('data/data-dictionary.csv', stringsAsFactors = FALSE)[c('table', 'field', 'meaning')]
+hourly_dictionary <- hourly_dictionary[vapply(seq_len(nrow(hourly_dictionary)), function(i) {
+  table <- hourly_dictionary[["table"]][i]; field <- hourly_dictionary[["field"]][i]
+  table %in% names(hourly_input) && is.data.frame(hourly_input[[table]]) && field %in% names(hourly_input[[table]])
+}, logical(1)), ]
+hourly_dictionary[["meaning"]][hourly_dictionary[["table"]] == 'od' & hourly_dictionary[["field"]] == 'time'] <-
+  'Local hour interval start; the interval width and timezone are recorded in metadata.'
+hourly_dictionary[["meaning"]][hourly_dictionary[["table"]] == 'od' & hourly_dictionary[["field"]] == 'flow'] <-
+  'Retained trips for this hour and directed source station pair.'
+spatial_dictionary <- data.frame(table = c(rep('nodes', 4), rep('od', 2)),
+  field = c('display_name', 'raw_node_count', 'member_weight', 'endpoint_activity', 'time', 'flow'),
+  meaning = c('Recorded name of the representative source station.', 'Number of source stations in this group.',
+    'Sum of unit source-station weights; separate from trip counts.',
+    'Departures plus arrivals at member stations; a within-node trip contributes two endpoints.',
+    'Retained departure instant, with the source timezone recorded in metadata.',
+    'Trips at this departure instant and grouped directed endpoint pair.'))
+
+hourly_validation <- data.frame(
+  check = c('Retained trips conserved', 'Unique hourly OD keys', 'Source station register preserved'),
+  observed = c(sum(hourly_input[["od"]][["flow"]]), sum(duplicated(hourly_input[["od"]][c('time', 'origin_id', 'destination_id')])), nrow(hourly_input[["nodes"]])),
+  expected = c(sum(standard[["od"]][["flow"]]), 0, nrow(standard[["nodes"]])),
+  passed = c(sum(hourly_input[["od"]][["flow"]]) == sum(standard[["od"]][["flow"]]),
+    !anyDuplicated(hourly_input[["od"]][c('time', 'origin_id', 'destination_id')]),
+    identical(hourly_input[["nodes"]], standard[["nodes"]])),
+  detail = c('The same retained departures are counted by local hour and directed station pair.',
+    'Each hour and directed station pair occurs once.', 'Station fields and ordering remain unchanged.'))
+spatial_validation <- data.frame(
+  check = c('Retained trips conserved', 'Every source station assigned once', 'Representative radius bound', 'Time and grouped OD counts preserved'),
+  observed = c(sum(spatial_input[["od"]][["flow"]]), nrow(spatial_membership), aggregation[["metadata"]][["max_assignment_distance_m"]], length(actual_spatial_counts)),
+  expected = c(sum(standard[["od"]][["flow"]]), nrow(standard[["nodes"]]), aggregation_radius_m, length(expected_spatial_counts)),
+  passed = c(sum(spatial_input[["od"]][["flow"]]) == sum(standard[["od"]][["flow"]]),
+    !anyDuplicated(spatial_membership[["raw_node_id"]]) && setequal(spatial_membership[["raw_node_id"]], standard[["nodes"]][["node_id"]]),
+    aggregation[["metadata"]][["max_assignment_distance_m"]] <= aggregation_radius_m + 1e-7,
+    setequal(names(expected_spatial_counts), names(actual_spatial_counts)) &&
+      all(expected_spatial_counts[names(actual_spatial_counts)] == actual_spatial_counts)),
+  detail = c('Spatial grouping uses the same retained departures.',
+    'Membership preserves every source station and its representative.',
+    'Observed distance is no greater than the expected maximum, in metres.',
+    'No departure time is binned; only identical time and grouped endpoints are summed.'))
+```
+
+```{r derived-export}
+derivative_directory <- tempfile('divvy-derived-')
+dir.create(derivative_directory)
+hourly_path <- write_traffic_input(hourly_input, file.path(derivative_directory, 'hourly'),
+  source_files = fixture_files, dictionary = hourly_dictionary, validation = hourly_validation)
+spatial_path <- write_traffic_input(spatial_input, file.path(derivative_directory, 'spatial'),
+  source_files = fixture_files, dictionary = spatial_dictionary, validation = spatial_validation)
+membership_file <- file.path(derivative_directory, 'membership.csv')
+write.csv(spatial_membership, membership_file, row.names = FALSE)
+```
+
+```{r derived-readback, echo=FALSE}
+derivative_checks <- data.frame(representation = character(), check = character(), passed = logical())
+for (name in c('hourly', 'spatial')) {
+  expected <- if (name == 'hourly') hourly_input else spatial_input
+  path <- if (name == 'hourly') hourly_path else spatial_path
+  restored_derivative <- readRDS(path)
+  for (key in setdiff(names(expected), 'provenance')) stopifnot(identical(restored_derivative[[key]], expected[[key]]))
+  for (key in names(expected$provenance)) stopifnot(identical(restored_derivative$provenance[[key]], expected$provenance[[key]]))
+  derivative_metadata <- jsonlite::read_json(file.path(dirname(path), 'metadata.json'), simplifyVector = TRUE)
+  stopifnot(derivative_metadata$timezone == expected$timezone,
+    derivative_metadata$od_unit == expected$od_unit,
+    derivative_metadata$od_time_kind == expected$od_time_kind,
+    identical(as.numeric(derivative_metadata$od_interval_seconds), as.numeric(expected$od_interval_seconds)))
+  for (table in c('nodes', 'od')) {
+    expected_table <- expected[[table]]
+    classes <- vapply(expected_table, function(value) {
+      if (inherits(value, 'POSIXct') || is.double(value)) 'numeric'
+      else if (is.integer(value)) 'integer' else if (is.logical(value)) 'logical' else 'character'
+    }, '')
+    actual_table <- as.data.frame(data.table::fread(file.path(dirname(path), paste0(table, '.csv')),
+      colClasses = classes, na.strings = derivative_metadata$csv$missing, showProgress = FALSE, check.names = FALSE))
+    stopifnot(identical(names(actual_table), names(expected_table)), nrow(actual_table) == nrow(expected_table))
+    for (field in names(expected_table)) {
+      a <- actual_table[[field]]; b <- expected_table[[field]]
+      if (inherits(b, 'POSIXct') || is.numeric(b)) stopifnot(isTRUE(all.equal(as.numeric(a), as.numeric(b), tolerance = .Machine$double.eps)))
+      else stopifnot(identical(a, b))
+      stopifnot(identical(is.na(a), is.na(b)))
+    }
+  }
+  manifest_derivative <- read.csv(file.path(dirname(path), 'checksums.csv'))
+  stopifnot(identical(unname(tools::md5sum(file.path(dirname(path), manifest_derivative$file))), manifest_derivative$md5))
+  derivative_checks <- rbind(derivative_checks, data.frame(representation = name,
+    check = c('Trip total retained', 'RDS and typed CSV readback', 'Export checksums'),
+    passed = c(sum(expected$od$flow) == sum(standard$od$flow), TRUE, TRUE)))
+}
+restored_membership <- as.data.frame(data.table::fread(membership_file,
+  colClasses = c(raw_node_id = 'character', aggregate_node_id = 'character', distance_to_representative_m = 'numeric'),
+  showProgress = FALSE))
+stopifnot(identical(restored_membership, spatial_membership),
+  identical(readRDS(spatial_path)$provenance$spatial_aggregation$membership, spatial_membership))
+json_membership <- jsonlite::read_json(file.path(dirname(spatial_path), 'metadata.json'), simplifyVector = TRUE)$provenance$spatial_aggregation$membership
+stopifnot(identical(as.data.frame(json_membership), spatial_membership))
+derivative_checks <- rbind(derivative_checks, data.frame(representation = 'spatial',
+  check = c('Complete unique membership', 'Membership CSV and metadata readback'),
+  passed = c(nrow(spatial_membership) == nrow(standard$nodes) && !anyDuplicated(spatial_membership$raw_node_id), TRUE)))
+stopifnot(all(derivative_checks$passed), identical(source_before, tools::md5sum(source_files)))
+knitr::kable(data.frame(representation = c('hourly', 'spatial'),
+  data = c('hourly/input.rds', 'spatial/input.rds'),
+  readable_tables = c('hourly/nodes.csv; hourly/od.csv', 'spatial/nodes.csv; spatial/od.csv; membership.csv'),
+  timing = c('interval_start: 3600 seconds', 'original departure instants')),
+  caption = 'Separate reusable derived outputs', format = 'html', row.names = FALSE)
+knitr::kable(derivative_checks, caption = 'Derived-data validation and readback',
+             format = 'html', row.names = FALSE)
+```
 
 
-Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright).
+
+RDS readback preserves IDs, timestamps, values, timing metadata and membership exactly. Typed CSV readback checks the same table values and missingness. Each export also includes `data-dictionary.csv`, `validation.csv`, `metadata.json`, `source-files.csv` and `checksums.csv`. The membership CSV retains station IDs, group IDs and distances to representatives. Source files and the primary standard input are unchanged.
+
+### OD-specific figure and window export
+
+Road examples can use `traffic_export()`, but this example has no road-flow layer. The export below calls the unified `traffic_map()` on the OD standard object, writes PNG/PDF maps, and saves the selected routes, active nodes, summary, selection metadata, provenance, session information, and checksums.
+
+```{r od-export-function}
+export_od_window <- function(output_dir) {
+  if (file.exists(output_dir)) stop("Choose a new OD export directory.")
+  dir.create(output_dir, recursive = TRUE)
+
+  result <- NULL
+  for (extension in c("png", "pdf")) {
+    current <- traffic_map(
+      map_standard,
+      start_time = limits[1],
+      end_time = limits[2],
+      bounds = map_bounds,
+      basemap = divvy_basemap,
+      od_style = list(
+        flow_breaks = od_breaks,
+        flow_labels = od_labels,
+        flow_palette = od_palette
+      ),
+      title = "Divvy departures aggregated within 1.5 km",
+      subtitle = paste(day, paste(window, collapse = " to "), timezone),
+      caption = "Directed OD counts; curved arrows are not observed paths.",
+      width = 5.2, height = 8.4,
+      output_file = file.path(output_dir, paste0("od-map.", extension)),
+      draw = FALSE
+    )
+    if (is.null(result)) result <- current
+  }
+
+  saveRDS(
+    list(
+      schema = "bdynets-od-window-v1",
+      nodes = result$nodes,
+      routes = result$routes,
+      summary = result$summary,
+      start_time = limits[1],
+      end_time = limits[2],
+      timezone = timezone,
+      display_radius_m = map_radius_m,
+      provenance = map_standard$provenance
+    ),
+    file.path(output_dir, "selected-window.rds"),
+    compress = "xz"
+  )
+  write.csv(result$nodes, file.path(output_dir, "selected-nodes.csv"), row.names = FALSE, na = "")
+  write.csv(result$routes, file.path(output_dir, "selected-routes.csv"), row.names = FALSE, na = "")
+  jsonlite::write_json(
+    list(
+      schema = "bdynets-od-window-v1",
+      selection = list(
+        start_time = format(limits[1], "%Y-%m-%d %H:%M:%S", tz = timezone),
+        end_time = format(limits[2], "%Y-%m-%d %H:%M:%S", tz = timezone),
+        interval = "half-open [start, end)",
+        timezone = timezone,
+        loops_drawn = FALSE,
+        display_radius_m = map_radius_m
+      ),
+      summary = result$summary,
+      source = map_standard$provenance
+    ),
+    file.path(output_dir, "provenance.json"),
+    auto_unbox = TRUE,
+    pretty = TRUE,
+    null = "null",
+    na = "null"
+  )
+  writeLines(capture.output(sessionInfo()), file.path(output_dir, "session-info.txt"))
+  files <- sort(list.files(output_dir))
+  write.csv(
+    data.frame(
+      file = files,
+      bytes = unname(file.info(file.path(output_dir, files))$size),
+      md5 = unname(tools::md5sum(file.path(output_dir, files)))
+    ),
+    file.path(output_dir, "checksums.csv"),
+    row.names = FALSE
+  )
+  invisible(result)
+}
+```
+
+```{r od-figure-export}
+figure_export_dir <- tempfile("divvy-od-window-export-")
+exported_window <- export_od_window(figure_export_dir)
+```
+
+```{r od-figure-export-checks, echo=FALSE}
+figure_manifest <- read.csv(file.path(figure_export_dir, "checksums.csv"), stringsAsFactors = FALSE)
+figure_checks <- data.frame(
+  Check = c(
+    "PNG and PDF OD maps are present",
+    "Selected routes, nodes, and provenance are present",
+    "Exported OD totals equal the displayed window",
+    "OD-window checksums agree"
+  ),
+  Passed = c(
+    all(c("od-map.png", "od-map.pdf") %in% list.files(figure_export_dir)),
+    all(c("selected-window.rds", "selected-routes.csv", "selected-nodes.csv", "provenance.json") %in% list.files(figure_export_dir)),
+    exported_window$summary$selected_flow == map$summary$selected_flow &&
+      exported_window$summary$within_node_flow == map$summary$within_node_flow,
+    identical(
+      unname(tools::md5sum(file.path(figure_export_dir, figure_manifest$file))),
+      figure_manifest$md5
+    )
+  )
+)
+knitr::kable(data.frame(file = sort(list.files(figure_export_dir))), caption = "OD-window export files", format = "html", row.names = FALSE)
+knitr::kable(figure_checks, caption = "OD-window export checks", format = "html", row.names = FALSE)
+```
+
+```{r optional-persistent-export}
+if (params$export) {
+  if (file.exists(params$export_dir)) stop("The requested export directory already exists; choose a new directory.")
+  dir.create(params$export_dir, recursive = TRUE)
+  write_traffic_input(
+    standard,
+    file.path(params$export_dir, "prepared-data"),
+    source_files = raw_file,
+    native = raw,
+    dictionary = dictionary
+  )
+  export_od_window(file.path(params$export_dir, "figures-and-window"))
+}
+```
+
+## Reproduction, source records, and troubleshooting
+
+Place this Rmd in `examples/DivvyBike/`. From the repository root, render it offline with:
+
+```bash
+Rscript -e "source('bdynets/inst/preparation-session.R'); preparation_session('examples/DivvyBike'); rmarkdown::render('examples/DivvyBike/divvy-od-report.Rmd', knit_root_dir='examples/DivvyBike', params=list(basemap=FALSE, export=FALSE))"
+```
+
+`basemap=FALSE` requires no network. With `basemap=TRUE`, a verified cache may be reused; a new street-background request requires network access. OD nodes, routes, totals, validation, and exports do not depend on a basemap.
+
+Common problems include a missing required column, duplicate ride IDs, an invalid or ambiguous local timestamp, an endpoint without a located station, a non-IANA timezone, a time bin that does not divide an hour, and reuse of an existing export directory. A missing OD row is not automatically an observed zero.
+
+```{r reproducibility, echo=FALSE}
+stopifnot(identical(source_before, tools::md5sum(source_files)))
+knitr::kable(
+  read.csv("data/original-sources.csv", stringsAsFactors = FALSE)[c("file", "provider", "role")],
+  caption = "Original archive and source identity",
+  format = "html", row.names = FALSE
+)
+knitr::kable(
+  read.csv("data/raw/source-manifest.csv", stringsAsFactors = FALSE)[c("file", "selection")],
+  caption = "Bundled original-format excerpt and selection",
+  format = "html", row.names = FALSE
+)
+conversion_files <- intersect(c("prepare.R", "run.R"), list.files("."))
+knitr::kable(
+  data.frame(
+    file = conversion_files,
+    sha256 = vapply(conversion_files, digest::digest, "", file = TRUE, algo = "sha256", serialize = FALSE)
+  ),
+  caption = "Conversion and entry-point source identities",
+  format = "html", row.names = FALSE
+)
+bundle_dir <- file.path("..", "..", "bdynets")
+bundle_files <- list.files(bundle_dir, recursive = TRUE, full.names = FALSE)
+bundle_sha <- vapply(
+  file.path(bundle_dir, bundle_files),
+  digest::digest,
+  "",
+  file = TRUE,
+  algo = "sha256",
+  serialize = FALSE
+)
+revision <- digest::digest(
+  paste(paste(bundle_files, bundle_sha, sep = " "), collapse = "\n"),
+  algo = "sha256",
+  serialize = FALSE
+)
+
+cat("Package version:", as.character(packageVersion("bdynets")), "\n")
+cat("Bundled source revision (SHA-256):", revision, "\n")
+cat("Report computation elapsed:", round(proc.time()[["elapsed"]] - render_started, 1), "seconds\n")
+sessionInfo()
+```

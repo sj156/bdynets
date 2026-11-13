@@ -1,144 +1,796 @@
 ---
-title: "Beijing: simulated road flow on day 10"
+title: "Beijing Simulated Road Flow: A Complete bdynets Tutorial"
 output:
   html_document:
     self_contained: true
-    toc: true
-    toc_depth: 2
-    mathjax: null
     md_extensions: "-tex_math_dollars"
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    mathjax: null
 params:
   time_label: "08:00"
+  basemap: true
   export: false
-  export_dir: "output"
-  figure_dir: null
-
+  export_dir: "output/tutorial-export"
 ---
 
 <style>
-body{font-size:16px;line-height:1.65;color:#25364a} .main-container{max-width:1040px} h1,h2,h3{line-height:1.3} h2{margin-top:1.8em} pre{font-size:13px;overflow-x:auto} table{font-size:14px;max-width:100%;display:block;overflow-x:auto} th,td{padding:7px 10px!important;overflow-wrap:anywhere} img{max-width:100%;height:auto} p{margin-bottom:1em} code{overflow-wrap:anywhere}
-table{display:block!important;max-width:100%!important;width:100%!important;overflow-x:auto!important}th,td{overflow-wrap:anywhere}
+body{font-size:16px;line-height:1.72;color:#25364a}.main-container{max-width:1040px}h1,h2,h3{color:#17324d}pre{font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}table{font-size:14px;display:block;overflow-x:auto}th,td{padding:7px 10px!important}img{max-width:100%;height:auto}.note{padding:12px 16px;background:#f3f7fa;border-left:4px solid #3b718f;margin:18px 0}.warning{padding:12px 16px;background:#fff8e8;border-left:4px solid #d49a26;margin:18px 0}.result{padding:12px 16px;background:#f3faf5;border-left:4px solid #3d8b57;margin:18px 0}
 </style>
 
 ```{r setup, include=FALSE}
-figure_dir <- params$figure_dir
-if(is.null(figure_dir)) {figure_dir <- tempfile("traffic-figures-");dir.create(figure_dir)}
-knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=TRUE,
-  fig.path=file.path(figure_dir,"figure-"), dev="png", dpi=150,
-  fig.width=10, fig.height=8, out.width="100%", cache=FALSE)
-fmt <- function(v,digits=2) format(round(v,digits),trim=TRUE,scientific=FALSE,big.mark=",")
-stopifnot(is.logical(params$export),length(params$export)==1L,!is.na(params$export))
-```
-
-## Source and measurement
-
-This example uses simulation day 10 from `output_LinkTDMOE.csv`, identified in *个体轨迹数据拥堵溯源分析项目及数据说明.docx*. The supplied geometry matches 11,742 of the 12,287 directed node pairs; 545 pairs without geometry are excluded.
-
-`link_volume_in_veh_per_hour_for_all_lanes` records an all-lane hourly entry-flow rate each minute. Five consecutive rates are averaged for each five-minute frame. Values remain in vehicles/hour.
-
-## Data preparation
-
-`prepare.R` matches directed node-pair IDs to the supplied geometry and averages five one-minute rates per frame. It reads the bundled source records in `data/source.rds` and writes the standard road, time and flow fields to `data/input.rds`.
-
-```{r prepare}
+render_started <- proc.time()[["elapsed"]]
 library(bdynets)
-source("prepare.R")
-prepared_file <- prepare_example(".")
-x <- read_traffic(prepared_file)
-input <- readRDS(prepared_file)
-x$basemap <- traffic_basemap(x,cache_dir=file.path("data","basemap-cache"))
-x$provenance$basemap <- x$basemap$provenance
-runtime_context <- x$basemap
-index <- match(params$time_label,sub("^.* ","",x$time_labels))
-stopifnot(!is.na(index))
+source("prepare.R", local = TRUE)
+
+plain_output <- knitr::knit_hooks$get("output")
+knitr::knit_hooks$set(output = function(x, options) {
+  plain_output(gsub("[ \t]+\n", "\n", x, perl = TRUE), options)
+})
+
+figure_dir <- tempfile("beijing-tutorial-figures-")
+dir.create(figure_dir)
+mapping_directory <- tempfile("beijing-field-mapping-")
+dir.create(mapping_directory)
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  cache = FALSE,
+  fig.path = file.path(figure_dir, "figure-"),
+  fig.width = 10,
+  fig.height = 7.5,
+  dpi = 150,
+  out.width = "100%"
+)
+
+case <- list(
+  raw_file = "data/raw/output_LinkTDMOE.csv",
+  geometry_file = "data/raw/network.html",
+  prepared_file = "data/input.rds",
+  day = 10L,
+  expected_minutes = 0:9,
+  interval_minutes = 5L,
+  fields = c(
+    pair = "link_id_from_to",
+    day = "day_no",
+    minute = "timestamp_in_min",
+    rate = "link_volume_in_veh_per_hour_for_all_lanes"
+  ),
+  incoming_fields = c(
+    pair = "directed_pair",
+    day = "simulation_day",
+    minute = "source_minute",
+    rate = "entry_rate"
+  )
+)
+
+source_files <- list.files("data", full.names = TRUE, recursive = TRUE)
+source_files <- source_files[!grepl("/basemap-cache/", source_files)]
+source_before <- tools::md5sum(source_files)
+full_standard <- readRDS(case$prepared_file)
 ```
 
-The map starts at `r x$time_labels[index]` and covers
-`r x$interval_seconds[index]/60` minutes. The default 08:00 is a demonstration
-selection, not a maximum-based selection. Numeric seconds and displayed labels
-retain the supplied source clock; they do not establish a UTC offset.
+This tutorial shows the complete workflow expected of a new `bdynets` user:
 
-```{r overview}
-knitr::kable(data.frame(
-  Item=c("Roads","Frames","First interval start","Last interval start","Flow unit"),
-  Value=c(nrow(x$roads),length(x$times),x$time_labels[1],tail(x$time_labels,1),x$unit)),
-  caption="Data scope")
+**understand the source → inspect and validate raw records → construct `standard` with `traffic_input()` → visualize `standard` with `traffic_map()` → validate → export and read back.**
+
+The Beijing-specific code is limited to reading the source fields, matching directed road IDs, and aggregating minute-sampled rates. The public constructor and plotting functions are general `bdynets` interfaces.
+
+## Data, source, and preparation goal
+
+This case uses road performance output from a project traffic simulator, stored in `output_LinkTDMOE.csv`. A matching project network file supplies directed road attributes and longitude–latitude geometry. The records describe **simulation day 10**; they are simulated values rather than measurements from roadside sensors.
+
+Each raw value is an **all-lane hourly entry rate sampled once per minute**. Its unit is `vehicles/hour`. It is not speed, occupancy, vehicle count within one minute, relative load, or congestion by itself.
+
+The preparation goal is to:
+
+1. validate one observation for every directed road–minute key;
+2. match source road pairs to directed network geometry;
+3. average five consecutive minute-sampled hourly rates;
+4. retain the result in `vehicles/hour`;
+5. construct the standard `bdynets-traffic-input-v1` object; and
+6. map one five-minute frame and summarize change across the day.
+
+```{r source-summary, echo=FALSE}
+original_sources <- read.csv("data/original-sources.csv", stringsAsFactors = FALSE)
+knitr::kable(
+  original_sources[c("file", "provider", "role")],
+  caption = "Original data sources",
+  format = "html",
+  row.names = FALSE
+)
+
+source_scope <- data.frame(
+  Item = c(
+    "Directed pairs with minute records",
+    "Roads matched to supplied geometry",
+    "Directed pairs excluded from drawing",
+    "Five-minute frames in one day",
+    "Prepared flow unit"
+  ),
+  Value = c(
+    full_standard$provenance$source_pairs,
+    nrow(full_standard$roads),
+    full_standard$provenance$excluded_pairs,
+    length(full_standard$times),
+    full_standard$unit
+  )
+)
+knitr::kable(source_scope, caption = "Scope of the complete prepared day", format = "html", row.names = FALSE)
 ```
 
-| Common field | Meaning |
-|---|---|
-| road_id | Unique directed road or segment identifier |
-| geometry | Longitude/latitude vertex matrix, ordered in travel direction |
-| time | Source-clock interval start in numeric seconds |
-| flow | Supplied nonnegative measurement; zero is observed and NA is missing |
-| unit | Supplied measurement label, without inferred conversion |
+All 12,287 source pairs retain native minute records. Of these, 11,742 have matching supplied geometry and can be drawn; 545 are excluded from the geographic display. Exclusion from drawing does not mean that their native observations were zero or missing.
 
-```{r sample-records}
-knitr::kable(head(input$flow),caption="Actual prepared flow records")
+Raw time is the number of minutes since simulation midnight. No calendar date or timezone is supplied. A complete day contains 1,440 source minutes and 288 five-minute frames.
+
+## Raw input, field meanings, and editable configuration
+
+### Configuration to edit for another file
+
+The following block contains the values a user normally changes first: file paths, source day, minute domain, aggregation interval, and column mapping.
+
+```{r configuration}
+case <- list(
+  raw_file = "data/raw/output_LinkTDMOE.csv",
+  geometry_file = "data/raw/network.html",
+  prepared_file = "data/input.rds",
+  day = 10L,
+  expected_minutes = 0:9,
+  interval_minutes = 5L,
+  fields = c(
+    pair = "link_id_from_to",
+    day = "day_no",
+    minute = "timestamp_in_min",
+    rate = "link_volume_in_veh_per_hour_for_all_lanes"
+  ),
+  incoming_fields = c(
+    pair = "directed_pair",
+    day = "simulation_day",
+    minute = "source_minute",
+    rate = "entry_rate"
+  )
+)
 ```
 
-## Whole-day coverage
+`fields` maps source headers to four required roles. Changing a header does not change its measurement meaning; the mapped `rate` field must still contain a nonnegative hourly entry rate.
 
-```{r day-coverage}
-coverage <- traffic_coverage(x)
-knitr::kable(data.frame(
-  Statistic=c("Expected road-time cells","Observed cells","Missing cells","Observed zero cells"),
-  Value=unlist(coverage[c("road_time_cells","observed","missing","zero")],use.names=FALSE)),
-  caption="All supplied roads and intervals")
+### Inspect the original-format teaching excerpt
+
+The bundled excerpt contains ten rows for directed pair `27->6632`, simulation day 10, and minutes 0–9. It is deliberately small enough to check by hand.
+
+```{r read-raw}
+raw <- read.csv(case$raw_file, check.names = FALSE)
+raw
 ```
 
-A road-time cell is one road in one interval. These counts cover the whole day,
-including roads outside the central-area map view. An omitted pair and an explicit
-NA are missing; neither is replaced by zero.
-
-## Selected-time map and statistics
-
-```{r map, fig.cap="Simulated all-lane hourly entry rates at the selected five-minute interval. The map uses a central-area view; statistics include all supplied roads."}
-plot(x,index=index)
+```{r raw-field-description, echo=FALSE}
+raw_dictionary <- data.frame(
+  `Source field` = c(
+    "link_id_from_to",
+    "day_no",
+    "timestamp_in_min",
+    "link_volume_in_veh_per_hour_for_all_lanes"
+  ),
+  Meaning = c(
+    "Directed endpoint pair, for example 27->6632",
+    "Simulation day number; day 10 in this example",
+    "Whole minute counted from simulation midnight",
+    "All-lane hourly entry rate, in vehicles/hour"
+  ),
+  `Standard destination` = c(
+    "Matched to edge_id; network edge_index becomes road_id",
+    "Retained in provenance metadata",
+    "Converted from minutes to frame starts in seconds",
+    "Averaged within complete five-minute intervals"
+  ),
+  check.names = FALSE
+)
+knitr::kable(raw_dictionary, caption = "Raw flow field definitions", format = "html", row.names = FALSE)
 ```
 
-Green through red denotes lower through higher flow on the full-day log1p scale;
-gray denotes missing observations. High flow alone does not establish low speed
-or a cause of congestion. Basemap roads without observations provide context.
+The CSV has identifiers, times, and values, but no drawing geometry. The network source supplies the road attributes and travel-ordered coordinates.
 
-```{r selected-statistics}
-selected <- traffic_summary(x,index=index)
-knitr::kable(selected[c("time","roads","available","missing","zero")],
-  caption="Selected-interval availability")
-knitr::kable(selected[c("minimum","median","mean","p95","maximum")],
-  digits=2,caption=paste("Selected-interval distribution [",x$unit,"]"))
+```{r read-network-and-native}
+native <- read_beijing_raw(
+  moe_file = case$raw_file,
+  geometry_file = case$geometry_file,
+  fields = case$fields,
+  day = case$day,
+  expected_minutes = case$expected_minutes
+)
 ```
 
-At `r selected$time`, the available-road mean is `r fmt(selected$mean)`
-vehicles/hour and the median is `r fmt(selected$median)`; `r fmt(selected$zero,0)`
-roads have recorded zero. These numbers describe this interval, not the whole
-day and not distinct vehicles across the network.
-
-## Daily pattern and limits
-
-```{r daily-trend, fig.height=5, fig.cap="Mean of available road values in each interval. The dashed line marks the selected map time."}
-trend <- traffic_trend(x,method="mean")
-plot(trend,metric="mean",index=index)
-peak <- which.max(trend$mean)
+```{r show-road, echo=FALSE}
+road_columns <- c("edge_index", "edge_id", "from_node_id", "to_node_id", "length_km", "lanes", "speed_limit")
+knitr::kable(
+  native$roads[road_columns],
+  caption = "Road attributes read from the source network",
+  format = "html",
+  row.names = FALSE
+)
 ```
 
-The largest included-road mean is `r fmt(trend$mean[peak])` vehicles/hour at
-`r trend$label[peak]`. The curve includes recorded zeros and excludes missing
-values. All 3,381,696 included road-frame cells are present. This completeness
-does not cover the 545 source pairs without supplied geometry. Lane counts and
-simulation conditions differ between roads. No event records are supplied.
+`edge_id` is a directed endpoint pair. The `geometry` list-column stores longitude–latitude vertices in travel order. Direction matters: `27->6632` is not interchangeable with `6632->27`.
 
-## Figure and data export
+#### Native source object and readback {.unnumbered}
 
-`traffic_export()` writes maps, trend figures and the selected data and summary tables for the same input and interval.
+The intermediate `source.rds` retains native IDs, clocks and observations. This sample snapshot is saved and read back in a temporary directory; the supplied day-level snapshot stays unchanged.
 
-```{r export}
-if(params$export) {
-  label <- gsub("[^[:alnum:]_-]+","-",x$time_labels[index])
-  traffic_export(x,file.path(params$export_dir,label),index=index,
-    input_files=c(source="data/source.rds",prepared="data/input.rds"))
+```{r native-source, echo=FALSE}
+native_directory <- tempfile("native-source-")
+dir.create(native_directory)
+native_file <- file.path(native_directory, "source.rds")
+stopifnot(!file.exists(native_file))
+```
+
+```{r native-source-2, echo=TRUE}
+saveRDS(native, native_file, compress = "xz", version = 3)
+restored_native <- readRDS(native_file)
+```
+
+```{r native-source-3, echo=FALSE}
+stopifnot(identical(restored_native, native))
+native <- restored_native
+invisible(capture.output(str(native, max.level = 1, give.attr = FALSE)))
+knitr::kable(data.frame(file = basename(native_file), schema = native$schema, exact_readback = TRUE),
+    caption = "Native source snapshot before standard-input construction", format = "html", row.names = FALSE)
+```
+
+The intermediate object retains source detail; the next step constructs the common road, value and time tables.
+
+### Deliberately invalid input and correction
+
+A directed pair and minute must identify exactly one rate. Here the first row is duplicated in memory; the original CSV is not changed.
+
+```{r invalid-input}
+bad_raw <- rbind(raw, raw[1, ])
+cat(tryCatch(
+  {
+    beijing_records(
+      bad_raw,
+      native$roads,
+      case$expected_minutes,
+      case$fields,
+      case$day
+    )
+    "No error was raised."
+  },
+  error = conditionMessage
+))
+```
+
+The readable error identifies the duplicated directed-pair–minute key. Removing the duplicate restores the declared minute domain; `native`, created above from the unchanged source, is the corrected input.
+
+```{r corrected-input-check}
+corrected <- beijing_records(
+  raw,
+  native$roads,
+  case$expected_minutes,
+  case$fields,
+  case$day
+)
+stopifnot(identical(corrected$minute_rates, native$minute_rates))
+data.frame(
+  directed_pairs = length(corrected$road_pairs),
+  source_minutes = length(corrected$minute),
+  duplicate_keys = anyDuplicated(raw[c(case$fields["pair"], case$fields["minute"])]),
+  missing_pair_minutes = sum(is.na(corrected$minute_rates))
+)
+```
+
+An observed value of zero is valid data and remains in the calculation. A missing pair–minute record prevents a complete five-minute mean and is rejected rather than silently treated as zero.
+
+## Convert with the general `bdynets` interface
+
+### Prepare canonical road, flow, and time inputs
+
+Raw formats differ across data owners. Beijing-specific preprocessing therefore stops after it has produced the canonical inputs expected by the package: a `roads` table, a long `flow` table, and frame times.
+
+```{r prepare-canonical-tables}
+interval_minutes <- case$interval_minutes
+roads <- native$roads
+
+# Match each drawable directed road to the corresponding source pair.
+road_rows <- match(roads$edge_id, native$road_pairs)
+minute_rates <- native$minute_rates[road_rows, , drop = FALSE]
+
+# Average each complete, aligned group of five minute-sampled rates.
+first <- seq.int(1L, length(native$minute), by = interval_minutes)
+values <- do.call(cbind, lapply(first, function(i) {
+  columns <- i + seq_len(interval_minutes) - 1L
+  rowMeans(minute_rates[, columns, drop = FALSE])
+}))
+
+# Convert source minutes to standard frame starts in seconds.
+starts <- native$minute[first] * 60
+roads$road_id <- as.character(roads$edge_index)
+flow <- data.frame(
+  road_id = rep(roads$road_id, length(starts)),
+  time = rep(starts, each = nrow(roads)),
+  flow = as.vector(values)
+)
+```
+
+### Construct `standard` with `traffic_input()`
+
+Once the canonical inputs exist, Beijing and other road-flow datasets use the same public constructor.
+
+```{r construct-standard-input}
+standard <- bdynets::traffic_input(
+  roads = roads,
+  flow = flow,
+  times = starts,
+  time_labels = sprintf(
+    "%02d:%02d",
+    starts %/% 3600,
+    (starts %/% 60) %% 60
+  ),
+  interval_seconds = rep(interval_minutes * 60, length(starts)),
+  unit = "vehicles/hour",
+  title = "Beijing simulated entry flow",
+  description = "Five-minute mean of minute-sampled all-lane hourly entry rates.",
+  preparation = c(
+    "Validate one nonnegative rate per directed pair and source minute.",
+    "Join directed endpoint pairs to supplied road geometry.",
+    "Average complete aligned groups of five source minutes."
+  ),
+  provenance = list(
+    source_files = native$source,
+    source_fields = case$fields,
+    day_no = native$day_no,
+    operation = "Arithmetic mean of five minute-sampled hourly entry rates."
+  )
+)
+```
+
+<div class="note"><code>bdynets::traffic_input()</code> is the general package constructor. <code>read_beijing_raw()</code> and <code>beijing_records()</code> are Beijing source adapters; they are not required names or interfaces for other datasets.</div>
+
+### What does `standard` contain?
+
+The result is a named list with schema `bdynets-traffic-input-v1`. The complete top-level structure is shown first, followed by the two main tables.
+
+```{r standard-structure}
+str(standard, max.level = 1, give.attr = FALSE)
+```
+
+```{r show-standard, echo=FALSE}
+knitr::kable(
+  standard$roads[c("road_id", "edge_id", "from_node_id", "to_node_id", "length_km", "lanes")],
+  caption = "Standard roads table; coordinates remain in the geometry list-column",
+  format = "html",
+  row.names = FALSE
+)
+knitr::kable(
+  standard$flow,
+  caption = "Standard flow table",
+  format = "html",
+  row.names = FALSE
+)
+knitr::kable(
+  data.frame(
+    Field = c("schema", "crs", "timezone", "interval_seconds", "unit"),
+    Value = c(
+      standard$schema,
+      standard$crs,
+      "NULL",
+      paste(unique(standard$interval_seconds), collapse = ", "),
+      standard$unit
+    )
+  ),
+  caption = "Key metadata retained in standard",
+  format = "html",
+  row.names = FALSE
+)
+```
+
+Four concrete changes occur during conversion:
+
+- **Identifier:** source pair `27->6632` matches the directed network, and network `edge_index=102` becomes standard `road_id="102"`.
+- **Time:** source minutes 0 and 5 become standard frame starts 0 and 300 seconds.
+- **Value:** each complete group of five hourly rates is averaged.
+- **Metadata:** interval width, unit, coordinate reference system, preparation steps, and provenance remain attached to the standard object.
+
+The first interval is:
+
+```text
+(60 + 60 + 0 + 0 + 0) / 5 = 24 vehicles/hour
+```
+
+The second interval contains five observed zeros, so its result is zero rather than missing. The rates are averaged; they are not summed into a five-minute vehicle count.
+
+#### The shared network and panel interfaces {.unnumbered}
+
+The source road has explicit upstream and downstream node IDs. These support the existing `network_data()` and `network_panel()` interfaces as well as the geographic traffic input. The road ID becomes the panel's edge-unit ID, and the rate values and source-minute clock stay unchanged.
+
+```{r shared-panel, echo=FALSE}
+edges <- data.frame(edge_id = standard$roads$road_id, from = as.character(standard$roads$from_node_id),
+    to = as.character(standard$roads$to_node_id))
+nodes <- data.frame(node_id = unique(c(edges$from, edges$to)))
+```
+
+```{r shared-panel-2, echo=TRUE}
+network <- network_data(nodes, edges, directed = TRUE, provenance = standard$provenance)
+```
+
+```{r shared-panel-3, echo=FALSE}
+values <- matrix(NA_real_, length(standard$times), nrow(edges), dimnames = list(NULL, edges$edge_id))
+values[cbind(match(standard$flow$time, standard$times), match(standard$flow$road_id, edges$edge_id))] <- standard$flow$flow
+```
+
+```{r shared-panel-4, echo=TRUE}
+panel <- network_panel(values, standard$times, edges$edge_id, network, unit_type = "edge", measure = "entry rate",
+    unit = standard$unit, aggregation = "Mean of five minute-sampled hourly rates", provenance = standard$provenance)
+long <- panel_long(panel)
+```
+
+```{r shared-panel-5, echo=FALSE}
+stopifnot(identical(long$unit_id, standard$flow$road_id), identical(long$time, standard$flow$time),
+    identical(long$value, standard$flow$flow))
+knitr::kable(long[c("unit_id", "time", "value", "observed")], caption = "The same source observations in the existing edge-panel interface", format = "html", row.names = FALSE)
+```
+
+The panel uses the constructor's unit-exposure storage default; no lane exposure is inferred and no rate is converted into a count. Geographic drawing retains the source geometry in `traffic_input()`. Data with only a segment ID and coordinates need an explicit source endpoint table before an edge network can be constructed. The interfaces do not infer sensor adjacency or travelled routes.
+
+### Adapt a CSV whose columns have different names
+
+Another data owner may use different headers. The user changes only the source-role mapping; the meaning and the general `traffic_input()` interface remain the same.
+
+```{r renamed-csv}
+incoming <- raw
+names(incoming)[match(unname(case$fields), names(incoming))] <-
+  unname(case$incoming_fields)
+incoming_file <- file.path(mapping_directory, "minute-rates.csv")
+write.csv(incoming, incoming_file, row.names = FALSE, na = "")
+
+incoming <- as.data.frame(data.table::fread(incoming_file, showProgress = FALSE))
+mapped_native <- beijing_records(
+  incoming,
+  native$roads,
+  case$expected_minutes,
+  case$incoming_fields,
+  case$day
+)
+stopifnot(identical(mapped_native$minute_rates, native$minute_rates))
+```
+
+```{r renamed-csv-display, echo=FALSE}
+knitr::kable(head(incoming), caption = "Equivalent CSV with renamed columns", format = "html", row.names = FALSE)
+knitr::kable(
+  data.frame(
+    Required_role = names(case$incoming_fields),
+    Incoming_header = unname(case$incoming_fields)
+  ),
+  caption = "Explicit mapping for the renamed CSV",
+  format = "html",
+  row.names = FALSE
+)
+```
+
+After the mapping check, the canonical-table code in Section 3.1 and the same `bdynets::traffic_input()` call in Section 3.2 apply without changing the package interface.
+
+## Pass the standard object to `traffic_map()`
+
+The teaching excerpt contains only one road and two frames. For a useful map, the report reads the supplied full-day standard object. This object has the same schema as `standard`; it simply contains all drawable roads and all 288 frames.
+
+```{r full-standard-input}
+day_standard <- readRDS(case$prepared_file)
+str(day_standard, max.level = 1, give.attr = FALSE)
+
+day_view <- read_traffic(case$prepared_file)
+clock_labels <- sub("^.* ", "", day_view$time_labels)
+index <- match(params$time_label, clock_labels)
+if (is.na(index)) stop("The selected frame is not present in the prepared day.")
+
+if (params$basemap) {
+  day_view$basemap <- traffic_basemap(day_view, road_classes = character())
+}
+options(bdynets.basemap.auto = FALSE)
+```
+
+```{r full-standard-preview, echo=FALSE}
+knitr::kable(
+  head(day_standard$flow),
+  caption = "First rows of the full-day standard flow table",
+  format = "html",
+  row.names = FALSE
+)
+```
+
+### Road flow map
+
+The first argument to `traffic_map()` is the standard object.
+
+```{r road-map, fig.alt="Beijing simulated road entry rates in the selected five-minute frame; green is lower and red is higher."}
+map_result <- traffic_map(
+  day_standard,
+  index = index,
+  basemap = day_view$basemap,
+  title = "Beijing simulated entry flow",
+  caption = paste0(
+    "Frame ", params$time_label,
+    "; five-minute mean entry rate in vehicles/hour; missing values are grey."
+  )
+)
+```
+
+The map uses common logarithmic classes across the prepared input. Green denotes lower entry rates; yellow, orange, and red denote progressively higher entry rates. Red indicates a high entry rate, not necessarily congestion. Grey indicates missing data and must not be interpreted as zero.
+
+### Daily mean road flow
+
+```{r road-trend, fig.height=4.4}
+trend <- traffic_trend(day_view)
+plot(trend, metric = "mean", index = index)
+```
+
+The curve is the arithmetic mean of available road values in each frame. Observed zeros contribute to the mean; missing values are excluded. It is not a regional total and should not be read as the number of vehicles entering all roads.
+
+## Validate the conversion and prepared day
+
+The checks below connect the hand calculation, teaching excerpt, complete prepared day, stable identifiers, missingness, and source-file protection.
+
+```{r validation, echo=FALSE}
+sample_at <- match(
+  paste(standard$flow$road_id, standard$flow$time),
+  paste(full_standard$flow$road_id, full_standard$flow$time)
+)
+
+validation <- data.frame(
+  Check = c(
+    "Five-minute values equal the hand calculation",
+    "Teaching excerpt agrees with the full prepared day",
+    "Full row count equals roads multiplied by frames",
+    "Full road_id-time keys are unique",
+    "Road IDs are nonmissing, character, and unique",
+    "Observed values are finite and nonnegative",
+    "Excluded-pair count is source pairs minus drawable roads",
+    "Source files remain unchanged during report generation"
+  ),
+  Passed = c(
+    identical(standard$flow$flow, c(24, 0)),
+    !anyNA(sample_at) && identical(standard$flow$flow, full_standard$flow$flow[sample_at]),
+    nrow(full_standard$flow) == nrow(full_standard$roads) * length(full_standard$times),
+    !anyDuplicated(full_standard$flow[c("road_id", "time")]),
+    is.character(full_standard$roads$road_id) &&
+      !anyNA(full_standard$roads$road_id) &&
+      !anyDuplicated(full_standard$roads$road_id),
+    all(is.finite(full_standard$flow$flow) & full_standard$flow$flow >= 0),
+    full_standard$provenance$excluded_pairs ==
+      full_standard$provenance$source_pairs - nrow(full_standard$roads),
+    identical(source_before, tools::md5sum(source_files))
+  )
+)
+knitr::kable(validation, caption = "Core validation results", format = "html", row.names = FALSE)
+
+coverage <- data.frame(
+  Roads = nrow(full_standard$roads),
+  Frames = length(full_standard$times),
+  `Interval (minutes)` = unique(full_standard$interval_seconds) / 60,
+  `Total records` = nrow(full_standard$flow),
+  `Missing records` = sum(is.na(full_standard$flow$flow)),
+  `Observed zeros` = sum(full_standard$flow$flow == 0, na.rm = TRUE),
+  Unit = full_standard$unit,
+  check.names = FALSE
+)
+knitr::kable(coverage, caption = "Complete-day coverage", format = "html", row.names = FALSE)
+```
+
+<div class="result">The workflow is valid only when every row in the validation table is <code>TRUE</code>. The coverage table reports missing values and observed zeros separately.</div>
+
+## Export, read back, and reuse
+
+`write_traffic_input()` publishes a standard object to a **new** directory. It writes the complete R object, readable CSV tables, ordered road vertices, a data dictionary, validation records, source identities, metadata, and checksums. Existing destinations and protected source locations are rejected.
+
+The report performs a small export with the teaching `standard` object so that readback remains fast and directly inspectable.
+
+```{r prepared-export}
+prepared_export_dir <- tempfile("beijing-prepared-export-")
+dictionary <- read.csv("data/data-dictionary.csv", stringsAsFactors = FALSE)
+dictionary_key <- paste(dictionary$table, dictionary$field, sep = "/")
+standard_key <- c(
+  paste("roads", names(standard$roads), sep = "/"),
+  paste("flow", names(standard$flow), sep = "/")
+)
+dictionary <- dictionary[dictionary_key %in% standard_key, ]
+
+prepared_path <- write_traffic_input(
+  standard,
+  prepared_export_dir,
+  source_files = c(case$raw_file, case$geometry_file),
+  native = native,
+  dictionary = dictionary
+)
+restored <- readRDS(prepared_path)
+```
+
+```{r prepared-export-checks, echo=FALSE}
+metadata <- jsonlite::read_json(
+  file.path(prepared_export_dir, "metadata.json"),
+  simplifyVector = TRUE
+)
+exported_flow <- read.csv(
+  file.path(prepared_export_dir, "flow.csv"),
+  na.strings = metadata$csv$missing,
+  colClasses = c(road_id = "character")
+)
+prepared_manifest <- read.csv(file.path(prepared_export_dir, "checksums.csv"), stringsAsFactors = FALSE)
+core_fields <- setdiff(names(standard), "provenance")
+
+export_checks <- data.frame(
+  Check = c(
+    "RDS core fields read back unchanged",
+    "CSV identifiers, times, and values read back correctly",
+    "Data dictionary and validation record are present",
+    "Prepared-export checksums agree",
+    "Source files remain unchanged"
+  ),
+  Passed = c(
+    all(vapply(core_fields, function(key) identical(restored[[key]], standard[[key]]), logical(1))),
+    identical(exported_flow$road_id, standard$flow$road_id) &&
+      identical(as.numeric(exported_flow$time), as.numeric(standard$flow$time)) &&
+      isTRUE(all.equal(exported_flow$flow, standard$flow$flow, check.attributes = FALSE)),
+    file.exists(file.path(prepared_export_dir, "data-dictionary.csv")) &&
+      file.exists(file.path(prepared_export_dir, "validation.csv")),
+    identical(
+      unname(tools::md5sum(file.path(prepared_export_dir, prepared_manifest$file))),
+      prepared_manifest$md5
+    ),
+    identical(source_before, tools::md5sum(source_files))
+  )
+)
+
+knitr::kable(
+  data.frame(file = sort(list.files(prepared_export_dir))),
+  caption = "Files in the prepared-data export",
+  format = "html",
+  row.names = FALSE
+)
+knitr::kable(export_checks, caption = "Prepared-data readback checks", format = "html", row.names = FALSE)
+knitr::kable(
+  read.csv(file.path(prepared_export_dir, "validation.csv")),
+  caption = "Validation and coverage record stored with the export",
+  format = "html",
+  row.names = FALSE
+)
+```
+
+### Export figures and the selected frame
+
+`traffic_export()` uses the same prepared day and selected frame as the on-screen map. It writes PNG and PDF figures, the selected records, summary and trend tables, provenance, session information, input identities, and checksums.
+
+```{r figure-export}
+figure_export_dir <- tempfile("beijing-figure-export-")
+traffic_export(
+  day_view,
+  figure_export_dir,
+  index = index,
+  input_files = c(prepared = case$prepared_file)
+)
+```
+
+```{r figure-export-checks, echo=FALSE}
+figure_manifest <- read.csv(file.path(figure_export_dir, "checksums.csv"), stringsAsFactors = FALSE)
+figure_checks <- data.frame(
+  Check = c(
+    "PNG and PDF map files are present",
+    "Selected-frame data and provenance are present",
+    "Figure-export checksums agree"
+  ),
+  Passed = c(
+    all(c("map.png", "map.pdf") %in% list.files(figure_export_dir)),
+    all(c("selected-frame.rds", "provenance.json") %in% list.files(figure_export_dir)),
+    identical(
+      unname(tools::md5sum(file.path(figure_export_dir, figure_manifest$file))),
+      figure_manifest$md5
+    )
+  )
+)
+knitr::kable(
+  data.frame(file = sort(list.files(figure_export_dir))),
+  caption = "Files in the figure export",
+  format = "html",
+  row.names = FALSE
+)
+knitr::kable(figure_checks, caption = "Figure-export checks", format = "html", row.names = FALSE)
+```
+
+When `params$export` is `TRUE`, the following block also creates persistent copies under `params$export_dir`. The destination must not already exist.
+
+```{r optional-persistent-export}
+if (params$export) {
+  if (file.exists(params$export_dir)) {
+    stop("The requested export directory already exists; choose a new directory.")
+  }
+  dir.create(params$export_dir, recursive = TRUE)
+  write_traffic_input(
+    standard,
+    file.path(params$export_dir, "prepared-data"),
+    source_files = c(case$raw_file, case$geometry_file),
+    native = native,
+    dictionary = dictionary
+  )
+  traffic_export(
+    day_view,
+    file.path(params$export_dir, "figures"),
+    index = index,
+    input_files = c(prepared = case$prepared_file)
+  )
 }
 ```
 
+## Reproduction, source records, and troubleshooting
 
-Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright).
+Place this Rmd in `examples/beijing/`. From the repository root, a fresh R session can render it with the bundled package as follows:
+
+```bash
+Rscript -e "source('bdynets/inst/preparation-session.R'); preparation_session('examples/beijing'); rmarkdown::render('examples/beijing/beijing-traffic-report.Rmd', knit_root_dir='examples/beijing', params=list(time_label='08:00', basemap=FALSE, export=FALSE))"
+```
+
+Set `basemap=FALSE` for fully offline rendering. With `basemap=TRUE`, a verified cached basemap can be reused; obtaining a new background-street request requires network access. The traffic geometry, values, summaries, and validation do not depend on a basemap.
+
+Expected outputs are one self-contained HTML report and, when `export=TRUE`, `prepared-data/` and `figures/` directories. Rendering time depends mainly on the full-day map and figure export. Required report packages are `rmarkdown`, `knitr`, `digest`, `jsonlite`, and `data.table`, plus Pandoc. The bundled `bdynets` source is installed into a temporary session library by `preparation_session()`.
+
+Common problems:
+
+- **Duplicate directed-pair–minute error:** remove or resolve duplicate source rows; do not average duplicates silently.
+- **Missing pair–minute error:** correct the declared minute domain or restore the missing observation; do not replace it with zero without a documented rule.
+- **Unknown road ID:** check direction and confirm that the source pair matches `edge_id` exactly.
+- **Requested map time absent:** choose one of `day_standard$time_labels`.
+- **Export directory already exists:** select a new directory so that previous results are not overwritten.
+
+```{r reproducibility, echo=FALSE}
+stopifnot(identical(source_before, tools::md5sum(source_files)))
+
+knitr::kable(
+  read.csv("data/original-sources.csv", stringsAsFactors = FALSE)[c("file", "provider", "role")],
+  caption = "Original archives and source identities",
+  format = "html",
+  row.names = FALSE
+)
+knitr::kable(
+  read.csv("data/raw/source-manifest.csv", stringsAsFactors = FALSE)[c("file", "selection")],
+  caption = "Bundled original-format excerpts and their selections",
+  format = "html",
+  row.names = FALSE
+)
+
+conversion_files <- intersect(c("prepare.R", "run.R"), list.files("."))
+knitr::kable(
+  data.frame(
+    file = conversion_files,
+    sha256 = vapply(
+      conversion_files,
+      digest::digest,
+      "",
+      file = TRUE,
+      algo = "sha256",
+      serialize = FALSE
+    )
+  ),
+  caption = "Conversion and entry-point source identities",
+  format = "html",
+  row.names = FALSE
+)
+
+bundle_dir <- file.path("..", "..", "bdynets")
+bundle_files <- list.files(bundle_dir, recursive = TRUE, full.names = FALSE)
+bundle_sha <- vapply(
+  file.path(bundle_dir, bundle_files),
+  digest::digest,
+  "",
+  file = TRUE,
+  algo = "sha256",
+  serialize = FALSE
+)
+revision <- digest::digest(
+  paste(paste(bundle_files, bundle_sha, sep = " "), collapse = "\n"),
+  algo = "sha256",
+  serialize = FALSE
+)
+
+cat("Package version:", as.character(packageVersion("bdynets")), "\n")
+cat("Bundled source revision (SHA-256):", revision, "\n")
+cat("Report computation elapsed:", round(proc.time()[["elapsed"]] - render_started, 1), "seconds\n")
+sessionInfo()
+```

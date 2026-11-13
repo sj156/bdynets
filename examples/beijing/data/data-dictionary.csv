@@ -1,0 +1,17 @@
+"table","field","type","meaning","unit","required"
+"roads","edge_index","integer","Source GeoJSON display-road index.","",FALSE
+"roads","edge_id","character","Directed source pair, from_node_id -> to_node_id.","",FALSE
+"roads","from_node_id","integer","Source upstream node ID.","",FALSE
+"roads","to_node_id","integer","Source downstream node ID.","",FALSE
+"roads","length_km","double","Source link length in kilometres.","",FALSE
+"roads","lanes","integer","Source all-lane count.","",FALSE
+"roads","speed_limit","double","Source speed-limit attribute, unchanged.","",FALSE
+"roads","link_type_name","character","Source link-type description.","",FALSE
+"roads","road_id","character","Stable road identifier joining roads, flow and measurements.","",TRUE
+"flow","road_id","character","Stable road identifier joining roads, flow and measurements.","",TRUE
+"flow","time","double","Observation time. POSIXct values are Unix seconds in CSV; numeric values retain the supplied source clock.","seconds",TRUE
+"flow","flow","double","Primary value in the declared unit. An observed zero and a missing value have separate meanings.","vehicles/hour",TRUE
+"road-vertices","road_id","character","Stable road identifier joining roads, flow and measurements.","",TRUE
+"road-vertices","vertex","integer","One-based vertex order within the road, preserving its direction.","",TRUE
+"road-vertices","longitude","double","WGS84 longitude, degrees east.","degrees",TRUE
+"road-vertices","latitude","double","WGS84 latitude, degrees north.","degrees",TRUE

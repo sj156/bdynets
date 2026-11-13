@@ -1,0 +1,17 @@
+"table","field","type","meaning","unit","required"
+"nodes","node_id","character","Stable node identifier used by origin and destination.","",TRUE
+"nodes","latitude","double","WGS84 latitude, degrees north.","degrees",TRUE
+"nodes","longitude","double","WGS84 longitude, degrees east.","degrees",TRUE
+"nodes","display_name","character","Most frequent nonblank station name; alphabetical tie break.","",FALSE
+"nodes","node_idx","integer","Zero-based row in this station register.","",FALSE
+"nodes","representative_station_id","character","The original station ID; one source station per node.","",FALSE
+"nodes","n_raw_stations","integer","One source station per node.","",FALSE
+"nodes","member_weight","integer","One station per node, for the existing OD interface.","",FALSE
+"nodes","coordinate_available","logical","Valid paired station coordinates are available.","",FALSE
+"od","ride_id","character","Stable identifier for one individual trip.","",FALSE
+"od","origin_id","character","Departure node ID joining nodes.node_id.","",TRUE
+"od","destination_id","character","Arrival node ID joining nodes.node_id.","",TRUE
+"od","time","timestamp_seconds","Observation time. POSIXct values are Unix seconds in CSV; numeric values retain the supplied source clock.","seconds",FALSE
+"od","flow","integer","Primary value in the declared unit. An observed zero and a missing value have separate meanings.","trips",TRUE
+"od","origin_node_idx","integer","Generated zero-based departure index joining nodes.node_idx.","",FALSE
+"od","destination_node_idx","integer","Generated zero-based arrival index joining nodes.node_idx.","",FALSE

@@ -5,7 +5,6 @@
 \alias{flow_scale}
 \alias{traffic_summary}
 \alias{traffic_trend}
-\alias{traffic_map}
 \alias{traffic_report}
 \alias{traffic_export}
 \alias{plot.trafficmap_data}
@@ -30,9 +29,6 @@ traffic_summary(x, index = x$initial, region = NULL, mode = "flow",
 traffic_trend(x, region = NULL, mode = "flow", reference = NULL,
   threshold = NULL, comparison = NULL, metric = NULL,
   duration_rule = NULL, method = "mean")
-traffic_map(x, file, mode = "flow", reference = NULL, threshold = NULL,
-  comparison = NULL, metric = NULL, duration_rule = NULL,
-  trend_method = "mean")
 traffic_report(x, file, index = NULL, region = NULL, mode = "flow",
   reference = NULL, threshold = NULL, comparison = NULL,
   metric = NULL, duration_rule = NULL, trend_method = "mean")

@@ -1,0 +1,6 @@
+"check","observed","expected","passed","detail"
+"nodes rows",512,,TRUE,"Rows retained in the prepared table."
+"od rows",1230,,TRUE,"Rows retained in the prepared table."
+"Retained departure total",1230,1230,TRUE,"Each retained original departure contributes one trip."
+"Retained endpoint references",1230,1230,TRUE,"Both endpoints join the supplied node register."
+"Excluded source departures",720,720,TRUE,"Exclusion reasons partition the nonretained source rows."

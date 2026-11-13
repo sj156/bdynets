@@ -132,3 +132,104 @@ test_that('fully covered scopes are requested once without dropping finer road t
   expect_identical(bdynets:::.bm_scopes(boxes,mixed),1:2)
   expect_identical(bdynets:::.bm_scopes(rep(boxes[1],2),all_levels),1L)
 })
+
+# A real XDR v3 fixture with the R 4.5.2 writer header. Its identities are
+# calculated independently of the package hash, so R 4.4 can reproduce the
+# supplied cache fixtures without requiring a second R installation.
+legacy_basemap_fixture <- function(directory,bounds=c(10,10.02,50,50.02),
+  selector='osm-highway-skel-geom-v1',corrupt=FALSE) {
+  bytes <- function(x) {
+    raw<-serialize(x,NULL,version=3)
+    raw[7:10]<-writeBin(4L*65536L+5L*256L+2L,raw(),size=4,endian='big')
+    raw
+  }
+  hash <- function(x) {
+    path<-tempfile();on.exit(unlink(path))
+    writeBin(bytes(x),path);unname(tools::md5sum(path))
+  }
+  base<-list(type='FeatureCollection',features=list(list(type='Feature',
+    geometry=list(type='LineString',coordinates=rbind(c(10,50),c(10.01,50.01))),
+    properties=list(osm_id='7'))),attribution='OpenStreetMap contributors (ODbL)',
+    provenance=list(provider='fixture',retrieved_utc='2026-01-01T00:00:00Z'))
+  cached<-list(schema='trafficmap-basemap-cache-v1',bounds=bounds,selector=selector,
+    query='fixture query',basemap=base,checksum=hash(base))
+  if(corrupt)cached$basemap$features[[1]]$geometry$coordinates[1,1]<-11
+  key<-hash(list(schema=1L,bounds=bounds,selector=selector))
+  dir.create(directory,showWarnings=FALSE)
+  path<-file.path(directory,paste0('osm-',key,'.rds'))
+  con<-gzfile(path,'wb');writeBin(bytes(cached),con);close(con)
+  list(path=path,basemap=base,bounds=bounds,selector=selector)
+}
+
+test_that('cache identities do not depend on the R serialization writer version', {
+  hash_with_writer <- function(writer,x) {
+    hash<-bdynets:::.bm_hash
+    environment(hash)<-list2env(list(serialize=function(...) {
+      value<-base::serialize(...)
+      value[7:10]<-writeBin(writer,raw(),size=4,endian='big')
+      value
+    }),parent=environment(hash))
+    hash(x)
+  }
+  key<-list(schema=2L,bounds=c(10,10.02,50,50.02),selector='osm-highway-skel-geom-v1')
+  expect_identical(hash_with_writer(0x40402L,key),hash_with_writer(0x40502L,key))
+  expect_false(identical(bdynets:::.bm_hash(key),bdynets:::.bm_hash(within(key,bounds[1]<-11))))
+})
+
+test_that('R 4.5 legacy caches are reusable offline with exact geometry', {
+  cache<-tempfile();on.exit(unlink(cache,recursive=TRUE))
+  fixture<-legacy_basemap_fixture(cache)
+  local_mocked_bindings(.bm_request=function(...)stop('Network must not be used'),.package='bdynets')
+  result<-traffic_basemap(bounds=fixture$bounds,cache_dir=cache,offline=TRUE)
+  expect_identical(result$features,fixture$basemap$features)
+  expect_identical(result$provenance$requests[[1]],fixture$basemap$provenance)
+  expect_identical(list.files(cache,full.names=TRUE),fixture$path)
+})
+
+test_that('legacy cache lookup verifies metadata and checksum even after renaming', {
+  cache<-tempfile();on.exit(unlink(cache,recursive=TRUE))
+  fixture<-legacy_basemap_fixture(cache,corrupt=TRUE)
+  renamed<-file.path(cache,paste0('osm-',paste(rep('0',32),collapse=''),'.rds'))
+  expect_true(file.rename(fixture$path,renamed))
+  expect_error(traffic_basemap(bounds=fixture$bounds,cache_dir=cache,offline=TRUE),'Invalid basemap cache')
+  unlink(renamed)
+  wrong<-legacy_basemap_fixture(cache,selector='osm-scale-highway-v1:wrong')
+  expect_error(traffic_basemap(bounds=wrong$bounds,cache_dir=cache,offline=TRUE),'No matching basemap cache')
+  unlink(wrong$path)
+  other<-legacy_basemap_fixture(cache,bounds=c(10,10.03,50,50.02))
+  expect_error(traffic_basemap(bounds=fixture$bounds,cache_dir=cache,offline=TRUE),'No matching basemap cache')
+})
+
+test_that('migration preserves verified legacy geometry and rejects corruption', {
+  cache<-tempfile();on.exit(unlink(cache,recursive=TRUE))
+  fixture<-legacy_basemap_fixture(cache)
+  before<-readRDS(fixture$path)
+  migrated<-bdynets:::.bm_migrate_cache(fixture$path)
+  saved<-readRDS(migrated)
+  expect_identical(saved$schema,'trafficmap-basemap-cache-v2')
+  expect_identical(saved$basemap,before$basemap)
+  expect_identical(saved$bounds,before$bounds)
+  expect_identical(saved$selector,before$selector)
+  expect_identical(saved$query,before$query)
+  expect_identical(saved$checksum,bdynets:::.bm_hash(saved$basemap))
+  expect_identical(readRDS(fixture$path),before)
+  expect_identical(bdynets:::.bm_migrate_cache(fixture$path),migrated)
+  unlink(fixture$path)
+  expect_identical(traffic_basemap(bounds=fixture$bounds,cache_dir=cache,offline=TRUE)$features,before$basemap$features)
+  bad<-legacy_basemap_fixture(cache,corrupt=TRUE)
+  expect_error(bdynets:::.bm_migrate_cache(bad$path),'Invalid basemap cache')
+})
+
+test_that('new cache writes use portable checksums and survive a changed R writer', {
+  cache<-tempfile();on.exit(unlink(cache,recursive=TRUE))
+  local_mocked_bindings(.bm_request=function(query,endpoint,timeout)list(
+    data=list(elements=list()),md5='unit',endpoint=endpoint),.package='bdynets')
+  first<-traffic_basemap(bounds=c(10,10.02,50,50.02),cache_dir=cache)
+  path<-list.files(cache,full.names=TRUE)
+  saved<-readRDS(path)
+  expect_identical(saved$schema,'trafficmap-basemap-cache-v2')
+  raw<-serialize(saved,NULL,version=3)
+  raw[7:10]<-writeBin(0x40502L,raw(),size=4,endian='big')
+  con<-gzfile(path,'wb');writeBin(raw,con);close(con)
+  expect_identical(traffic_basemap(bounds=saved$bounds,cache_dir=cache,offline=TRUE),first)
+})

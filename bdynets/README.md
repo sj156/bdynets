@@ -216,49 +216,67 @@ and the synthetic, no-fitting demonstration.
 The [Beijing](../examples/beijing/README.md),
 [PeMS](../examples/largest/README.md),
 [City-traffic-M](../examples/metropolis/README.md) and
-[Divvy](../examples/DivvyBike/README-divvy-r.md) examples prepare source records
-for the same package. Road measurements and point events use `traffic_data()`;
-endpoint-only integer trip counts use `traffic_od_data()` or `traffic_od_map()`.
-Source units are retained and missing values remain missing. Primary road flow
-uses seven log1p green/yellow/red classes; OD maps use the five trip-count classes.
+[Divvy](../examples/DivvyBike/README.md) examples prepare source records for the
+same package. Each `prepare.R` reads its original formats, validates source IDs
+and clocks, and constructs canonical tables. `traffic_input()` combines road,
+flow, event, node and OD tables into the common object described in the
+[input specification](inst/INPUT-FORMAT.md). The [source index](../examples/DATA-SOURCES.md)
+records measurements, selections and known limitations.
+
+From the repository root, after installation:
 
 ```r
 library(bdynets)
-x <- read_traffic("data/input.rds")
-plot(x, index = 1)
+input <- readRDS("examples/beijing/data/input.rds")
+traffic_map(input, index = 1, basemap = NULL)
+x <- read_traffic("examples/beijing/data/input.rds")
 traffic_summary(x, index = 1)
 traffic_coverage(x)
 plot(traffic_trend(x), metric = "mean", index = 1)
-traffic_export(x, "new-output", index = 1)
 ```
 
-The traffic implementation is organized in four source files:
+`traffic_map(input)` accepts road, OD or mixed standard inputs. Source units and
+missing values are retained. Road flow uses seven log1p green/yellow/red classes.
+The default OD style has five trip-count classes; the Divvy report supplies
+seven integer-count classes for its grouped display. `traffic_map_html()`
+provides the interactive road HTML interface.
+
+The traffic implementation has five source files:
 
 | File | Responsibility |
 |---|---|
-| `R/traffic-data.R` | Input, field mappings, validation, summaries and trends |
-| `R/traffic-map.R` | Road and OD maps, event layers, spatial layout and exports |
+| `R/traffic-data.R` | Standard input, field mappings, validation, summaries and trends |
+| `R/traffic-preparation.R` | Prepared-data export, source protection, dictionaries and readback |
+| `R/traffic-map.R` | Road and OD maps, event layers, spatial layout and figure exports |
 | `R/traffic-basemap.R` | Coordinate-derived OpenStreetMap context and caching |
 | `R/aggregate-od-data.R` | Spatial OD aggregation and timestamp parsing |
 
 Beijing contains one simulation day. PeMS contains 24 hours on 2026-06-16,
-with Los Angeles and Bay Area flow and CHP starts shown separately. City-traffic-M
-contains the saved observations for 2024-10-18. Divvy retains the supplied OD
-aggregation and clock-hour selection.
+with Los Angeles and Bay Area flow and CHP reported starts shown separately.
+City-traffic-M contains the selected observations for 2024-10-18. Divvy contains
+individual station departures on 2026-01-01, with independent hourly and 1000 m
+spatial preparation examples and a 1500 m grouped map.
 
-Each example has its own `run.R`. It installs this repository's package in a
-temporary library and renders its dataset-named R Markdown report. Rendering
-requires knitr, rmarkdown and Pandoc, alongside the declared package imports.
-The first OpenStreetMap request requires network access; matching runtime caches
-can be reused. Reports embed static figures and open offline after generation.
-The examples contain no pre-downloaded background geometry.
+Each case has its own `run.R`. It installs this repository's package into a
+temporary library and renders the named R Markdown report. Rendering requires
+knitr, rmarkdown and Pandoc alongside the declared package imports; the source
+package also needs Rcpp and a C++17 compiler. City-traffic-M additionally uses
+Python 3, NumPy, pandas and PyArrow to read its original-format Parquet sample.
+
+Matching verified files in `data/basemap-cache` supply OpenStreetMap context.
+New extents or missing cache entries require network access. `run.R --offline`
+performs conversion checks and draws source layers without background streets.
+Rendered reports embed static figures and can be opened offline.
 
 The reports are [Beijing](../examples/beijing/beijing-traffic-report.html),
-[PeMS](../examples/largest/largest-traffic-report.html),
-[City-traffic-M](../examples/metropolis/metropolis-traffic-report.html) and
+[PeMS](../examples/largest/largest-traffic-report-demo.html),
+[City-traffic-M](../examples/metropolis/metropolis-traffic-report-demo.html) and
 [Divvy](../examples/DivvyBike/divvy-od-report.html).
-The [original traffic examples](../examples/traffic-reference/) remain as
-historical references for the retired interfaces.
+Each report includes original fields, conversion steps, intermediate data,
+standard tables, source checks and export/readback. `write_traffic_input()`
+exports standard RDS and CSV data, a field dictionary, validation and provenance
+to a new directory. The [historical traffic examples](../examples/traffic-reference/)
+remain separate from these current reports.
 
 Source extraction and optional measurement views share the same interfaces:
 

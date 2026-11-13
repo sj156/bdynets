@@ -1,0 +1,48 @@
+{
+  "schema": "bdynets-traffic-input-v1",
+  "crs": "EPSG:4326",
+  "timezone": "America/Chicago",
+  "od_unit": "trips",
+  "od_time_kind": "instant",
+  "od_interval_seconds": null,
+  "flow": null,
+  "events": null,
+  "times": null,
+  "time_labels": null,
+  "interval_seconds": null,
+  "unit": "unit unspecified",
+  "measurements": null,
+  "metric_info": [],
+  "trends": null,
+  "provenance": {
+    "source_columns": ["ride_id", "started_at", "start_station_id", "end_station_id", "start_station_name", "end_station_name", "start_lat", "start_lng", "end_lat", "end_lng"],
+    "departure_date": "2026-01-01",
+    "timezone": "America/Chicago",
+    "source_departures": 1950,
+    "duplicate_rows": 0,
+    "missing_origin_only": 186,
+    "missing_destination_only": 288,
+    "missing_both": 246,
+    "unmatched_coordinates": 0,
+    "retained_trips": 1230,
+    "geometry": "Per-station median of valid paired source endpoint coordinates on the selected departure day.",
+    "preparation_sources": [
+      {
+        "file": "trips-2026-01-01.csv",
+        "bytes": 351719,
+        "sha256": "fdfb401b63720ec44a106e5f1bb2b6f7ee37ef805311e9150525b15740f6076f"
+      }
+    ]
+  },
+  "title": "Divvy station departures",
+  "description": "",
+  "preparation": [],
+  "notes": [],
+  "basemap": null,
+  "csv": {
+    "missing": "\\N",
+    "timestamp": "POSIXct times are Unix seconds; numeric times retain the declared source clock.",
+    "identifiers": "Read identifier fields as character.",
+    "data": "input.rds preserves original types, geometry, timezones and nested provenance."
+  }
+}

@@ -1,0 +1,608 @@
+---
+title: "City-traffic-M Volume and Speed: A Complete bdynets Tutorial"
+output:
+  html_document:
+    self_contained: true
+    md_extensions: "-tex_math_dollars"
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    mathjax: null
+params:
+  time_label: "08:00"
+  basemap: true
+  export: false
+  export_dir: "output/tutorial-export"
+---
+
+<style>
+body{font-size:16px;line-height:1.72;color:#25364a}.main-container{max-width:1040px}h1,h2,h3{color:#17324d}pre{font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}table{font-size:14px;display:block;overflow-x:auto}th,td{padding:7px 10px!important}img{max-width:100%;height:auto}.note{padding:12px 16px;background:#f3f7fa;border-left:4px solid #3b718f;margin:18px 0}.result{padding:12px 16px;background:#f3faf5;border-left:4px solid #3d8b57;margin:18px 0}
+</style>
+
+```{r setup, include=FALSE}
+render_started <- proc.time()[["elapsed"]]
+library(bdynets)
+source("prepare.R", local = TRUE)
+
+plain_output <- knitr::knit_hooks$get("output")
+knitr::knit_hooks$set(output = function(x, options) {
+  plain_output(gsub("[ \t]+\n", "\n", x, perl = TRUE), options)
+})
+
+figure_dir <- tempfile("metropolis-demo-figures-")
+dir.create(figure_dir)
+knitr::opts_chunk$set(
+  echo = TRUE, message = FALSE, warning = FALSE, cache = FALSE,
+  fig.path = file.path(figure_dir, "figure-"), fig.width = 10,
+  fig.height = 7.5, dpi = 150, out.width = "100%"
+)
+
+raw_directory <- "data/raw"
+prepared_file <- "data/input.rds"
+selection_file <- "data/raw/selected-roads.csv"
+calibration_file <- "data/raw/calibration.csv"
+source_day <- "2024-10-18"
+source_minutes <- seq(0, 25, 5)
+source_files <- list.files("data", full.names = TRUE, recursive = TRUE)
+source_files <- source_files[!grepl("/basemap-cache/", source_files)]
+source_before <- tools::md5sum(source_files)
+day_standard <- readRDS(prepared_file)
+```
+
+This tutorial follows the same complete workflow as the Beijing tutorial:
+
+**understand the source → inspect and validate raw records → construct `standard` with `traffic_input()` → visualize `standard` with `traffic_map()` → validate → export and read back.**
+
+City-traffic-M-specific code reads Parquet fields, validates the exact five-minute grid, applies recorded aggregation and fill rules, and creates canonical tables. The public constructor and plotting functions remain general.
+
+## Data, source, and preparation goal
+
+City Traffic Benchmarks version 4 supplies five-minute road volume and speed for Yekaterinburg. This case retains the existing 720-road register and the complete source day of 18 October 2024. The selected-day method produces 96 fifteen-minute frames.
+
+Volume retains the declared unit `source volume`; the Parquet files do not supply a physical volume unit or timezone. Speed values are retained as supplied. A derived congestion index combines slowdown relative to full-history nonzero speed P90 with clipped log-volume weight relative to the selected-day frame-volume P95.
+
+```{r source-summary, echo=FALSE}
+original_sources <- read.csv("data/original-sources.csv", stringsAsFactors = FALSE)
+knitr::kable(
+  original_sources[c("file", "provider", "role")],
+  caption = "Original data sources",
+  format = "html", row.names = FALSE
+)
+
+knitr::kable(
+  data.frame(
+    Item = c("Roads", "Fifteen-minute frames", "Flow records", "Additional measurement records", "Trend records", "Primary unit"),
+    Value = c(
+      nrow(day_standard[["roads"]]), length(day_standard[["times"]]),
+      nrow(day_standard[["flow"]]), nrow(day_standard[["measurements"]]),
+      nrow(day_standard[["trends"]]), day_standard[["unit"]]
+    )
+  ),
+  caption = "Complete prepared dataset",
+  format = "html", row.names = FALSE
+)
+```
+
+The road register and date are fixed source selections for this example; the conversion does not choose new roads or a different day.
+
+The preparation goal is to retain the supplied 720-road selection, preserve native missing/observed/imputed status, aggregate three five-minute slots into each fifteen-minute frame, retain volume and speed without inventing physical units, compute the documented congestion index, and produce descriptive maps and trends.
+
+This is the current 720-road City-traffic-M lineage. The older 142-segment simulated fallback is a separate historical demonstration and is not used here.
+
+## Raw input, field meanings, and editable configuration
+
+### Configuration to edit
+
+```{r configuration}
+raw_directory <- "data/raw"
+prepared_file <- "data/input.rds"
+selection_file <- "data/raw/selected-roads.csv"
+calibration_file <- "data/raw/calibration.csv"
+source_day <- "2024-10-18"
+source_minutes <- seq(0, 25, 5)
+frame_minutes <- 15L
+primary_unit <- "source volume"  # Physical volume units are not verified.
+selected_time <- params$time_label
+```
+
+Changing the selected road file or date changes the scientific scope and requires new validation. Do not replace `primary_unit` with vehicles or vehicles/hour unless the provider documentation establishes that unit.
+
+### Inspect the original-format teaching excerpt
+
+The teaching excerpt reads two original Parquet road IDs—21263 and 2565—and six five-minute slots from 00:00 through 00:25. The full-history calibration remains attached to those roads.
+
+```{r read-raw}
+native <- read_metropolis_raw(
+  base = ".",
+  raw_dir = raw_directory,
+  selection_file = selection_file,
+  day = source_day,
+  minutes = source_minutes,
+  calibration_file = calibration_file
+)
+```
+
+```{r show-raw, echo=FALSE}
+static_rows <- data.frame(static_row0 = native[["ids"]], native[["static"]])
+volume_rows <- data.frame(
+  timestamp = native[["labels"]],
+  t(native[["volume"]]), check.names = FALSE
+)
+speed_rows <- data.frame(
+  timestamp = native[["labels"]],
+  t(native[["speed"]]), check.names = FALSE
+)
+names(volume_rows)[-1] <- names(speed_rows)[-1] <- paste0("node_", native[["ids"]])
+
+knitr::kable(static_rows, caption = "Original static Parquet rows", format = "html", row.names = FALSE)
+knitr::kable(volume_rows, caption = "Original five-minute volume", format = "html", row.names = FALSE)
+knitr::kable(speed_rows, caption = "Original five-minute speed", format = "html", row.names = FALSE)
+
+calibration <- read.csv(calibration_file, stringsAsFactors = FALSE)
+knitr::kable(
+  calibration,
+  caption = "Retained speed and volume calibration",
+  format = "html", row.names = FALSE
+)
+
+field_dictionary <- data.frame(
+  Source_field = c("static row position", "x/y start and end", "length", "timestamp", "node_ID volume", "node_ID speed", "history speed P90", "frame volume P95"),
+  Meaning = c("Zero-based road identifier", "Directed endpoint coordinates", "Source road length", "Five-minute source clock", "Native source volume", "Native source speed", "Free-flow reference", "Volume-weight reference"),
+  Standard_destination = c("road_id", "roads geometry", "retained road attribute", "fifteen-minute time", "flow", "measurements: speed", "provenance and index", "provenance and index")
+)
+knitr::kable(field_dictionary, caption = "Key source fields", format = "html", row.names = FALSE)
+```
+
+Missing speed remains distinct from observed zero volume. The source adapter retains native coverage masks, contributor counts, and fill methods in provenance.
+
+#### Native source object and readback {.unnumbered}
+
+The intermediate `source.rds` retains native IDs, clocks and observations. This sample snapshot is saved and read back in a temporary directory; the supplied day-level snapshot stays unchanged.
+
+```{r native-source, echo=FALSE}
+native_directory <- tempfile("native-source-")
+dir.create(native_directory)
+native_file <- file.path(native_directory, "source.rds")
+stopifnot(!file.exists(native_file))
+```
+
+```{r native-source-2, echo=TRUE}
+saveRDS(native, native_file, compress = "xz", version = 3)
+restored_native <- readRDS(native_file)
+```
+
+```{r native-source-3, echo=FALSE}
+stopifnot(identical(restored_native, native))
+native <- restored_native
+invisible(capture.output(str(native, max.level = 1, give.attr = FALSE)))
+knitr::kable(data.frame(file = basename(native_file), schema = native$schema, exact_readback = TRUE),
+    caption = "Native source snapshot before standard-input construction", format = "html", row.names = FALSE)
+```
+
+The intermediate object retains source detail; the next step constructs the common road, value and time tables.
+
+### Deliberately invalid timestamps and correction
+
+The fifteen-minute conversion requires unique, ordered five-minute timestamps. The following in-memory copy duplicates the first timestamp and therefore breaks the exact grid; the Parquet files are unchanged.
+
+```{r invalid-input}
+bad_labels <- native$labels
+bad_labels[2] <- bad_labels[1]
+cat(tryCatch(
+  {
+    metropolis_bins(native$volume, bad_labels)
+    "No error was raised."
+  },
+  error = conditionMessage
+))
+```
+
+The corrected labels are the six unique, consecutive timestamps read from the source. Missing cells are retained in the native status mask; they are not automatically interpreted as observed zero.
+
+```{r corrected-input-check}
+corrected_bins <- metropolis_bins(native$volume, native$labels)
+stopifnot(length(unique(native$labels)) == length(native$labels))
+data.frame(
+  roads = nrow(native$volume),
+  five_minute_slots = ncol(native$volume),
+  fifteen_minute_frames = length(corrected_bins$times),
+  native_missing = sum(is.na(native$volume)),
+  observed_zero = sum(native$volume == 0, na.rm = TRUE)
+)
+```
+
+## Convert with the general bdynets interface
+
+`metropolis_input()` is an **example adapter**, not a public package API. It implements this source's fifteen-minute averaging, recorded fill rules, geometry construction, speed measurement, congestion-index calculation, and source trends. The resulting canonical tables are then passed to the public constructor.
+
+### Prepare canonical tables
+
+```{r prepare-canonical-tables}
+adapter_output <- metropolis_input(native)
+
+roads <- adapter_output[["roads"]]
+flow <- adapter_output[["flow"]]
+measurements <- adapter_output[["measurements"]]
+trends <- adapter_output[["trends"]]
+times <- adapter_output[["times"]]
+time_labels <- adapter_output[["time_labels"]]
+interval_seconds <- adapter_output[["interval_seconds"]]
+```
+
+Once the canonical tables exist, the public call is the same interface used by other road datasets:
+
+### Construct `standard` with `traffic_input()`
+
+```{r construct-standard-input}
+standard <- bdynets::traffic_input(
+  roads = roads,
+  flow = flow,
+  measurements = measurements,
+  metric_info = adapter_output[["metric_info"]],
+  trends = trends,
+  times = times,
+  time_labels = time_labels,
+  interval_seconds = interval_seconds,
+  unit = adapter_output[["unit"]],
+  provenance = adapter_output[["provenance"]],
+  title = adapter_output[["title"]],
+  description = "Fifteen-minute City-traffic-M source volume, speed, and derived congestion index.",
+  preparation = c(
+    "Validate the unique consecutive five-minute source grid.",
+    "Average three source slots into each fifteen-minute frame.",
+    "Retain native coverage, contributor counts, and recorded fill methods.",
+    "Compute the documented congestion index without assigning a source label."
+  )
+)
+```
+
+The returned object is a named list with schema `bdynets-traffic-input-v1`. It contains the primary `flow` table, additional speed and congestion measurements, supplied trends, timing, units, and provenance.
+
+### What does `standard` contain?
+
+```{r standard-structure}
+str(standard, max.level = 1, give.attr = FALSE)
+```
+
+```{r show-standard, echo=FALSE}
+knitr::kable(
+  standard[["roads"]][c("road_id", "length", "speedLimit", "freeFlowSpeed", "maxVolume")],
+  caption = "Standard roads table",
+  format = "html", row.names = FALSE
+)
+knitr::kable(
+  standard[["flow"]], caption = "Standard fifteen-minute flow table",
+  format = "html", row.names = FALSE
+)
+knitr::kable(
+  standard[["measurements"]], caption = "Standard speed and congestion measurements",
+  format = "html", row.names = FALSE
+)
+knitr::kable(
+  standard[["trends"]], caption = "Standard supplied trends",
+  format = "html", row.names = FALSE
+)
+```
+
+For road 21263, volumes 3, 6, and 5 produce first-quarter flow 4.67; the corresponding mean speed is 81.88 and the derived congestion index is 0.040. The index is computed as:
+
+```text
+slowdown = clip(1 - frame_speed / history_speed_P90, 0, 1)
+weight   = clip(log1p(frame_volume) / log1p(frame_volume_P95), 0, 1)
+index    = slowdown * weight
+```
+
+The index is derived from supplied data and calibration; it is not a congestion label present in the raw Parquets.
+
+The conversion changes four things while retaining the source meaning:
+
+- **Identifier and geometry:** zero-based static Parquet row IDs become character `road_id` values with directed start/end coordinates.
+- **Time:** three complete five-minute slots become one fifteen-minute frame start.
+- **Measurements:** volume remains `source volume`; speed remains `source speed`; congestion is explicitly marked as a derived dimensionless index.
+- **Coverage metadata:** native observed, missing, and imputed status; contributor counts; fill methods; calibration; selection; and source identities remain in provenance.
+
+<div class="note"><code>bdynets::traffic_input()</code> is the public constructor. The Metropolis adapter is source-specific, but its <code>roads</code>, <code>flow</code>, <code>measurements</code>, <code>trends</code>, and time arguments use the same standard package interface.</div>
+
+### Adapt a teaching CSV with renamed columns
+
+The small lesson CSV can be renamed by another data owner. An explicit mapping restores source roles before the same validation and conversion are applied.
+
+```{r renamed-csv}
+lesson_volume <- read.csv("data/lesson/volume.csv", check.names = FALSE)
+incoming <- lesson_volume
+names(incoming) <- c("source_time", paste0("volume_road_", native$ids))
+column_mapping <- setNames(names(incoming), names(lesson_volume))
+
+mapped_volume <- incoming[unname(column_mapping)]
+names(mapped_volume) <- names(column_mapping)
+stopifnot(identical(mapped_volume, lesson_volume))
+head(incoming)
+```
+
+The mapping changes headers only. It does not change road IDs, timestamps, missingness, units, aggregation, or the public `traffic_input()` call.
+
+## Pass the standard object to `traffic_map()`
+
+The teaching object above contains two roads and two quarter-hour frames. The supplied full-day object was produced through the same interface and is used for the city map. It is passed directly to `traffic_map()`; `read_traffic()` is only used to create the analytical view required by `traffic_trend()`.
+
+```{r plot-prepare}
+index <- match(
+  params[["time_label"]],
+  sub("^.* ", "", day_standard[["time_labels"]])
+)
+if (is.na(index)) stop("The selected frame is not present.")
+
+day_traffic <- read_traffic(prepared_file)
+
+# Request the background explicitly: the global auto option is switched off
+# below, so an "auto" argument would silently render without a basemap.
+basemap_daily <- NULL
+if (params[["basemap"]]) {
+  basemap_daily <- traffic_basemap(day_traffic, road_classes = character())
+}
+options(bdynets.basemap.auto = FALSE)
+```
+
+### Road volume map
+
+```{r road-map, fig.alt="Prepared City-traffic-M volume in the selected fifteen-minute frame."}
+traffic_map(
+  day_standard,
+  index = index,
+  basemap = basemap_daily,
+  title = "City-traffic-M traffic volume",
+  caption = "Prepared fifteen-minute road volume; missing values are grey."
+)
+```
+
+### Daily mean road volume
+
+```{r road-trend, fig.height=4.4}
+flow_trend <- traffic_trend(day_traffic)
+plot(flow_trend, metric = "mean", index = index)
+```
+
+The map and curve use the primary volume field. Observed zeros contribute to the mean and missing values are excluded. The curve is a mean across available roads, not a citywide vehicle total.
+
+## Validate the conversion
+
+```{r validation, echo=FALSE}
+flow_at <- match(
+  paste(standard[["flow"]][["road_id"]], standard[["flow"]][["time"]]),
+  paste(day_standard[["flow"]][["road_id"]], day_standard[["flow"]][["time"]])
+)
+measurement_at <- match(
+  paste(standard[["measurements"]][["road_id"]], standard[["measurements"]][["time"]], standard[["measurements"]][["metric"]]),
+  paste(day_standard[["measurements"]][["road_id"]], day_standard[["measurements"]][["time"]], day_standard[["measurements"]][["metric"]])
+)
+
+validation <- data.frame(
+  Check = c(
+    "Teaching flow records agree with the complete standard day",
+    "Teaching measurements agree with the complete standard day",
+    "Complete flow row count equals roads multiplied by frames",
+    "No duplicated road_id-time keys are present",
+    "The current lineage contains exactly 720 selected roads",
+    "The full day contains 96 unique consecutive fifteen-minute frames",
+    "Unknown physical volume units remain explicit",
+    "Native coverage and fill metadata are retained",
+    "Observed primary values are finite and nonnegative",
+    "Source files remain unchanged during report generation"
+  ),
+  Passed = c(
+    !anyNA(flow_at) && identical(standard[["flow"]][["flow"]], day_standard[["flow"]][["flow"]][flow_at]),
+    !anyNA(measurement_at) && identical(standard[["measurements"]][["value"]], day_standard[["measurements"]][["value"]][measurement_at]),
+    nrow(day_standard[["flow"]]) == nrow(day_standard[["roads"]]) * length(day_standard[["times"]]),
+    !anyDuplicated(day_standard[["flow"]][c("road_id", "time")]),
+    nrow(day_standard$roads) == 720,
+    length(day_standard$times) == 96 && !anyDuplicated(day_standard$times) && all(diff(day_standard$times) == 900),
+    identical(day_standard$unit, "source volume"),
+    all(c("volume", "speed") %in% names(day_standard$provenance$native_coverage)),
+    all(is.finite(day_standard[["flow"]][["flow"]][!is.na(day_standard[["flow"]][["flow"]])]) & day_standard[["flow"]][["flow"]][!is.na(day_standard[["flow"]][["flow"]])] >= 0),
+    identical(source_before, tools::md5sum(source_files))
+  )
+)
+knitr::kable(validation, caption = "Core validation results", format = "html", row.names = FALSE)
+
+coverage <- data.frame(
+  Roads = nrow(day_standard[["roads"]]),
+  Frames = length(day_standard[["times"]]),
+  `Interval (minutes)` = unique(day_standard[["interval_seconds"]]) / 60,
+  `Flow records` = nrow(day_standard[["flow"]]),
+  `Measurement records` = nrow(day_standard[["measurements"]]),
+  `Trend records` = nrow(day_standard[["trends"]]),
+  `Missing flow` = sum(is.na(day_standard[["flow"]][["flow"]])),
+  `Observed zeros` = sum(day_standard[["flow"]][["flow"]] == 0, na.rm = TRUE),
+  Unit = day_standard[["unit"]],
+  check.names = FALSE
+)
+knitr::kable(coverage, caption = "Complete-data coverage", format = "html", row.names = FALSE)
+
+native_coverage <- do.call(rbind, lapply(c("volume", "speed"), function(key) {
+  item <- day_standard$provenance$native_coverage[[key]]
+  status <- as.integer(item$native_status)
+  data.frame(
+    Source = key,
+    `Native missing cells` = sum(status == 0L),
+    `Native observed nonzero cells` = sum(status == 1L),
+    `Native observed zero cells` = sum(status == 2L),
+    `Imputed fifteen-minute frames` = sum(item$frame_imputed),
+    check.names = FALSE
+  )
+}))
+knitr::kable(native_coverage, caption = "Native coverage retained separately from prepared availability", format = "html", row.names = FALSE)
+```
+
+<div class="result">Every validation row must be <code>TRUE</code>. Prepared availability does not erase native missingness: native status, contributor counts, imputation flags, and fill methods remain in provenance and are reported separately.</div>
+
+## Export, read back, and reuse
+
+The teaching `standard` object is published to a new temporary directory. The export contains RDS and CSV tables, road vertices, a data dictionary, validation records, source identities, metadata, and checksums.
+
+```{r prepared-export}
+prepared_export_dir <- tempfile("metropolis-prepared-export-")
+dictionary <- read.csv("data/data-dictionary.csv", stringsAsFactors = FALSE)
+dictionary_key <- paste(dictionary$table, dictionary$field, sep = "/")
+standard_key <- unlist(lapply(
+  c("roads", "flow", "measurements", "trends"),
+  function(table) paste(table, names(standard[[table]]), sep = "/")
+))
+dictionary <- dictionary[dictionary_key %in% standard_key, ]
+
+declared_sources <- c(
+  selection_file,
+  calibration_file,
+  file.path(raw_directory, paste0(
+    "city-traffic-M-raw-",
+    c("static-features", "volume", "speed"),
+    ".parquet"
+  ))
+)
+prepared_path <- write_traffic_input(
+  standard,
+  prepared_export_dir,
+  source_files = declared_sources,
+  native = native,
+  dictionary = dictionary
+)
+restored <- readRDS(prepared_path)
+```
+
+```{r prepared-export-checks, echo=FALSE}
+metadata <- jsonlite::read_json(file.path(prepared_export_dir, "metadata.json"), simplifyVector = TRUE)
+exported_flow <- read.csv(
+  file.path(prepared_export_dir, "flow.csv"),
+  na.strings = metadata$csv$missing,
+  colClasses = c(road_id = "character")
+)
+manifest <- read.csv(file.path(prepared_export_dir, "checksums.csv"), stringsAsFactors = FALSE)
+core_fields <- setdiff(names(standard), "provenance")
+export_checks <- data.frame(
+  Check = c(
+    "RDS core fields read back unchanged",
+    "CSV IDs, times, values, and missingness read back correctly",
+    "Dictionary and validation files are present",
+    "Prepared-export checksums agree",
+    "Source files remain unchanged"
+  ),
+  Passed = c(
+    all(vapply(core_fields, function(key) identical(restored[[key]], standard[[key]]), logical(1))),
+    identical(exported_flow$road_id, standard$flow$road_id) &&
+      identical(as.numeric(exported_flow$time), as.numeric(standard$flow$time)) &&
+      identical(is.na(exported_flow$flow), is.na(standard$flow$flow)) &&
+      isTRUE(all.equal(exported_flow$flow, standard$flow$flow, check.attributes = FALSE)),
+    all(file.exists(file.path(prepared_export_dir, c("data-dictionary.csv", "validation.csv")))),
+    identical(
+      unname(tools::md5sum(file.path(prepared_export_dir, manifest$file))),
+      manifest$md5
+    ),
+    identical(source_before, tools::md5sum(source_files))
+  )
+)
+knitr::kable(data.frame(file = sort(list.files(prepared_export_dir))), caption = "Prepared-data export files", format = "html", row.names = FALSE)
+knitr::kable(export_checks, caption = "Prepared-data readback checks", format = "html", row.names = FALSE)
+knitr::kable(read.csv(file.path(prepared_export_dir, "validation.csv")), caption = "Stored validation record", format = "html", row.names = FALSE)
+```
+
+### Export figures and selected records
+
+```{r figure-export}
+figure_export_dir <- tempfile("metropolis-figure-export-")
+traffic_export(
+  day_traffic,
+  figure_export_dir,
+  index = index,
+  input_files = c(prepared = prepared_file)
+)
+```
+
+```{r figure-export-checks, echo=FALSE}
+figure_manifest <- read.csv(file.path(figure_export_dir, "checksums.csv"), stringsAsFactors = FALSE)
+figure_checks <- data.frame(
+  Check = c(
+    "PNG and PDF map files are present",
+    "Selected-frame data and provenance are present",
+    "Figure-export checksums agree"
+  ),
+  Passed = c(
+    all(c("map.png", "map.pdf") %in% list.files(figure_export_dir)),
+    all(c("selected-frame.rds", "provenance.json") %in% list.files(figure_export_dir)),
+    identical(
+      unname(tools::md5sum(file.path(figure_export_dir, figure_manifest$file))),
+      figure_manifest$md5
+    )
+  )
+)
+knitr::kable(data.frame(file = sort(list.files(figure_export_dir))), caption = "Figure-export files", format = "html", row.names = FALSE)
+knitr::kable(figure_checks, caption = "Figure-export checks", format = "html", row.names = FALSE)
+```
+
+```{r optional-persistent-export}
+if (params$export) {
+  if (file.exists(params$export_dir)) stop("The requested export directory already exists; choose a new directory.")
+  dir.create(params$export_dir, recursive = TRUE)
+  write_traffic_input(
+    standard,
+    file.path(params$export_dir, "prepared-data"),
+    source_files = declared_sources,
+    native = native,
+    dictionary = dictionary
+  )
+  traffic_export(
+    day_traffic,
+    file.path(params$export_dir, "figures"),
+    index = index,
+    input_files = c(prepared = prepared_file)
+  )
+}
+```
+
+## Reproduction, source records, and troubleshooting
+
+Place this Rmd in `examples/metropolis/`. From the repository root, render it offline with:
+
+```bash
+Rscript -e "source('bdynets/inst/preparation-session.R'); preparation_session('examples/metropolis'); rmarkdown::render('examples/metropolis/metropolis-traffic-report-demo.Rmd', knit_root_dir='examples/metropolis', params=list(time_label='08:00', basemap=FALSE, export=FALSE))"
+```
+
+`basemap=FALSE` requires no network. Reading the original Parquets requires Python 3 with NumPy, pandas, and PyArrow; the supplied prepared object can be plotted in R without rerunning Python. With `basemap=TRUE`, verified caches may be reused, while a new background request requires network access.
+
+Common problems include missing Python dependencies, duplicate or gapped timestamps, a road ID absent from the selected register, unknown speed-limit codes, invalid calibration, and reuse of an existing export directory. Physical volume units remain unresolved and must stay labelled `source volume`.
+
+```{r reproducibility, echo=FALSE}
+stopifnot(identical(source_before, tools::md5sum(source_files)))
+knitr::kable(
+  read.csv("data/original-sources.csv", stringsAsFactors = FALSE)[c("file", "provider", "role")],
+  caption = "Original archives and source identities",
+  format = "html", row.names = FALSE
+)
+knitr::kable(
+  read.csv("data/raw/source-manifest.csv", stringsAsFactors = FALSE)[c("file", "selection")],
+  caption = "Bundled Parquet projections and selections",
+  format = "html", row.names = FALSE
+)
+conversion_files <- intersect(c("prepare.R", "read_parquet.py", "run.R"), list.files("."))
+knitr::kable(
+  data.frame(
+    file = conversion_files,
+    sha256 = vapply(conversion_files, digest::digest, "", file = TRUE, algo = "sha256", serialize = FALSE)
+  ),
+  caption = "Conversion and entry-point source identities",
+  format = "html", row.names = FALSE
+)
+bundle_dir <- file.path("..", "..", "bdynets")
+bundle_files <- list.files(bundle_dir, recursive = TRUE, full.names = FALSE)
+bundle_sha <- vapply(file.path(bundle_dir, bundle_files), digest::digest, "", file = TRUE, algo = "sha256", serialize = FALSE)
+revision <- digest::digest(paste(paste(bundle_files, bundle_sha, sep = " "), collapse = "\n"), algo = "sha256", serialize = FALSE)
+
+cat("Package version:", as.character(packageVersion("bdynets")), "\n")
+cat("Bundled source revision (SHA-256):", revision, "\n")
+python_versions <- system2(
+  "python3",
+  c("-c", shQuote("import platform, numpy, pandas, pyarrow; print('Python', platform.python_version(), 'NumPy', numpy.__version__, 'pandas', pandas.__version__, 'PyArrow', pyarrow.__version__)")),
+  stdout = TRUE, stderr = FALSE
+)
+cat(python_versions, sep = "\n")
+cat("Report computation elapsed:", round(proc.time()[["elapsed"]] - render_started, 1), "seconds\n")
+sessionInfo()
+```

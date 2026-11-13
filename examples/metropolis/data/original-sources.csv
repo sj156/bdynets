@@ -1,0 +1,4 @@
+file,provider,role,bytes,sha256
+city-traffic-M-raw-static-features.parquet,City Traffic Benchmarks v4,static-features,1400940,2dda66c9567e78b1edb59103c9f12740ae67e071abba005b27a6ed4a94337daf
+city-traffic-M-raw-volume.parquet,City Traffic Benchmarks v4,volume,553287576,08e0b4527c5bfb7fde7dd0136242c814b89a04ee30f46b33e22eb6c28e79ecd5
+city-traffic-M-raw-speed.parquet,City Traffic Benchmarks v4,speed,11026339676,08657bdfb3ed016b41852d4ec987dc5369bd9f2eed9913ce00a1532a9bca608f

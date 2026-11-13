@@ -243,6 +243,7 @@
  invisible(NULL)
 }
 .tm_labels <- function(scale) {
+ if(!is.null(scale$labels))return(scale$labels)
  if(scale$kind%in%c('change','classes','gradient'))return(scale$labels)
  if(scale$kind=='zero')return('0')
  if(scale$kind=='missing')return(character())
@@ -252,7 +253,8 @@
   if(all(diff(c(0,v))>0))break
  }
  b<-vapply(v,function(n)format(n,trim=TRUE,scientific=FALSE,big.mark=','),'')
- c(paste0('0 to < ',b[1]),paste0(utils::head(b,-1),' to < ',utils::tail(b,-1)),paste0('>= ',utils::tail(b,1)))
+ middle<-if(length(b)>1L)paste0(utils::head(b,-1),' to < ',utils::tail(b,-1)) else character()
+ c(paste0('0 to < ',b[1]),middle,paste0('>= ',utils::tail(b,1)))
 }
 
 # Shared point events
@@ -301,8 +303,8 @@
   graphics::par('usr')
 }
 
-.tm_od_with_events <- function(args,events,mapping) {
-  events <- .tm_od_event_input(events,mapping,args)
+.tm_od_with_events <- function(args,events,mapping,preselected=FALSE) {
+  if(!preselected)events <- .tm_od_event_input(events,mapping,args)
   output_file <- args$output_file;draw <- args$draw
   args$output_file <- NULL
   compose <- function() {
@@ -394,6 +396,101 @@ plot.trafficmap_data <- function(x,index=x$initial,region=NULL,mode='flow',refer
 }
 
 # Directed OD maps
+.tm_od_layer_style <- function(routes, nodes, flow_breaks, flow_labels,
+    flow_palette, single_flow_dashed, curvature, arrow_length,
+    node_fill, node_colour, node_size, scale_node_size) {
+  .tm_assert(is.numeric(flow_breaks) && length(flow_breaks) >= 1L &&
+    all(is.finite(flow_breaks)) && all(diff(flow_breaks) > 0),
+    "flow_breaks must be strictly increasing finite numbers")
+  .tm_assert(is.character(flow_palette) &&
+    length(flow_palette) == length(flow_breaks) + 1L &&
+    all(!is.na(flow_palette)) && all(nzchar(flow_palette)),
+    "flow_palette must contain one more colour than flow_breaks")
+  .tm_assert(is.character(flow_labels) && length(flow_labels) == length(flow_palette) &&
+    all(!is.na(flow_labels)) && all(nzchar(flow_labels)),
+    "flow_labels must contain one label per flow colour")
+  .tm_assert(is.numeric(curvature) && length(curvature) == 1L &&
+    is.finite(curvature) && curvature >= 0,
+    "curvature must be one nonnegative number")
+  .tm_assert(is.numeric(arrow_length) && length(arrow_length) == 1L &&
+    is.finite(arrow_length) && arrow_length > 0,
+    "arrow_length must be one positive number")
+  .tm_assert(is.numeric(node_size) && length(node_size) == 1L &&
+    is.finite(node_size) && node_size > 0, "node_size must be one positive number")
+  class_index <- as.integer(cut(routes$flow,
+    breaks = c(-Inf, flow_breaks, Inf), right = TRUE, labels = FALSE))
+  opacity_palette <- if (length(flow_palette) == 5L) {
+    c(0.72, 0.70, 0.85, 0.95, 1)
+  } else seq(0.72, 1, length.out = length(flow_palette))
+  node_cex <- if (isTRUE(scale_node_size) && nrow(nodes) && max(nodes$size) > 0) {
+    0.65 + 1.05 * sqrt(nodes$size / max(nodes$size))
+  } else rep(node_size, nrow(nodes))
+  list(flow_breaks = flow_breaks, flow_labels = flow_labels,
+    flow_palette = flow_palette, class_index = class_index,
+    route_colours = flow_palette[class_index],
+    route_opacity = opacity_palette[class_index],
+    route_width = ifelse(routes$flow == 1, 0.85, 1.7),
+    route_type = ifelse(isTRUE(single_flow_dashed) & routes$flow == 1, 2, 1),
+    curvature = curvature, arrow_length = arrow_length,
+    node_fill = node_fill, node_colour = node_colour, node_cex = node_cex)
+}
+
+.tm_od_bezier <- function(start, control, end, n = 36L) {
+  t <- seq(0, 1, length.out = n); one <- 1 - t
+  cbind(one^2 * start[1] + 2 * one * t * control[1] + t^2 * end[1],
+    one^2 * start[2] + 2 * one * t * control[2] + t^2 * end[2])
+}
+
+.tm_draw_od_layer <- function(routes, nodes, style,
+    legend_position = "topleft", legend_horizontal = TRUE) {
+  saved_clip <- graphics::par(xpd=FALSE)
+  on.exit(graphics::par(saved_clip),add=TRUE)
+  curves <- vector("list", nrow(routes))
+  if (nrow(routes)) for (i in seq_len(nrow(routes))) {
+    endpoints <- .tm_project(matrix(c(routes$origin_longitude[i],
+      routes$origin_latitude[i], routes$destination_longitude[i],
+      routes$destination_latitude[i]), ncol = 2, byrow = TRUE))
+    delta <- endpoints[2, ] - endpoints[1, ]; distance <- sqrt(sum(delta^2))
+    if (!is.finite(distance) || distance <= 0) next
+    direction <- if (routes$origin_id[i] < routes$destination_id[i]) 1 else -1
+    control <- colMeans(endpoints) + direction * style$curvature * c(-delta[2], delta[1])
+    curves[[i]] <- .tm_od_bezier(endpoints[1, ], control, endpoints[2, ])
+    graphics::lines(curves[[i]],
+      col = grDevices::adjustcolor(style$route_colours[i],
+        alpha.f = style$route_opacity[i]),
+      lwd = style$route_width[i], lty = style$route_type[i], lend = "round")
+  }
+  projected_nodes <- .tm_project(as.matrix(nodes[, c("longitude", "latitude")]))
+  graphics::points(projected_nodes, pch = 21, bg = style$node_fill,
+    col = style$node_colour, cex = style$node_cex, lwd = 0.8)
+  usr <- graphics::par("usr"); head_scale <- min(diff(usr[1:2]), diff(usr[3:4]))
+  for (i in seq_along(curves)) {
+    curve <- curves[[i]]
+    if (is.null(curve)) next
+    tip_index <- nrow(curve) - 4L; tail_index <- nrow(curve) - 8L
+    direction <- curve[tip_index, ] - curve[tail_index, ]
+    direction <- direction / sqrt(sum(direction^2))
+    route_span <- sqrt(sum((curve[nrow(curve), ] - curve[1, ])^2))
+    head_length <- min((style$arrow_length / 6.84) * head_scale, 0.16 * route_span)
+    half_width <- 0.48 * head_length
+    tip <- curve[tip_index, ]; base_center <- tip - direction * head_length
+    perpendicular <- c(-direction[2], direction[1])
+    triangle <- rbind(tip, base_center + perpendicular * half_width,
+      base_center - perpendicular * half_width)
+    graphics::polygon(triangle[, 1], triangle[, 2],
+      col = grDevices::adjustcolor(style$route_colours[i],
+        alpha.f = max(0.86, style$route_opacity[i])), border = NA)
+  }
+  graphics::par(saved_clip)
+  if (nrow(routes)) graphics::legend(legend_position,
+    legend = style$flow_labels, col = style$flow_palette, lwd = 5.5,
+    horiz = legend_horizontal, cex = if (legend_horizontal) 0.65 else 0.58,
+    seg.len = if (legend_horizontal) 1.3 else 1.2,
+    x.intersp = if (legend_horizontal) 0.65 else 1,
+    bty = "n", title = "Trips per directed OD pair")
+  invisible(curves)
+}
+
 .tm_od_map_reference <- function(
     nodes, flows = NULL, basemap = "auto",
     node_columns = c(id = "node_id", longitude = "longitude",
@@ -493,12 +590,6 @@ plot.trafficmap_data <- function(x,index=x$initial,region=NULL,mode='flow',refer
     .tm_basemap(list(type = "FeatureCollection", features = features,
       attribution = attribution))
   }
-  bezier <- function(start, control, end, n = 36L) {
-    t <- seq(0, 1, length.out = n); one <- 1 - t
-    cbind(one^2 * start[1] + 2 * one * t * control[1] + t^2 * end[1],
-      one^2 * start[2] + 2 * one * t * control[2] + t^2 * end[2])
-  }
-
   if (inherits(nodes, "od_aggregation")) {
     .tm_assert(is.null(flows), "When nodes is an od_aggregation object, omit flows")
     flows <- nodes$flows; nodes <- nodes$nodes
@@ -577,7 +668,10 @@ plot.trafficmap_data <- function(x,index=x$initial,region=NULL,mode='flow',refer
   }
   selected <- data.frame(origin_id = origin[keep],
     destination_id = destination[keep], flow = count[keep], stringsAsFactors = FALSE)
-  .tm_assert(nrow(selected) > 0L, "No flows remain in the requested time window")
+  if (!nrow(selected)) stop(structure(list(
+    message="No flows remain in the requested time window",call=NULL,
+    nodes=node_data,time_window=window_label),
+    class=c("traffic_od_empty_window","error","condition")))
   totals <- stats::aggregate(flow ~ origin_id + destination_id, selected, sum)
   totals <- totals[totals$flow > 0, , drop = FALSE]
   loop_total <- sum(totals$flow[totals$origin_id == totals$destination_id])
@@ -587,8 +681,12 @@ plot.trafficmap_data <- function(x,index=x$initial,region=NULL,mode='flow',refer
   .tm_assert(length(top_n) == 1L && !is.na(top_n) && top_n > 0,
     "top_n must be positive or Inf")
   if (is.finite(top_n)) routes <- utils::head(routes, as.integer(top_n))
-  .tm_assert(nrow(routes) > 0L || isTRUE(include_loops),
-    "No nonloop OD flows remain for plotting")
+  if (!nrow(routes) && !isTRUE(include_loops)) stop(structure(list(
+    message="No nonloop OD flows remain for plotting",call=NULL,
+    nodes=node_data,time_window=window_label,selected_records=nrow(selected),
+    selected_flow=sum(selected$flow),within_node_flow=loop_total,
+    nonloop_flow=sum(totals$flow)-loop_total),
+    class=c("traffic_od_no_routes","error","condition")))
   origin_at <- match(routes$origin_id, node_data$node_id)
   destination_at <- match(routes$destination_id, node_data$node_id)
   routes$origin_longitude <- node_data$longitude[origin_at]
@@ -627,84 +725,24 @@ plot.trafficmap_data <- function(x,index=x$initial,region=NULL,mode='flow',refer
     extent[2], extent[4]), ncol = 2, byrow = TRUE))
   limits <- c(projected_extent[1, 1], projected_extent[2, 1],
     projected_extent[1, 2], projected_extent[2, 2])
-  projected_nodes <- .tm_project(as.matrix(plot_nodes[, c("longitude", "latitude")]))
-  .tm_assert(is.numeric(flow_breaks) && length(flow_breaks) >= 1L &&
-    all(is.finite(flow_breaks)) && all(diff(flow_breaks) > 0),
-    "flow_breaks must be strictly increasing finite numbers")
-  .tm_assert(is.character(flow_palette) &&
-    length(flow_palette) == length(flow_breaks) + 1L &&
-    all(!is.na(flow_palette)) && all(nzchar(flow_palette)),
-    "flow_palette must contain one more colour than flow_breaks")
-  .tm_assert(is.character(flow_labels) && length(flow_labels) == length(flow_palette) &&
-    all(!is.na(flow_labels)) && all(nzchar(flow_labels)),
-    "flow_labels must contain one label per flow colour")
-  class_index <- as.integer(cut(routes$flow,
-    breaks = c(-Inf, flow_breaks, Inf), right = TRUE, labels = FALSE))
-  route_colours <- flow_palette[class_index]
-  opacity_palette <- if (length(flow_palette) == 5L) {
-    c(0.72, 0.70, 0.85, 0.95, 1)
-  } else seq(0.72, 1, length.out = length(flow_palette))
-  route_opacity <- opacity_palette[class_index]
-  route_width <- ifelse(routes$flow == 1, 0.85, 1.7)
-  route_type <- ifelse(isTRUE(single_flow_dashed) & routes$flow == 1, 2, 1)
-  .tm_assert(is.numeric(node_size) && length(node_size) == 1L &&
-    is.finite(node_size) && node_size > 0, "node_size must be one positive number")
-  if (isTRUE(scale_node_size) && max(plot_nodes$size) > 0) {
-    node_cex <- 0.65 + 1.05 * sqrt(plot_nodes$size / max(plot_nodes$size))
-  } else node_cex <- rep(node_size, nrow(plot_nodes))
+  layer_style <- .tm_od_layer_style(routes, plot_nodes, flow_breaks, flow_labels,
+    flow_palette, single_flow_dashed, curvature, arrow_length,
+    node_fill, node_colour, node_size, scale_node_size)
   map_title <- if (is.null(subtitle) || !nzchar(subtitle)) title else paste(title, subtitle, sep = "\n")
   if (is.null(subtitle) && !is.null(window_label)) map_title <- paste(title, window_label, sep = "\n")
 
   draw_map <- function() {
     saved <- graphics::par(no.readonly = TRUE); on.exit(graphics::par(saved), add = TRUE)
-    graphics::par(mar = c(3.6, 1.2, 5.1, 1.2), xpd = NA)
+    # Clip the basemap and OD layers to the plotting panel.  Allowing drawing
+    # into the margins makes long OSM ways spill into the title and caption.
+    graphics::par(mar = c(3.6, 1.2, 5.1, 1.2), xpd = FALSE)
     graphics::plot.new()
     graphics::plot.window(xlim = limits[1:2], ylim = limits[3:4], asp = 1,
       xaxs = "i", yaxs = "i")
     usr <- graphics::par("usr")
     graphics::rect(usr[1], usr[3], usr[2], usr[4], col = "#f4f3ee", border = NA)
     .tm_static_context(base, usr)
-    drawn_curves <- vector("list", nrow(routes))
-    if (nrow(routes)) for (i in seq_len(nrow(routes))) {
-      endpoints <- .tm_project(matrix(c(routes$origin_longitude[i],
-        routes$origin_latitude[i], routes$destination_longitude[i],
-        routes$destination_latitude[i]), ncol = 2, byrow = TRUE))
-      delta <- endpoints[2, ] - endpoints[1, ]; distance <- sqrt(sum(delta^2))
-      if (!is.finite(distance) || distance <= 0) next
-      direction <- if (routes$origin_id[i] < routes$destination_id[i]) 1 else -1
-      control <- colMeans(endpoints) + direction * curvature * c(-delta[2], delta[1])
-      curve <- bezier(endpoints[1, ], control, endpoints[2, ])
-      drawn_curves[[i]] <- curve
-      graphics::lines(curve,
-        col = grDevices::adjustcolor(route_colours[i], alpha.f = route_opacity[i]),
-        lwd = route_width[i], lty = route_type[i], lend = "round")
-    }
-    graphics::points(projected_nodes, pch = 21, bg = node_fill,
-      col = node_colour, cex = node_cex, lwd = 0.8)
-    .tm_assert(is.numeric(arrow_length) && length(arrow_length) == 1L &&
-      is.finite(arrow_length) && arrow_length > 0,
-      "arrow_length must be one positive number")
-    head_scale <- min(diff(usr[1:2]), diff(usr[3:4]))
-    for (i in seq_along(drawn_curves)) {
-      curve <- drawn_curves[[i]]
-      if (is.null(curve)) next
-      tip_index <- nrow(curve) - 4L
-      tail_index <- nrow(curve) - 8L
-      direction <- curve[tip_index, ] - curve[tail_index, ]
-      direction <- direction / sqrt(sum(direction^2))
-      route_span <- sqrt(sum((curve[nrow(curve), ] - curve[1, ])^2))
-      head_length <- min((arrow_length / 6.84) * head_scale, 0.16 * route_span)
-      half_width <- 0.48 * head_length
-      tip <- curve[tip_index, ]
-      base_center <- tip - direction * head_length
-      perpendicular <- c(-direction[2], direction[1])
-      triangle <- rbind(tip,
-        base_center + perpendicular * half_width,
-        base_center - perpendicular * half_width)
-      graphics::polygon(triangle[, 1], triangle[, 2],
-        col = grDevices::adjustcolor(route_colours[i],
-          alpha.f = max(0.86, route_opacity[i])), border = NA)
-    }
+    .tm_draw_od_layer(routes, plot_nodes, layer_style, "topleft", TRUE)
     north_x <- usr[2] - 0.055 * diff(usr[1:2])
     north_bottom <- usr[4] - 0.14 * diff(usr[3:4])
     north_top <- usr[4] - 0.045 * diff(usr[3:4])
@@ -713,10 +751,6 @@ plot.trafficmap_data <- function(x,index=x$initial,region=NULL,mode='flow',refer
     graphics::text(north_x, usr[4] - 0.025 * diff(usr[3:4]), "N",
       font = 2, cex = 0.8, col = "#172033")
     graphics::title(main = map_title, cex.main = 0.9)
-    if (length(routes$flow)) graphics::legend("topleft",
-      legend = flow_labels, col = flow_palette, lwd = 5.5,
-      horiz = TRUE, cex = 0.65, seg.len = 1.3, x.intersp = 0.65,
-      bty = "n", title = "Trips per directed OD pair")
     if (!is.null(caption) && nzchar(caption)) graphics::mtext(caption,
       side = 1, line = 2.2, cex = 0.62, col = "#56636a")
   }
@@ -744,7 +778,7 @@ plot.trafficmap_data <- function(x,index=x$initial,region=NULL,mode='flow',refer
       displayed_pairs = nrow(routes), displayed_flow = sum(routes$flow),
       displayed_nodes = nrow(plot_nodes),
       flow_classes = stats::setNames(
-        tabulate(class_index, nbins = length(flow_labels)), flow_labels),
+        tabulate(layer_style$class_index, nbins = length(flow_labels)), flow_labels),
       time_window = window_label,
       loops_included_in_summary = isTRUE(include_loops)),
     basemap = base, output_file = output_file))
@@ -849,6 +883,17 @@ traffic_od_map <- function(
 plot.traffic_od_data <- function(x,timezone=x$timezone,...) traffic_od_map(x,timezone=timezone,...)
 
 # Reports and exports
+# A raw array's JSON values must retain its dimensions. A plain raw vector
+# keeps jsonlite's existing base64 representation.
+.tm_provenance_for_json <- function(value) {
+  if (is.raw(value) && !is.null(dim(value))) {
+    storage.mode(value) <- "integer"
+  } else if (is.list(value) && (!is.object(value) || is.data.frame(value))) {
+    value[] <- lapply(value, .tm_provenance_for_json)
+  }
+  value
+}
+
 .tm_escape <- function(value) {
  value<-as.character(value)
  for(pair in list(c('&','&amp;'),c('<','&lt;'),c('>','&gt;'),c('"','&quot;'),c("'",'&#39;')))value<-gsub(pair[1],pair[2],value,fixed=TRUE)
@@ -906,7 +951,7 @@ plot.traffic_od_data <- function(x,timezone=x$timezone,...) traffic_od_map(x,tim
   '<p>Road geometry contains longitude and latitude vertices in travel order. Flow records use road_id, time and flow; event records use time, lon and lat. Values and unit labels retain their supplied meanings.</p>',
   if(is.null(x$measurement))'<p>Flow uses the common seven-color green-to-red log1p scale. Missing observations are gray. Display separation does not change source geometry.</p>' else if(x$measurement$mode=='change')'<p>Red denotes increases, blue denotes decreases, and neutral denotes zero change. Missing observations are gray. Differences retain the source unit.</p>' else '<p>Metric values and their definitions are supplied by the source or explicit computation rule. The display scale is supplied separately; no percentile threshold is inferred.</p>',
   if(!is.null(x$basemap))paragraph(paste('Map context:',x$basemap$attribution)) else '',
-  if(length(x$provenance))paste0('<h3>Source identities</h3><pre>',.tm_escape(jsonlite::toJSON(x$provenance,pretty=TRUE,auto_unbox=TRUE,null='null')),'</pre>') else '',
+  if(length(x$provenance))paste0('<h3>Source identities</h3><pre>',.tm_escape(jsonlite::toJSON(.tm_provenance_for_json(x$provenance),pretty=TRUE,auto_unbox=TRUE,null='null')),'</pre>') else '',
   '</section>')
 }
 .tm_document <- function(x,report=FALSE,index=NULL,region=NULL,trend_method='mean') {
@@ -949,9 +994,345 @@ plot.traffic_od_data <- function(x,timezone=x$timezone,...) traffic_od_map(x,tim
  con<-file(file,'wt',encoding='UTF-8');on.exit(close(con),add=TRUE);writeLines(html,con,useBytes=TRUE)
  invisible(file)
 }
+
+# Unified static-map entry point -------------------------------------------------
+.tm_standard_map_input <- function(input) {
+ if(is.character(input)&&length(input)==1L) {
+  .tm_assert(file.exists(input)&&!dir.exists(input),'input must be a standard RDS file or object')
+  input<-readRDS(input)
+ }
+ if(inherits(input,'trafficmap_data')||inherits(input,'traffic_od_data'))return(input)
+ .tm_assert(is.list(input)&&identical(input$schema,'bdynets-traffic-input-v1'),
+  'traffic_map requires a bdynets-traffic-input-v1 object or RDS file')
+ args<-input[intersect(names(input),names(formals(traffic_input)))]
+ do.call(traffic_input,args)
+}
+
+.tm_standard_road_data <- function(input) {
+ if(inherits(input,'trafficmap_data'))return(input)
+ .tm_assert(is.list(input)&&(!is.null(input$roads)||!is.null(input$events)),
+  'The standard input has no road or event layer')
+ args<-input[intersect(names(input),names(formals(traffic_data)))]
+ do.call(traffic_data,args)
+}
+
+# Empty selections carry missing flow totals rather than fabricated zero observations.
+.tm_map_od_call <- function(args,allow_empty=FALSE,time_alignment='unfiltered') {
+  empty <- function(condition) {
+    if(!allow_empty)stop(condition)
+    missing_window <- inherits(condition,'traffic_od_empty_window')
+    labels <- if(is.null(args$flow_labels))c('1','2-3','4-5','6-7','>= 8') else args$flow_labels
+    nodes <- condition$nodes
+    routes <- data.frame(origin_id=character(),destination_id=character(),flow=numeric(),
+      origin_longitude=numeric(),origin_latitude=numeric(),destination_longitude=numeric(),destination_latitude=numeric())
+    list(status=if(missing_window)'no_records' else 'no_routes',time_alignment=time_alignment,
+      nodes=nodes[0,,drop=FALSE],all_nodes=nodes,routes=routes,
+      summary=list(selected_records=if(missing_window)0L else as.integer(condition$selected_records),
+        selected_flow=if(missing_window)NA_real_ else condition$selected_flow,
+        within_node_flow=if(missing_window)NA_real_ else condition$within_node_flow,
+        nonloop_flow=if(missing_window)NA_real_ else condition$nonloop_flow,
+        active_nonloop_pairs=0L,displayed_pairs=0L,displayed_flow=if(missing_window)NA_real_ else 0,
+        displayed_nodes=0L,flow_classes=stats::setNames(integer(length(labels)),labels),
+        time_window=condition$time_window,loops_included_in_summary=isTRUE(args$include_loops)),
+      basemap=NULL,output_file=NULL)
+  }
+  result <- tryCatch(do.call(traffic_od_map,args),traffic_od_empty_window=empty,traffic_od_no_routes=empty)
+  if(is.null(result$status))result$status <- if(nrow(result$routes))'ok' else 'no_routes'
+  result$time_alignment <- time_alignment
+  result
+}
+
+.tm_map_device <- function(draw_fun,output_file,width,height,dpi,draw) {
+ .tm_assert(is.logical(draw)&&length(draw)==1L&&!is.na(draw),'draw must be TRUE or FALSE')
+ if(!is.null(output_file)) {
+  .tm_assert(is.character(output_file)&&length(output_file)==1L&&!is.na(output_file)&&nzchar(output_file),
+   'output_file must be one path')
+  extension<-tolower(tools::file_ext(output_file))
+  .tm_assert(extension%in%c('png','pdf'),'Static traffic_map output must end in .png or .pdf')
+  dir.create(dirname(output_file),recursive=TRUE,showWarnings=FALSE)
+  if(extension=='png')grDevices::png(output_file,width=width,height=height,units='in',res=dpi,bg='white')
+  else grDevices::pdf(output_file,width=width,height=height,useDingbats=FALSE,bg='white')
+  tryCatch(draw_fun(),finally=grDevices::dev.off())
+  output_file<-normalizePath(output_file,mustWork=TRUE)
+ }
+ if(isTRUE(draw))draw_fun()
+ output_file
+}
+
+.tm_map_north_arrow <- function() {
+ usr<-graphics::par('usr');x<-usr[2]-.055*diff(usr[1:2])
+ bottom<-usr[4]-.14*diff(usr[3:4]);top<-usr[4]-.045*diff(usr[3:4])
+ graphics::arrows(x,bottom,x,top,length=.12,angle=24,code=2,col='#172033',lwd=1.2,xpd=NA)
+ graphics::text(x,usr[4]-.025*diff(usr[3:4]),'N',font=2,cex=.8,col='#172033',xpd=NA)
+ invisible(NULL)
+}
+
+.tm_map_scale_bar <- function() {
+ usr<-graphics::par('usr');radius<-6378137
+ latitude<-2*atan(exp(mean(usr[3:4])))-pi/2
+ ground_width<-diff(usr[1:2])*radius*cos(latitude)
+ if(!is.finite(ground_width)||ground_width<=0)return(invisible(NULL))
+ target<-ground_width*.18;power<-10^floor(log10(target));choices<-c(1,2,5,10)*power
+ metres<-max(choices[choices<=target]);if(!is.finite(metres))return(invisible(NULL))
+ span<-metres/(radius*cos(latitude));x1<-usr[1]+.045*diff(usr[1:2]);x2<-x1+span
+ y<-usr[3]+.055*diff(usr[3:4]);tick<-.008*diff(usr[3:4])
+ graphics::segments(x1,y,x2,y,lwd=2.2,col='#172033',xpd=NA)
+ graphics::segments(c(x1,x2),y-tick,c(x1,x2),y+tick,lwd=1.2,col='#172033',xpd=NA)
+ label<-if(metres>=1000)paste0(format(metres/1000,trim=TRUE),' km') else paste0(format(metres,trim=TRUE),' m')
+ graphics::text((x1+x2)/2,y+2.5*tick,label,cex=.62,col='#172033',xpd=NA)
+ invisible(NULL)
+}
+
+.tm_map_restore_road_window <- function(x,region=NULL) {
+ graphics::par(mar=c(3,1,4,1),xpd=NA)
+ bounds<-.tm_focus(.tm_locations(x,region))
+ graphics::plot.window(xlim=bounds[1:2],ylim=bounds[3:4],asp=1,xaxs='i',yaxs='i')
+ invisible(bounds)
+}
+
+.tm_map_od_overlay <- function(result,od_style=list(),node_style=list()) {
+ .tm_assert(is.list(result)&&is.data.frame(result$routes)&&is.data.frame(result$nodes),'Invalid OD overlay')
+ allowed_od<-c('flow_breaks','flow_labels','flow_palette','single_flow_dashed','curvature','arrow_length')
+ allowed_node<-c('node_fill','node_colour','node_size','scale_node_size')
+ .tm_assert(is.list(od_style)&&!length(setdiff(names(od_style),allowed_od)),'Unknown od_style field')
+ .tm_assert(is.list(node_style)&&!length(setdiff(names(node_style),allowed_node)),'Unknown node_style field')
+ style<-utils::modifyList(list(flow_breaks=c(1,3,5,7),flow_labels=c('1','2-3','4-5','6-7','>= 8'),
+  flow_palette=c('#69afe0','#a1c181','#e9c46a','#f4a261','#e76f51'),single_flow_dashed=TRUE,
+  curvature=.10,arrow_length=.065),od_style)
+ nodes<-result$nodes;routes<-result$routes
+ node<-utils::modifyList(list(node_fill='white',node_colour='#17324d',node_size=.82,scale_node_size=FALSE),node_style)
+ layer_style<-.tm_od_layer_style(routes,nodes,style$flow_breaks,style$flow_labels,
+  style$flow_palette,style$single_flow_dashed,style$curvature,style$arrow_length,
+  node$node_fill,node$node_colour,node$node_size,node$scale_node_size)
+ .tm_draw_od_layer(routes,nodes,layer_style,'bottomright',FALSE)
+ invisible(result)
+}
+
+# The OD renderer retains its drawing algorithm; composition owns selection and bounds.
+.tm_map_od_extent <- function(nodes,events,args) {
+  .tm_assert(is.numeric(args$padding)&&length(args$padding)==1L&&is.finite(args$padding)&&args$padding>=0,
+    'padding must be one nonnegative number')
+  if(!is.null(args$bounds)) {
+    b<-args$bounds
+    .tm_assert(is.numeric(b)&&length(b)==4L&&all(is.finite(b))&&b[1]<b[2]&&b[3]<b[4],
+      'bounds must be c(west,east,south,north)')
+    return(as.numeric(b))
+  }
+  coordinates<-as.matrix(nodes[,c('longitude','latitude'),drop=FALSE])
+  if(!is.null(events)&&nrow(events))coordinates<-rbind(coordinates,as.matrix(events[,c('lon','lat'),drop=FALSE]))
+  if(!nrow(coordinates))return(NULL)
+  xr<-range(coordinates[,1]);yr<-range(coordinates[,2])
+  dx<-max(diff(xr),1e-6);dy<-max(diff(yr),1e-6)
+  c(xr[1]-args$padding*dx,xr[2]+args$padding*dx,yr[1]-args$padding*dy,yr[2]+args$padding*dy)
+}
+
+.tm_map_empty_od <- function(result,args,events=NULL) {
+  # These are supplied locations, not evidence of active trips in an empty window.
+  result$nodes<-result$all_nodes
+  result$summary$displayed_nodes<-as.integer(nrow(result$nodes))
+  result$node_scope<-'provided reference locations'
+  keys<-setdiff(names(formals(.tm_od_layer_style)),c('routes','nodes'))
+  defaults<-lapply(formals(traffic_od_map)[keys],eval,envir=baseenv())
+  style<-do.call(.tm_od_layer_style,c(list(routes=result$routes,nodes=result$nodes),
+    utils::modifyList(defaults,args[intersect(names(args),keys)])))
+  extent<-.tm_map_od_extent(result$nodes,events,args)
+  base<-args$basemap
+  if(identical(base,'auto'))base<-if(!is.null(extent)&&(isTRUE(args$draw)||!is.null(args$output_file))&&
+    isTRUE(getOption('bdynets.basemap.auto',TRUE)))traffic_basemap(bounds=extent) else NULL
+  base<-.tm_basemap(base)
+  note<-if(identical(result$status,'no_records'))'OD: no available records; supplied station locations are reference context'
+    else if(identical(result$summary$selected_flow,0)||isTRUE(result$summary$selected_flow==0))'OD: recorded flow is zero; no positive routes'
+    else 'OD: no nonloop routes; source records remain in the summary'
+  title<-if(is.null(args$subtitle))args$title else paste(args$title,args$subtitle,sep='\n')
+  if(is.null(args$subtitle)&&!is.null(result$summary$time_window))title<-paste(title,result$summary$time_window,sep='\n')
+  viewport<-NULL
+  draw_fun<-function() {
+    saved<-graphics::par(no.readonly=TRUE);on.exit(graphics::par(saved),add=TRUE)
+    graphics::par(mar=c(3.6,1.2,5.1,1.2),xpd=FALSE);graphics::plot.new()
+    if(is.null(extent)) {
+      graphics::text(.5,.5,'No supplied locations are available')
+    } else {
+      limits<-.tm_project(matrix(c(extent[1],extent[3],extent[2],extent[4]),ncol=2,byrow=TRUE))
+      graphics::plot.window(xlim=limits[,1],ylim=limits[,2],asp=1,xaxs='i',yaxs='i')
+      viewport<<-graphics::par('usr')
+      graphics::rect(viewport[1],viewport[3],viewport[2],viewport[4],col='#f4f3ee',border=NA)
+      .tm_static_context(base,viewport)
+      .tm_draw_od_layer(result$routes,result$nodes,style,'topleft',TRUE)
+      if(!is.null(events)).tm_event_layer(events)
+    }
+    graphics::title(main=title,cex.main=.9)
+    graphics::mtext(paste(c(args$caption,note),collapse=' | '),side=1,line=1,cex=.65,col='#56636a')
+    if(!is.null(base))graphics::mtext(base$attribution,side=1,line=2.2,cex=.55,col='#657278')
+  }
+  result$output_file<-.tm_map_device(draw_fun,args$output_file,args$width,args$height,args$dpi,args$draw)
+  result$basemap<-base
+  if(!is.null(events))result$event_overlay<-list(events=events,
+    projected=.tm_project(as.matrix(events[,c('lon','lat'),drop=FALSE])),viewport=viewport)
+  result
+}
+
+.tm_map_od_standalone <- function(args,events=NULL,time_alignment='unfiltered') {
+  args$events<-NULL
+  if(is.null(events)&&!isTRUE(args$include_loops)) {
+    result<-.tm_map_od_call(args,allow_empty=TRUE,time_alignment=time_alignment)
+    if(!identical(result$status,'ok'))result<-.tm_map_empty_od(result,args)
+    return(result)
+  }
+  analysis<-args;analysis$draw<-FALSE;analysis$output_file<-NULL
+  result<-.tm_map_od_call(analysis,allow_empty=TRUE,time_alignment=time_alignment)
+  if(!is.null(events)&&(!is.null(args$start_time)||!is.null(args$end_time))&&!inherits(events$time,'POSIXt'))
+    stop('Timestamp filtering of OD and events requires explicitly aligned event timestamps; numeric source clocks are not inferred.',call.=FALSE)
+  numeric_events<-!is.null(events)&&is.numeric(events$time)&&!inherits(events$time,'POSIXt')
+  selected<-if(is.null(events))NULL else if(numeric_events)events else .tm_od_event_input(events,NULL,args)
+  if(identical(result$status,'ok')&&!nrow(result$routes))result$status<-'no_routes'
+  if(!identical(result$status,'ok'))return(.tm_map_empty_od(result,args,selected))
+  if(is.null(events))return(.tm_map_od_call(args,allow_empty=TRUE,time_alignment=time_alignment))
+  args$bounds<-.tm_map_od_extent(result$nodes,selected,args)
+  node_columns<-if(is.null(args$node_columns))eval(formals(traffic_od_map)$node_columns) else args$node_columns
+  flow_columns<-if(is.null(args$flow_columns))eval(formals(traffic_od_map)$flow_columns) else args$flow_columns
+  normalized<-.tm_od_input(args$nodes,args$flows,node_columns,flow_columns,is.null(args$node_columns),is.null(args$flow_columns))
+  args$nodes<-normalized$nodes;args$flows<-normalized$flows
+  args$node_columns<-normalized$node_columns;args$flow_columns<-normalized$flow_columns
+  if(numeric_events)args$caption<-paste(c(args$caption,'Events retain their supplied source clock; no OD time alignment is inferred'),collapse=' | ')
+  result<-.tm_od_with_events(args,selected,NULL,preselected=TRUE)
+  result$status<-'ok';result$time_alignment<-time_alignment
+  result
+}
+
 #' @export
 #' @noRd
-traffic_map <- function(x,file,mode='flow',reference=NULL,threshold=NULL,comparison=NULL,metric=NULL,duration_rule=NULL,trend_method='mean') .tm_write(x,file,FALSE,mode=mode,reference=reference,threshold=threshold,comparison=comparison,metric=metric,duration_rule=duration_rule,trend_method=trend_method)
+traffic_map_html <- function(x,file,mode='flow',reference=NULL,threshold=NULL,comparison=NULL,metric=NULL,duration_rule=NULL,trend_method='mean') {
+ if(is.character(x)&&length(x)==1L)x<-read_traffic(x)
+ if(is.list(x)&&identical(x$schema,'bdynets-traffic-input-v1'))
+  x<-.tm_standard_road_data(.tm_standard_map_input(x))
+ .tm_write(x,file,FALSE,mode=mode,reference=reference,threshold=threshold,comparison=comparison,metric=metric,duration_rule=duration_rule,trend_method=trend_method)
+}
+
+#' Draw every spatial component of a standard traffic input
+#' @export
+#' @noRd
+traffic_map <- function(input=NULL,file=NULL,index=NULL,region=NULL,start_time=NULL,end_time=NULL,
+ layers='auto',mode='flow',reference=NULL,threshold=NULL,comparison=NULL,metric=NULL,duration_rule=NULL,
+ basemap='auto',bounds=NULL,padding=.045,top_n=Inf,include_loops=FALSE,active_nodes_only=TRUE,
+ title=NULL,subtitle=NULL,caption=NULL,flow_style=list(),od_style=list(),node_style=list(),event_style=list(),
+ north_arrow=TRUE,scale_bar=TRUE,output_file=NULL,width=11,height=9,dpi=220,draw=TRUE,trend_method='mean',x=NULL) {
+ .tm_assert(missing(input)||missing(x),'Supply only one of input and x, not both')
+ if(missing(input)&&!missing(x))input<-x
+ # Preserve the pre-0.2 HTML writer contract. Static files use .png or .pdf.
+ if(!is.null(file)&&is.null(output_file)&&!tolower(tools::file_ext(file))%in%c('png','pdf')) {
+  # Rematch the original call against the legacy signature before evaluating it.
+  legacy <- as.list(sys.call());keys <- names(legacy)
+  if(!is.null(keys)){keys[keys=='input']<-'x';names(legacy)<-keys}
+  legacy[[1L]] <- traffic_map_html
+  legacy <- match.call(definition=traffic_map_html,call=as.call(legacy))
+  return(eval(legacy,envir=parent.frame()))
+ }
+ if(!is.null(file)&&is.null(output_file))output_file<-file
+ object<-.tm_standard_map_input(input)
+ standard<-is.list(object)&&identical(object$schema,'bdynets-traffic-input-v1')
+ has_road_path<-inherits(object,'trafficmap_data')||(standard&&!is.null(object$roads)&&nrow(object$roads)>0L)
+ has_roads<-has_road_path||(standard&&!is.null(object$events)&&is.null(object$od))
+ has_od<-inherits(object,'traffic_od_data')||(standard&&!is.null(object$nodes)&&!is.null(object$od))
+ .tm_assert(has_roads||has_od,'The standard input has no drawable geographic layer')
+ allowed_layers<-c('flow','od','events','nodes')
+ if(identical(layers,'auto'))layers<-c(if(has_roads)'flow',if(has_od)c('od','nodes'),
+  if(standard&&!is.null(object$events))'events')
+ .tm_assert(is.character(layers)&&length(layers)>0L&&!anyNA(layers)&&!length(setdiff(layers,allowed_layers)),
+  'layers must be auto or a subset of flow, od, events and nodes')
+ draw_roads<-has_roads&&'flow'%in%layers;draw_od<-has_od&&'od'%in%layers
+ .tm_assert(draw_roads||draw_od,'The requested layers contain no drawable flow or OD data')
+ .tm_assert(is.list(flow_style)&&is.list(od_style)&&is.list(node_style)&&is.list(event_style),
+  'Layer styles must be lists')
+ .tm_assert(!length(event_style),'event_style is reserved; current standard events retain the package style')
+
+ if(!draw_roads) {
+  if(standard&&identical(object$od_time_kind,'untimed')&&(!is.null(start_time)||!is.null(end_time)))
+   stop('Untimed OD cannot be filtered by a timestamp window; no time is inferred.',call.=FALSE)
+  if(standard&&identical(basemap,'auto')&&!is.null(object$basemap))basemap<-object$basemap
+  nodes<-if(inherits(object,'traffic_od_data'))object else object$nodes
+  flows<-if(inherits(object,'traffic_od_data'))NULL else object$od
+  defaults<-list(nodes=nodes,flows=flows,basemap=basemap,start_time=start_time,end_time=end_time,
+   timezone=if(inherits(object,'traffic_od_data'))object$timezone else if(is.null(object$timezone))'UTC' else object$timezone,
+   top_n=top_n,include_loops=include_loops,active_nodes_only=active_nodes_only,bounds=bounds,padding=padding,
+   title=if(is.null(title))if(standard)object$title else 'Directed OD flows' else title,subtitle=subtitle,caption=caption,
+   output_file=output_file,width=width,height=height,dpi=dpi,draw=draw,
+   events=if(standard&&'events'%in%layers)object$events else NULL)
+  args<-utils::modifyList(defaults,od_style);args<-utils::modifyList(args,node_style)
+  alignment<-if(standard&&identical(object$od_time_kind,'untimed'))'untimed' else if(!is.null(start_time))'explicit_window' else 'unfiltered'
+  events<-args$events
+  return(invisible(.tm_map_od_standalone(args,events,time_alignment=alignment)))
+ }
+
+ road<-.tm_standard_road_data(object)
+ if(!is.null(title))road$title<-title
+ if(!is.null(subtitle)&&nzchar(subtitle))road$title<-paste(road$title,subtitle,sep=' | ')
+ if(is.null(basemap))road$basemap<-NULL else if(!(is.character(basemap)&&length(basemap)==1L&&basemap=='auto'))road$basemap<-.tm_basemap(basemap)
+ if(is.character(basemap)&&length(basemap)==1L&&basemap=='auto'&&is.null(road$basemap)&&
+    isTRUE(getOption('bdynets.basemap.auto',TRUE))&&(isTRUE(draw)||!is.null(output_file)))
+  road$basemap<-traffic_basemap(road,region=region,road_classes=character())
+ road<-.tm_view(road,mode,reference,threshold,comparison,metric,duration_rule)
+ if(is.null(index))index<-road$initial
+ traffic_summary(road,index,region)
+ if(length(flow_style)) {
+  allowed<-c('palette','breaks','labels','right')
+  .tm_assert(!length(setdiff(names(flow_style),allowed)),'Unknown flow_style field')
+  if(!is.null(flow_style$right)).tm_assert(is.logical(flow_style$right)&&length(flow_style$right)==1L&&!is.na(flow_style$right),'flow_style right must be TRUE or FALSE')
+  if(!is.null(flow_style$breaks)).tm_assert(is.numeric(flow_style$breaks)&&all(is.finite(flow_style$breaks))&&all(diff(flow_style$breaks)>0),'flow_style breaks must be finite and strictly increasing')
+  if(!is.null(flow_style$labels)).tm_assert(is.character(flow_style$labels)&&!anyNA(flow_style$labels)&&all(nzchar(flow_style$labels)),'flow_style labels must be nonblank strings')
+  if(!is.null(flow_style$palette))grDevices::col2rgb(flow_style$palette)
+  if(any(c('right','breaks')%in%names(flow_style))) {
+   .tm_assert(road$scale$kind%in%c('log1p','classes','zero','missing'),'Custom breaks/right require a classified road scale')
+   road$scale$kind<-'classes';if(is.null(road$scale$right))road$scale$right<-FALSE
+  }
+  for(name in names(flow_style))road$scale[[name]]<-flow_style[[name]]
+  if(road$scale$kind=='classes'&&is.null(flow_style$labels)) {
+   .tm_assert(!is.null(road$scale$breaks)&&length(road$scale$breaks)>0L,'Custom classes require at least one break')
+   limits<-vapply(road$scale$breaks,function(v)format(v,trim=TRUE,scientific=FALSE,digits=15,big.mark=','),'')
+   middle<-if(length(limits)>1L) {
+    if(isTRUE(road$scale$right))paste0('> ',utils::head(limits,-1),' to <= ',utils::tail(limits,-1))
+    else paste0(utils::head(limits,-1),' to < ',utils::tail(limits,-1))
+   } else character()
+   labels<-if(isTRUE(road$scale$right))c(paste0('0 to <= ',limits[1]),middle,paste0('> ',utils::tail(limits,1)))
+    else c(paste0('0 to < ',limits[1]),middle,paste0('>= ',utils::tail(limits,1)))
+   road$scale$labels<-labels
+  }
+  expected<-if(road$scale$kind=='zero')1L else if(road$scale$kind=='missing')0L else length(road$scale$palette)
+  .tm_assert(length(.tm_labels(road$scale))==expected,'flow_style palette and labels do not agree')
+  if(road$scale$kind=='classes').tm_assert(length(road$scale$palette)==length(road$scale$breaks)+1L,'flow_style palette must have one more colour than breaks')
+ }
+ od_result<-NULL
+ if(draw_od) {
+  untimed<-identical(object$od_time_kind,'untimed')||!('time'%in%names(object$od))
+  if(untimed&&(!is.null(start_time)||!is.null(end_time)))
+   stop('Untimed OD cannot be filtered by a timestamp window; no time is inferred.',call.=FALSE)
+  alignment<-if(untimed)'untimed' else if(!is.null(start_time)||!is.null(end_time))'explicit_window' else 'unfiltered'
+  if(!untimed&&is.null(start_time)&&is.null(end_time)&&road$clock=='absolute') {
+   start_time<-as.POSIXct(road$times[index],origin='1970-01-01',tz='UTC')
+   end_time<-as.POSIXct(road$times[index]+road$interval_seconds[index],origin='1970-01-01',tz='UTC')
+   alignment<-'road_interval'
+  }
+  defaults<-list(nodes=object$nodes,flows=object$od,basemap=NULL,start_time=start_time,end_time=end_time,
+   timezone=if(is.null(object$timezone))'UTC' else object$timezone,top_n=top_n,include_loops=include_loops,
+   active_nodes_only=active_nodes_only,bounds=bounds,padding=padding,draw=FALSE)
+  od_result<-.tm_map_od_call(utils::modifyList(utils::modifyList(defaults,od_style),node_style),allow_empty=TRUE,time_alignment=alignment)
+ }
+ old_auto<-getOption('bdynets.basemap.auto',TRUE);on.exit(options(bdynets.basemap.auto=old_auto),add=TRUE)
+ if(is.null(basemap))options(bdynets.basemap.auto=FALSE)
+ draw_fun<-function() {
+  saved<-graphics::par(no.readonly=TRUE);on.exit(graphics::par(saved),add=TRUE)
+  graphics::plot(road,index=index,region=region)
+  .tm_map_restore_road_window(road,region)
+  if(!is.null(od_result)).tm_map_od_overlay(od_result,od_style,node_style)
+  if(isTRUE(north_arrow)).tm_map_north_arrow()
+  if(isTRUE(scale_bar)).tm_map_scale_bar()
+  od_note<-if(is.null(od_result))NULL else if(identical(od_result$status,'no_records'))'OD: no records in the selected window' else if(identical(od_result$time_alignment,'untimed'))'OD: untimed aggregate' else if(identical(od_result$status,'no_routes'))'OD: no drawable nonloop routes' else NULL
+  notes<-paste(c(caption,od_note),collapse=' | ')
+  if(nzchar(notes))graphics::mtext(notes,side=1,line=2.7,cex=.58,col='#56636a')
+ }
+ output_file<-.tm_map_device(draw_fun,output_file,width,height,dpi,draw)
+ invisible(list(type=if(is.null(od_result))'flow' else 'combined',index=index,region=region,
+  road_summary=traffic_summary(road,index,region),od=od_result,basemap=road$basemap,output_file=output_file))
+}
 #' @export
 #' @noRd
 traffic_report <- function(x,file,index=NULL,region=NULL,mode='flow',reference=NULL,threshold=NULL,comparison=NULL,metric=NULL,duration_rule=NULL,trend_method='mean') .tm_write(x,file,TRUE,index,region,mode,reference,threshold,comparison,metric,duration_rule,trend_method)
@@ -1011,7 +1392,7 @@ traffic_export <- function(x,output_dir,index=NULL,region=NULL,input_files=chara
  provenance<-list(schema='trafficmap-export-v1',title=x$title,clock=x$clock,unit=x$unit,
   selection=list(frame=as.integer(index),time=x$times[index],time_label=x$time_labels[index],
     interval_seconds=x$interval_seconds[index],region=region),
-  metric=x$selected_metric,metric_info=x$metric_info[[x$selected_metric]],trend_method=trend_method,trend_definition=attr(traffic_trend(x,region,method=trend_method),'definition'),flow_scale=x$scale,source=x$provenance,basemap_attribution=if(is.null(x$basemap))NULL else x$basemap$attribution,
+  metric=x$selected_metric,metric_info=x$metric_info[[x$selected_metric]],trend_method=trend_method,trend_definition=attr(traffic_trend(x,region,method=trend_method),'definition'),flow_scale=x$scale,source=.tm_provenance_for_json(x$provenance),basemap_attribution=if(is.null(x$basemap))NULL else x$basemap$attribution,
   selection_scope='Selected road and event records; flow scale retains the complete input thresholds. The selection snapshot is an inspection artifact, not a trafficmap-input-v1 bundle.')
  writeLines(jsonlite::toJSON(provenance,auto_unbox=TRUE,pretty=TRUE,na='null',null='null',digits=NA),file.path(staging,'provenance.json'),useBytes=TRUE)
  labels<-names(input_files);if(is.null(labels))labels<-rep('',length(input_files))

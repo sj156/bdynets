@@ -1,0 +1,29 @@
+"table","field","type","meaning","unit","required"
+"roads","district","character","Two-digit PeMS district.","",FALSE
+"roads","freeway","character","Source freeway number.","",FALSE
+"roads","direction","character","Source travel direction code.","",FALSE
+"roads","from_station","character","Upstream detector ID.","",FALSE
+"roads","to_station","character","Downstream detector ID.","",FALSE
+"roads","from_abs_pm","double","Upstream absolute postmile.","",FALSE
+"roads","to_abs_pm","double","Downstream absolute postmile.","",FALSE
+"roads","id","integer","Project display-link index, local to its region.","",FALSE
+"roads","from_station_index","integer","Upstream archived station-list position, when supplied.","",FALSE
+"roads","to_station_index","integer","Downstream archived station-list position, when supplied.","",FALSE
+"roads","region","character","The existing regional selection.","",FALSE
+"roads","road_id","character","Stable road identifier joining roads, flow and measurements.","",TRUE
+"roads","road_class","character","Motorway classification for the supplied freeway display links.","",FALSE
+"flow","road_id","character","Stable road identifier joining roads, flow and measurements.","",TRUE
+"flow","time","double","Observation time. POSIXct values are Unix seconds in CSV; numeric values retain the supplied source clock.","seconds",TRUE
+"flow","flow","double","Primary value in the declared unit. An observed zero and a missing value have separate meanings.","vehicles/hour",TRUE
+"events","id","character","Source record identifier.","",FALSE
+"events","time","double","Observation time. POSIXct values are Unix seconds in CSV; numeric values retain the supplied source clock.","seconds",TRUE
+"events","lon","double","WGS84 longitude, degrees east.","degrees",TRUE
+"events","lat","double","WGS84 latitude, degrees north.","degrees",TRUE
+"events","category","character","Source-supplied or explicitly mapped classification.","",FALSE
+"events","description","character","Retained source description.","",FALSE
+"events","time_label","character","Supplied human-readable clock label.","",FALSE
+"events","region","character","Declared geographic selection.","",FALSE
+"road-vertices","road_id","character","Stable road identifier joining roads, flow and measurements.","",TRUE
+"road-vertices","vertex","integer","One-based vertex order within the road, preserving its direction.","",TRUE
+"road-vertices","longitude","double","WGS84 longitude, degrees east.","degrees",TRUE
+"road-vertices","latitude","double","WGS84 latitude, degrees north.","degrees",TRUE
