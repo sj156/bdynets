@@ -1,5 +1,9 @@
 # Section 4.1 discount-model development
 
+Completed development run: all 30 registered tasks finished without numerical failure, and all 24 terminal cache checks passed. However, **0 of 28 convergence checks passed**. Recorded nonempty-class counts stayed at the four initial values (1, 3, 7, 10) across every chain. These are failed-mixing development results, not a formal method comparison. See [the English report](results/report.html), [report source](results/report.Rmd), [diagnostics](results/diagnostics.csv), and [source/output manifest](results/run-manifest.json).
+
+The exact local runtime code commit is `54c5abdc96b54d6e7bedf946bd98613d4683c8ff`. Its [published source commit](https://github.com/sj156/bdynets/commit/7970718751cb1dc930fa10da33e13f1e307717b4) has the identical complete tree `61e622305d43c3eee56022e7144101d2fd8e022f`; GitHub API publication changes commit metadata only. Later commits add reporting and metadata, not a different sampler for these results.
+
 This study prepares and checks Exp-W, SE-W and Connectivity on the preserved D01/D02 synthetic inputs. It is a new sampler and a new output lineage. Historical fits, starts and checkpoints are not reused. No manuscript text or numerical setting is edited.
 
 The user accepted the baseline discount prior Beta(49,1), protection constant log(2), and initial mean (log(25),0,0). The initial mean is explicitly design-informed by the synthetic population level; it is not estimated using true classes or held-out counts. K=10, p=3, C0=diag(1,0.5,0.5), nu=3 and tau=1 remain fixed. Beta(99,1) is reserved for a later sensitivity analysis.
@@ -21,3 +25,15 @@ The frozen target includes guide covariances during the state proposal, complete
 `graphMoDE/scripts/run-section41-discount.R` runs a single registered task against a source-hashed external shared-library build, without installing or updating any package. The driver preserves progress, partial checkpoints, RNG state, errors and completed fits in a fresh external directory. Only reviewed aggregate reports and manifests are intended for Git. Raw observations, historical payloads and new chains are excluded.
 
 Training fit and class recovery can be assessed after fitting. No held-out predictive score is claimed here: the future-guide simulation remains a separate implementation task. No full eight-method comparison or formal simulation is released by this development run.
+
+## Reproduction entry points
+
+These commands require an explicitly authorized new run and a fresh external output directory. They do not install packages. The original launcher and registration are archived externally and hashed in the manifest; the portable CLI wrappers below were syntax-checked after the completed run.
+
+```sh
+python3 graphMoDE/scripts/prepare-section41-discount.py REPOSITORY ARCHIVE NEW_OUTPUT
+python3 graphMoDE/scripts/launch-section41-discount.py REPOSITORY NEW_OUTPUT
+Rscript graphMoDE/scripts/summarize-section41-discount.R REPOSITORY NEW_OUTPUT NEW_SUMMARY
+```
+
+Render `results/report.Rmd` from its directory with `rmarkdown::render("report.Rmd")`, or supply a newly generated summary directory through the `summary_dir` parameter. The historical initialization and raw payloads are never loaded into the current sampler. The broader repository-policy verifier in the separate old working directory still reports a pre-existing absolute path in `R/graphmode_c9_pilot.R`; that file was not changed or copied into this checkout.

@@ -2,7 +2,11 @@
   "upstream_repository": "sj156/bdynets",
   "upstream_commit": "3f2df3907cd3898f0d657ace862a34ea98e31f9d",
   "branch": "codex/graphmode-simulation-preparation",
-  "new_working_source_sha256": {
+  "independent_geometry_calibration_max_difference": 1.5201173653167643e-12,
+  "source_policy": "Shared package integration candidate. Old local working trees and historical results are unchanged.",
+  "code_freeze_for_run": true,
+  "simulation_started": true,
+  "preparation_stage_source_sha256": {
     "bdynets/NAMESPACE": "f32c920047e125f0a816d80e21c8031def397a7b057b65acfbf2d71245fbbdff",
     "bdynets/man/gmde_transition_log_density.Rd": "96eef2c7a6146e6265b7a5db1334f3b317f4767cb263d81745fb70f699201cbf",
     "bdynets/man/gmde_discount_guide.Rd": "fe0d7bdc5ace57c0c2c47186db8a68872ab27bd7d66a5b2400986ff2e1dac234",
@@ -14,8 +18,10 @@
     "graphMoDE/scripts/evaluate-section41-priors.R": "6a6669729284e1337b8057f0f02099c7e01a688efd1927c03eed9e8e4fff7f6a",
     "graphMoDE/scripts/check-section41-inputs.R": "6793603c88e917c100716b29870419a2cb52684b289f8da3f636cc5c8044a136"
   },
-  "independent_geometry_calibration_max_difference": 1.5201173653167643e-12,
-  "source_policy": "Shared package integration candidate. Old local working trees and historical results are unchanged.",
-  "code_freeze_for_run": false,
-  "simulation_started": false
+  "simulation_completed": true,
+  "code_commit": "54c5abdc96b54d6e7bedf946bd98613d4683c8ff",
+  "run_manifest": "../../studies/section41-discount-20261113/results/run-manifest.json",
+  "statistical_status": "Development mixing screen failed; no formal results or manuscript promotion.",
+  "published_source_commit": "7970718751cb1dc930fa10da33e13f1e307717b4",
+  "published_source_tree_matches_local_run": true
 }

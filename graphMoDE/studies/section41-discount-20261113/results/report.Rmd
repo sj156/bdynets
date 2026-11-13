@@ -1,0 +1,91 @@
+---
+title: "Section 4.1: current discount-model development pilot"
+output:
+  html_document:
+    toc: true
+    self_contained: true
+params:
+  summary_dir: "."
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+base <- params$summary_dir
+status <- read.csv(file.path(base,"task-status.csv"))
+chains <- read.csv(file.path(base,"chain-summary.csv"))
+diagnostics <- read.csv(file.path(base,"diagnostics.csv"))
+psm <- read.csv(file.path(base,"psm-pairs.csv"))
+fit <- read.csv(file.path(base,"descriptive-fit.csv"))
+cache <- read.csv(file.path(base,"terminal-cache-checks.csv"))
+```
+
+## Outcome and scope
+
+All 30 registered tasks completed without numerical failure. All 24 terminal cache checks passed. However, none of the 28 preregistered convergence checks passed: the recorded occupied-class counts remained at their initial values of 1, 3, 7 or 10 for every development chain. This is a computational development pilot, not a converged simulation comparison. All results, including failed convergence checks and unchanged occupancy traces, are retained. The manuscript has not been edited. No prior, proposal, diagnostic threshold or chain length was changed after inspecting outcomes.
+
+The preserved D01/D02 inputs contain 121 series, 168 training observations and a 48-observation held-out period. The current fitted model keeps K=10, p=3, the full-rank softmax gate, nu=3, tau=1 and C0=diag(1,0.5,0.5). The agreed first baseline uses independent Beta(49,1) discounts, c=log(2), and m0=(log(25),0,0). This mean explicitly uses the synthetic design's known population level; it does not use true class labels or test counts.
+
+Six 12-sweep smoke tasks precede 24 development chains. Each development chain has 200 sweeps, with 100 discarded as warmup. Four training-only initial partitions have 1, 3, 7 and 10 nonempty classes. Integer rho=1, temporal blocks of 24, discount logit step 0.4, log-kappa step 0.25 and log-h step 0.15 were frozen in advance. Existing BayesLogit 2.1 supplies exact integer-shape Devroye PG draws. No package was installed or updated.
+
+```{r task-status}
+knitr::kable(aggregate(seconds~phase,status,sum),digits=2,caption="Summed worker seconds; two workers ran concurrently.")
+knitr::kable(as.data.frame(table(status$phase,status$status)),col.names=c("Phase","Status","Tasks"))
+```
+
+## Computation and occupancy
+
+```{r chain-table}
+knitr::kable(chains,digits=3)
+```
+
+Occupancy is recorded once per completed sweep. A flat occupancy trace does not prove that no intermediate label move occurred inside a sweep. Label moves among occupied components can occur while the recorded number of occupied components remains unchanged. A high state-block acceptance rate alone does not establish allocation or posterior mixing.
+
+## Convergence diagnostics
+
+The preregistered flags require rank-normalized R-hat < 1.01 and both bulk and tail ESS >= 400. Constant chains fail rather than being assigned R-hat=1. All variables here are label invariant; class-specific raw discount traces are not pooled across permutable labels. With only 100 retained draws per chain, these diagnostics are screening evidence, not certification.
+
+```{r diagnostic-table}
+knitr::kable(diagnostics,digits=3)
+```
+
+```{r psm-table}
+knitr::kable(psm,digits=3,caption="Pairwise RMS differences of off-diagonal posterior similarity entries.")
+```
+
+## Descriptive training fit only
+
+The following class-recovery and training-intensity values describe these short, potentially different posterior regions. They must not be interpreted as method rankings or formal estimates. True labels and true intensities were accessed only by the reporting step after fitting. No held-out predictive score is computed: future-guide simulation remains a separate implementation and verification task.
+
+```{r fit-table}
+knitr::kable(fit[,setdiff(names(fit),"interpretation")],digits=4)
+```
+
+## Numerical and cache verification
+
+Before any random draw, 26 guide checks and 29 additional fixed-input checks passed. The new checks compare full and blocked FFBS means/covariances with a dense joint Gaussian precision matrix, Poisson/NB corrections with normalized densities, label and discount MH ratios with complete targets, and full-rank graph covariances with dense algebra. Every completed development chain is also checked by independently replaying terminal guides and recomputing the covariance density from retained parameters.
+
+```{r cache-table}
+knitr::kable(cache,digits=12)
+```
+
+The existing repository-policy verifier in the separate legacy working directory still flags an absolute local path in `R/graphmode_c9_pilot.R`; that file was not changed. The isolated checkout's diff and delivered-file identities were verified separately.
+
+## Interpretation and next development decisions
+
+The state proposals move successfully, but that does not resolve occupancy-mode separation. Post-warmup state-block acceptance spans 0.781--0.976; baseline-discount acceptance spans 0.110--0.197; kappa acceptance spans 0.020--0.120. Between-chain posterior similarity RMS discrepancies range from 0.127 to 0.918. Finite R-hat values range from 1.601 to 5.557, and occupancy R-hat is infinite because each chain is constant at a different count.
+
+The next priority is to measure and improve empty-component entry and allocation/state coupling under the specified target. Joint or auxiliary proposals would require an explicit derivation, implementation checks and a separately registered trial. A longer run or changing the discount prior is not established as a sufficient remedy by these results. Kappa proposal efficiency also warrants a controlled tuning study. Beta(99,1) and the robust-max fallback were not used, and these short runs do not isolate a softmax-versus-robust-max effect.
+
+No production comparison should be reported from these chains. The present result is a documented failed mixing screen, with successful finite-input algebra and cache checks. The package implementation and the statistical conclusions have separate validation statuses.
+
+## Trace plots
+
+```{r trace-plots, results='asis', fig.width=10, fig.height=7}
+for(dataset in c("D01","D02"))for(method in c("Exp-W","SE-W","C")){
+  name <- paste(dataset,method,sep="-")
+  cat("\n### ",name,"\n\n",sep="")
+  cat("![](",file.path(base,paste0(name,"-traces.png")),")\n\n",sep="")
+}
+```
+
+Black, red, green and blue identify the four initial partitions. The dashed line marks the warmup boundary. Raw observations, full chains, partial checkpoints, process logs and RNG states remain external. The public manifest identifies the code commit, configurations, input identities and output hashes.

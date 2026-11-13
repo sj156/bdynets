@@ -4,10 +4,10 @@ Softmax probability arithmetic,bdynets/R/gmde-allocation.R,Reuse,Stable log-soft
 Scalar root solver,bdynets/inst/include/bdynets/scalar_state_space.h,Reused,Existing safeguarded solver used for log-scale inverse trigamma.
 Poisson guide,bdynets/src/gmde-discount.cpp,Added,Multivariate Gamma log-moment matching; separate from the existing Laplace reference filter.
 Transition density,bdynets/src/gmde-discount.cpp,Added,Full time-varying covariance determinant and innovation quadratic; includes time-zero state input.
-Three-state FFBS,existing scalar_state_space.h and historical numerical routines,New C++ implementation needed,Shared C++ sampler has one latent coordinate; do not call it three times for correlated states.
-PG draws,graphMoDE/R/core_02_state_update.R,Migrate compatible wrapper,Reuse exact BayesLogit backend and integer-shape validation in the package; no new PG approximation.
-Raw graph covariance,bdynets/R/gmde-graph.R,Adapt with explicit new interface,Existing graph constructor uses trace normalization and nu=1; cannot serve the revised model unchanged.
-Independent GP fields,bdynets/R/gmde-gate-updates.R,Adapt,Reuse ESS bracket principles and stable likelihood; remove old mixed/contrast target from the new path.
-Discount and label MH,new package functions,Pending,Replay complete affected guides; retain or reject state and caches together; sequential label decisions.
-Covariance parameter MH,historical spectral calculations,Adapt,"Use centered fields, raw covariance, all K quadratics, fixed u0 and one scale Jacobian."
-Experiments and reporting,graphMoDE scripts,Prepare,Read verified inputs only and call packaged functions; no reusable inference functions here.
+Three-state FFBS,bdynets/src/gmde-dynamic.cpp,Added and checked,Information-form multivariate conditioning; dense joint mean/covariance checks cover time zero and every block boundary.
+PG draws,bdynets/R/gmde-dynamic.R,Reused,Integer-shape Devroye checks migrated by function; existing BayesLogit 2.1 backend unchanged.
+Raw graph covariance,bdynets/src/gmde-dynamic.cpp; bdynets/R/gmde-dynamic.R,Added and checked,Raw Laplacian kernel and base LAPACK spectral algebra; no trace or edge normalization.
+Independent GP fields,bdynets/R/gmde-dynamic.R,Implemented,Sequential independent-column ESS at fixed labels; all K columns retained.
+Discount and label MH,bdynets/R/gmde-dynamic.R,Implemented and checked,Complete guide replay; full-target ratio checks and exact terminal cache checks. Empirical occupancy mixing fails.
+Covariance parameter MH,bdynets/R/gmde-dynamic.R,Implemented,Centered all-K field density; fixed u0; log-coordinate priors include Jacobians once. Poor finite-run mixing reported.
+Experiments and reporting,graphMoDE/scripts; graphMoDE/studies/section41-discount-20261113,Completed development pilot,30 tasks complete; 0 of 28 convergence flags pass. No formal comparison or prediction claim.

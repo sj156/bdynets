@@ -1,6 +1,6 @@
 {
   "schema": "graphmode-section41-preparation-v1",
-  "status": "scientific_inputs_approved; implementation_validation_before_launch",
+  "status": "development_completed; mixing_screen_failed; no_new_run_enabled",
   "launch_enabled": false,
   "upstream_commit": "3f2df3907cd3898f0d657ace862a34ea98e31f9d",
   "manuscript_sha256": {
@@ -125,5 +125,6 @@
     "forecast": "pending"
   },
   "scientific_inputs_pending": [],
-  "calibration_policy": "User accepted the discussed baseline. New development runs are governed by studies/section41-discount-20261113/plan.json; no formal simulation."
+  "calibration_policy": "User accepted the discussed baseline. New development runs are governed by studies/section41-discount-20261113/plan.json; no formal simulation.",
+  "run_manifest": "../../studies/section41-discount-20261113/results/run-manifest.json"
 }
