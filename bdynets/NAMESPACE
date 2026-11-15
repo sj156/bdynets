@@ -103,3 +103,5 @@ export(gmde_transition_log_density)
 export(gmde_dynamic_fit)
 
 export(gmde_dynamic_diagnostics)
+
+export(gmde_dynamic_predict)

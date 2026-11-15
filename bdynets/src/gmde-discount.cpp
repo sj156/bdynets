@@ -192,3 +192,55 @@ double gmde_transition_log_density_cpp(NumericMatrix state, NumericMatrix transi
     if(!std::isfinite(out))Rcpp::stop("Transition log density is not finite.");
     return out;
 }
+
+// [[Rcpp::export(name = ".gmde_discount_forecast_cpp")]]
+NumericVector gmde_discount_forecast_cpp(NumericVector terminal_state,NumericVector terminal_mean,
+    NumericMatrix terminal_covariance,double baseline,double exposure,NumericMatrix design,
+    NumericMatrix transition,double adjustment,int histories) {
+    validate_matrix(design,"future design");validate_matrix(transition,"transition");
+    validate_matrix(terminal_covariance,"terminal covariance");
+    finite_vector(terminal_state,"terminal state");finite_vector(terminal_mean,"terminal guide mean");
+    int H=design.nrow(),p=design.ncol();
+    if(H<1||p<1||histories<1||terminal_state.size()!=p||terminal_mean.size()!=p||
+       terminal_covariance.nrow()!=p||terminal_covariance.ncol()!=p||transition.nrow()!=p||transition.ncol()!=p||
+       !(baseline>0&&baseline<1)||!(adjustment>0)||!std::isfinite(adjustment)||
+       exposure<0||exposure!=std::floor(exposure)||!std::isfinite(exposure))Rcpp::stop("Invalid forecast inputs.");
+    for(int i=0;i<p;++i)for(int j=0;j<p;++j)if(terminal_covariance(i,j)!=terminal_covariance(j,i))Rcpp::stop("Covariance must be symmetric.");
+    NumericVector average(H);
+    for(int h=0;h<histories;++h) {
+        Vec theta(terminal_state.begin(),terminal_state.end()),m(terminal_mean.begin(),terminal_mean.end()),
+            C(terminal_covariance.begin(),terminal_covariance.end());lower_chol(C,p);
+        for(int t=0;t<H;++t) {
+            Rcpp::checkUserInterrupt();
+            Vec a(p,0),state_a(p,0),GC(p*p,0),P(p*p,0),RF(p,0);
+            for(int i=0;i<p;++i)for(int j=0;j<p;++j){a[i]+=transition(i,j)*m[j];state_a[i]+=transition(i,j)*theta[j];}
+            for(int j=0;j<p;++j)for(int i=0;i<p;++i)for(int q=0;q<p;++q)GC[i+p*j]+=transition(i,q)*C[q+p*j];
+            for(int j=0;j<p;++j)for(int i=j;i<p;++i){double x=0;for(int q=0;q<p;++q)x+=GC[i+p*q]*transition(j,q);P[i+p*j]=P[j+p*i]=x;}
+            double vbar=0,f=0,eta_a=0;
+            for(int i=0;i<p;++i){f+=design(t,i)*a[i];eta_a+=design(t,i)*state_a[i];for(int j=0;j<p;++j)vbar+=design(t,i)*P[i+p*j]*design(t,j);}
+            double info=inverse_trigamma(vbar,1e-12,200);
+            double complement=(1-baseline)*(-std::expm1(-adjustment*info)),delta=1-complement;
+            if(!(delta>0&&delta<1)||!(complement>0))Rcpp::stop("Unrepresentable future discount; no clipping.");
+            double wfactor=complement/delta,v=vbar/delta;
+            double expected=std::exp(eta_a+.5*wfactor*vbar);
+            if(!std::isfinite(expected))Rcpp::stop("Predictive mean overflow; no clipping.");
+            average[t]+=expected/histories;
+            Vec W=P;for(double&x:W)x*=wfactor;Vec L=lower_chol(W,p),z(p);
+            for(int j=0;j<p;++j)z[j]=R::rnorm(0,1);
+            double eta=0;for(int i=0;i<p;++i){theta[i]=state_a[i];for(int j=0;j<=i;++j)theta[i]+=L[i+p*j]*z[j];eta+=design(t,i)*theta[i];}
+            double total_mean=exposure==0?0:exposure*std::exp(eta);
+            if(!std::isfinite(total_mean))Rcpp::stop("Predictive count mean overflow; no clipping.");
+            double count=exposure==0?0:R::rpois(total_mean);
+            if(!std::isfinite(count))Rcpp::stop("Unrepresentable predictive count.");
+            double alpha=inverse_trigamma(v,1e-12,200),log_beta=R::digamma(alpha)-f,g=f,vplus=v;
+            if(exposure>0){double log_N=std::log(exposure),large=std::max(log_beta,log_N);
+              double log_beta_plus=large+std::log1p(std::exp(-std::abs(log_beta-log_N)));
+              g=R::digamma(alpha+count)-log_beta_plus;vplus=count==0?v:R::trigamma(alpha+count);}
+            for(int i=0;i<p;++i)for(int j=0;j<p;++j)RF[i]+=P[i+p*j]*design(t,j)/delta;
+            for(int j=0;j<p;++j)for(int i=j;i<p;++i){double x=P[i+p*j]/delta+(RF[i]/v)*RF[j]*(vplus/v-1);C[i+p*j]=C[j+p*i]=x;}
+            lower_chol(C,p);
+            for(int i=0;i<p;++i){m[i]=a[i]+RF[i]*(g-f)/v;if(!std::isfinite(m[i]))Rcpp::stop("Nonfinite predictive guide.");}
+        }
+    }
+    return average;
+}

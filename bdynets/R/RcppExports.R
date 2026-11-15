@@ -21,6 +21,10 @@
     .Call(`_bdynets_gmde_transition_log_density_cpp`, state, transition, innovation_covariance)
 }
 
+.gmde_discount_forecast_cpp <- function(terminal_state, terminal_mean, terminal_covariance, baseline, exposure, design, transition, adjustment, histories) {
+    .Call(`_bdynets_gmde_discount_forecast_cpp`, terminal_state, terminal_mean, terminal_covariance, baseline, exposure, design, transition, adjustment, histories)
+}
+
 .gmde_information_ffbs_cpp <- function(state, design, precision, natural, transition, initial_mean, initial_covariance, W, start, end, normals) {
     .Call(`_bdynets_gmde_information_ffbs_cpp`, state, design, precision, natural, transition, initial_mean, initial_covariance, W, start, end, normals)
 }
@@ -39,6 +43,14 @@
 
 .gmde_raw_laplacian_cpp <- function(adjacency, distance, method, h) {
     .Call(`_bdynets_gmde_raw_laplacian_cpp`, adjacency, distance, method, h)
+}
+
+.gmde_matern_covariance_cpp <- function(D, nu, tau, log_range) {
+    .Call(`_bdynets_gmde_matern_covariance_cpp`, D, nu, tau, log_range)
+}
+
+.gmde_potts_scores_cpp <- function(W, Z, site, K, beta) {
+    .Call(`_bdynets_gmde_potts_scores_cpp`, W, Z, site, K, beta)
 }
 
 .poisson_reference_cpp <- function(counts, loadings, offset, discount, initial_mean, initial_variance, tolerance, max_iterations) {

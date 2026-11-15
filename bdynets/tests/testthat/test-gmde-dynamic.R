@@ -64,7 +64,14 @@ test_that("raw graph covariance and full K Gaussian density match dense forms", 
     expected_q<--2*as.numeric(determinant(covariance,logarithm=TRUE)$modulus)-sum(field*solve(covariance,field))/2
     expect_equal(.gmde_dynamic_gp_density(field,spec),expected_q,tolerance=1e-10)
   }
-  expect_error(.gmde_raw_laplacian_cpp(A,D,"Exp-W",1e-6),"underflow")
+  tiny <- .gmde_dynamic_spectrum(list(adjacency=A,edge_lengths=D),"Exp-W",1e-6,3,1,log(1.5))
+  expect_equal(tiny$rounded_edge_count,4L)
+  expect_true(tiny$log_relative_roundoff_bound<log(.Machine$double.eps/(64*5)))
+  expect_equal(tiny$variance,rep((6/1.5^2)^(-3),5),tolerance=1e-14)
+  # Changing kappa must recheck the same bound; unsafe scales cannot slip
+  # through the cached-spectrum path. This is a deterministic stress fixture.
+  bad <- tiny;bad$log_roundoff_norm_bound <- -10
+  expect_error(.gmde_dynamic_spectral_weights(bad,log(1.5)),"not negligible")
 })
 
 test_that("compiled emission and softmax calculations retain all categories", {

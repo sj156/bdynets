@@ -1,0 +1,12 @@
+{
+  "kind": "focused_fixed_input_verification",
+  "guide_assertions": 26,
+  "dynamic_assertions": 32,
+  "comparator_forecast_assertions": 24,
+  "failures": 0,
+  "log_sha256": "080eb0e0d2778a756a15d321304dbff30b59d8ec6f752803ed6201b0bcb62c28",
+  "no_manuscript_edits": true,
+  "no_packages_installed": true,
+  "base_commit": "e15e208c251cf5f9e9ce52b13cd7f5b168e3f21a",
+  "new_run_authorization": "All eight methods must use new results and the current model."
+}

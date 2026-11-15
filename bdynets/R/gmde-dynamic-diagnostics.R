@@ -17,8 +17,9 @@ gmde_dynamic_diagnostics <- function(fits) {
   if(!requireNamespace("posterior",quietly=TRUE))stop("The posterior package is required.")
   kept <- lapply(fits,function(x)x$trace[seq.int(x$config$warmup+1L,nrow(x$trace)),,drop=FALSE])
   if(length(unique(vapply(kept,nrow,integer(1))))!=1L)stop("Incompatible chain lengths.")
-  variables <- c("occupied","log_likelihood","log_kappa","mean_occupied_discount")
-  if(fits[[1]]$method!="C")variables<-c(variables,"log_h")
+  variables <- c("occupied","log_likelihood","mean_occupied_discount")
+  if(fits[[1]]$method %in% c("Exp-W","SE-W","C","EucMoDE"))variables<-c(variables,"log_kappa")
+  if(fits[[1]]$method %in% c("Exp-W","SE-W"))variables<-c(variables,"log_h")
   rows <- lapply(variables,function(v){
     x<-vapply(kept,function(a)a[,v],numeric(nrow(kept[[1]])))
     constant<-apply(x,2,var)==0

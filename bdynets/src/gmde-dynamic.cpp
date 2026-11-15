@@ -4,6 +4,7 @@
 #include <Rcpp.h>
 #include <vector>
 #include <cmath>
+#include <limits>
 namespace {
 using V=std::vector<double>;
 using Rcpp::NumericMatrix; using Rcpp::NumericVector;
@@ -86,7 +87,40 @@ double gmde_softmax_loglik_cpp(NumericMatrix field,Rcpp::IntegerVector labels){
 // [[Rcpp::export(name = ".gmde_raw_laplacian_cpp", rng = false)]]
 NumericMatrix gmde_raw_laplacian_cpp(NumericMatrix adjacency,NumericMatrix distance,std::string method,double h){
   finite(adjacency);finite(distance);int n=adjacency.nrow();if(n<2||adjacency.ncol()!=n||distance.nrow()!=n||distance.ncol()!=n||!(h>0)||!std::isfinite(h)||(method!="Exp-W"&&method!="SE-W"&&method!="C"))Rcpp::stop("Invalid graph inputs.");
-  NumericMatrix L(n,n);
-  for(int i=0;i<n;++i){if(adjacency(i,i)!=0)Rcpp::stop("Self edges are excluded.");for(int j=0;j<i;++j){if(adjacency(i,j)!=adjacency(j,i)||(adjacency(i,j)!=0&&adjacency(i,j)!=1)||distance(i,j)!=distance(j,i))Rcpp::stop("Require symmetric binary support and distances.");if(adjacency(i,j)==0)continue;if(!(distance(i,j)>0))Rcpp::stop("Positive edge length required.");double z=distance(i,j)/h,w=method=="C"?1:std::exp(method=="Exp-W"?-z:-z*z);if(!(w>0))Rcpp::stop("Edge-weight underflow; no graph truncation was applied.");L(i,j)=L(j,i)=-w;L(i,i)+=w;L(j,j)+=w;}}
+  NumericMatrix L(n,n);int rounded_edges=0;double largest_log_weight=-std::numeric_limits<double>::max();
+  for(int i=0;i<n;++i){if(adjacency(i,i)!=0)Rcpp::stop("Self edges are excluded.");for(int j=0;j<i;++j){if(adjacency(i,j)!=adjacency(j,i)||(adjacency(i,j)!=0&&adjacency(i,j)!=1)||distance(i,j)!=distance(j,i))Rcpp::stop("Require symmetric binary support and distances.");if(adjacency(i,j)==0)continue;if(!(distance(i,j)>0))Rcpp::stop("Positive edge length required.");double z=distance(i,j)/h;
+    double log_weight=method=="C"?0:(method=="Exp-W"?-z:-z*z);
+    double w=std::exp(log_weight);
+    if(w==0){
+      ++rounded_edges;
+      // A finite upper bound is retained even when the negative exponent
+      // overflows. The covariance wrapper must certify the roundoff bound.
+      largest_log_weight=std::max(largest_log_weight,std::max(log_weight,-std::numeric_limits<double>::max()));
+    }L(i,j)=L(j,i)=-w;L(i,i)+=w;L(j,j)+=w;}}
+  if(rounded_edges>0){
+    L.attr("rounded_edge_count")=rounded_edges;
+    // Each omitted weighted edge Laplacian has operator norm 2*w.
+    L.attr("log_roundoff_norm_bound")=std::log(2.0*rounded_edges)+largest_log_weight;
+  }
   return L;
+}
+
+// [[Rcpp::export(name = ".gmde_matern_covariance_cpp", rng = false)]]
+NumericMatrix gmde_matern_covariance_cpp(NumericMatrix D,double nu,double tau,double log_range) {
+  finite(D);int n=D.nrow();
+  if(n<2||D.ncol()!=n||!(nu>0)||!std::isfinite(nu)||!(tau>0)||!std::isfinite(tau)||!std::isfinite(log_range))Rcpp::stop("Invalid Matern covariance inputs.");
+  NumericMatrix out(n,n);
+  for(int i=0;i<n;++i){if(D(i,i)!=0)Rcpp::stop("Distance diagonal must be zero.");out(i,i)=tau*tau;
+    for(int j=0;j<i;++j){if(D(i,j)!=D(j,i)||D(i,j)<0)Rcpp::stop("Require symmetric nonnegative distances.");
+      double z=std::sqrt(2*nu)*D(i,j)*std::exp(-log_range);
+      double value=z==0?tau*tau:std::exp(2*std::log(tau)+(1-nu)*std::log(2.0)-R::lgammafn(nu)+nu*std::log(z)+std::log(R::bessel_k(z,nu,2.0))-z);
+      if(!std::isfinite(value))Rcpp::stop("Unrepresentable Matern covariance.");out(i,j)=out(j,i)=value;
+    }}return out;
+}
+// [[Rcpp::export(name = ".gmde_potts_scores_cpp", rng = false)]]
+NumericVector gmde_potts_scores_cpp(NumericMatrix W,Rcpp::IntegerVector Z,int site,int K,double beta) {
+  int n=W.nrow();if(W.ncol()!=n||Z.size()!=n||site<1||site>n||K<1||!(beta>=0)||!std::isfinite(beta))Rcpp::stop("Invalid Potts score inputs.");
+  NumericVector score(K);
+  for(int j=0;j<n;++j){if(Z[j]<1||Z[j]>K)Rcpp::stop("Invalid Potts label.");if(j!=site-1)score[Z[j]-1]+=beta*W(site-1,j);}
+  return score;
 }

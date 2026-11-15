@@ -44,13 +44,29 @@
   # Keep all computed eigenvalues, including roundoff-sized signed zeros.
   # The strictly positive diagonal shift makes the raw covariance full rank.
   if (min(E$values) < -1e-10 * max(1,max(abs(E$values)))) stop("Invalid Laplacian spectrum.")
-  out <- list(vectors=E$vectors, values=E$values, nu=nu, tau=tau)
+  rounded <- attr(L,"rounded_edge_count")
+  loss <- attr(L,"log_roundoff_norm_bound")
+  out <- list(vectors=E$vectors, values=E$values, nu=nu, tau=tau,
+    rounded_edge_count=if(is.null(rounded))0L else rounded,
+    log_roundoff_norm_bound=if(is.null(loss))-Inf else loss)
   .gmde_dynamic_spectral_weights(out, u)
 }
 
 .gmde_dynamic_spectral_weights <- function(spec, u) {
   shifted <- 2*spec$nu*exp(-2*u)+spec$values
   if (any(!is.finite(shifted)) || any(shifted <= 0)) stop("Unrepresentable shifted spectrum.")
+  if(!is.null(spec$rounded_edge_count) && spec$rounded_edge_count>0L) {
+    # Certify a conservative operator perturbation bound for both covariance
+    # and precision powers. No bandwidth prior cutoff or chosen edge threshold.
+    n <- length(shifted); log_alpha <- log(2*spec$nu)-2*u
+    logs <- c(log_alpha,log(max(0,max(spec$values))),spec$log_roundoff_norm_bound)
+    top <- max(logs); log_norm <- top+log(sum(exp(logs-top)))
+    spec$log_relative_roundoff_bound <- log(n*max(spec$nu,1))+
+      spec$log_roundoff_norm_bound-log_alpha+max(spec$nu,1)*(log_norm-log_alpha)
+    if(!is.finite(spec$log_relative_roundoff_bound) ||
+       spec$log_relative_roundoff_bound>log(.Machine$double.eps/(64*n)))
+      stop("Edge-weight roundoff is not negligible at this covariance scale.")
+  } else spec$log_relative_roundoff_bound <- -Inf
   spec$log_variance <- 2*log(spec$tau)-spec$nu*log(shifted)
   spec$variance <- exp(spec$log_variance)
   if (any(!is.finite(spec$variance)) || any(spec$variance <= 0)) stop("Invalid covariance spectrum.")
@@ -165,24 +181,32 @@
       theta[[k]] <- matrix(rep(coef,each=ctx$T+1L),ctx$T+1L,ctx$p)
     }
   }
-  spec <- .gmde_dynamic_spectrum(input,method,cfg$initial_h,cfg$nu,cfg$tau,cfg$initial_log_kappa)
-  field <- spec$vectors %*% (sqrt(spec$variance)*matrix(rnorm(ctx$n*K),ctx$n,K))
+  spec <- field <- NULL
+  if(method %in% c("Exp-W","SE-W","C","EucMoDE")) {
+    spec <- if(method=="EucMoDE") .gmde_dynamic_euclidean(input,cfg$nu,cfg$tau,cfg$initial_log_kappa) else
+      .gmde_dynamic_spectrum(input,method,cfg$initial_h,cfg$nu,cfg$tau,cfg$initial_log_kappa)
+    field <- spec$vectors %*% (sqrt(spec$variance)*matrix(rnorm(ctx$n*K),ctx$n,K))
+  }
   list(Z=as.integer(Z),N=suff$N,S=suff$S,d=d,guides=guides,theta=theta,
        field=field,spec=spec,u=cfg$initial_log_kappa,h=cfg$initial_h)
 }
 
 #' Development sampler for the full-rank Poisson discount graphMoDE model
 #' @param input Training counts, designs, binary adjacency and edge lengths.
-#' @param method One of Exp-W, SE-W or C.
+#' @param method Exp-W, SE-W, C, EucMoDE, MoDE or PottsMoDE.
 #' @param config Explicit scientific and computational settings (see details).
 #' @param progress Optional callback receiving each completed iteration.
 #' @return Traces, saved labels, posterior similarity matrix, fitted intensity
 #'   mean, terminal state, and computational diagnostics. No convergence claim.
 #' @export
 gmde_dynamic_fit <- function(input, method, config, progress=NULL) {
-  method <- match.arg(method,c("Exp-W","SE-W","C"))
+  method <- match.arg(method,c("Exp-W","SE-W","C","EucMoDE","MoDE","PottsMoDE"))
+  gp <- method %in% c("Exp-W","SE-W","C","EucMoDE")
+  if(method=="MoDE" && (length(config$dirichlet_alpha)!=1L || !is.finite(config$dirichlet_alpha) || config$dirichlet_alpha<=0)) stop("Explicit positive Dirichlet concentration required.")
+  if(method=="PottsMoDE") .gmde_dynamic_validate_potts(input$fixed_weight,config$potts_beta,nrow(input$Y))
   ctx <- .gmde_dynamic_config(input,config); cfg <- ctx$config
-  state <- .gmde_dynamic_initialize(ctx,input,method)
+  state <- if(is.null(cfg$initial_seed)) .gmde_dynamic_initialize(ctx,input,method) else
+    .gmde_dynamic_initial_seed(ctx,input,method,cfg$initial_seed)
   K <- cfg$K; n <- ctx$n; T <- ctx$T
   trace <- matrix(NA_real_,cfg$iterations,13L,dimnames=list(NULL,
     c("occupied","log_likelihood","log_kappa","log_h","mean_occupied_discount",
@@ -191,6 +215,7 @@ gmde_dynamic_fit <- function(input, method, config, progress=NULL) {
   saved_labels <- matrix(NA_integer_,cfg$iterations-cfg$warmup,n)
   psm <- matrix(0,n,n); fitted <- matrix(0,n,T); draws <- 0L
   discount <- matrix(NA_real_,cfg$iterations,K)
+  predictive_states <- if(isTRUE(cfg$save_predictive_state)) vector("list",cfg$iterations-cfg$warmup) else NULL
   started <- proc.time()[[3L]]
   for(iteration in seq_len(cfg$iterations)) {
     sa <- st <- da <- dt <- moves <- proposed <- ess_eval <- 0L; jump <- 0
@@ -212,15 +237,29 @@ gmde_dynamic_fit <- function(input, method, config, progress=NULL) {
         if(log(runif(1))<min(0,up$ratio)) {state$d[k]<-candidate;state$guides[[k]]<-up$guide;da<-da+1L}
       }
     }
-    up <- .gmde_dynamic_ess(state$field,state$Z,state$spec,cfg$ess_limit)
-    state$field <- up$field; ess_eval <- up$evaluations
+    if(gp) {
+      up <- .gmde_dynamic_ess(state$field,state$Z,state$spec,cfg$ess_limit)
+      state$field <- up$field; ess_eval <- up$evaluations
+    } else if(method=="MoDE") {
+      state$mixture_weight <- rgamma(K,state$N+cfg$dirichlet_alpha)
+      state$mixture_weight <- state$mixture_weight/sum(state$mixture_weight)
+      if(any(!is.finite(state$mixture_weight)) || any(state$mixture_weight<=0)) stop("Unrepresentable mixture weight.")
+    }
     eta <- vapply(state$theta,function(x)rowSums(x[-1,,drop=FALSE]*ctx$F),numeric(T))
     emissions <- .gmde_poisson_emission_cpp(ctx$Y,eta)
     # At fixed fields and paths this proposal matrix is constant across the
     # sequential scan. Guide factors are recomputed after every proposed move.
-    probabilities <- exp(.gmde_log_softmax(emissions+state$field))
+    probabilities <- if(gp) exp(.gmde_log_softmax(emissions+state$field)) else if(method=="MoDE")
+      exp(.gmde_log_softmax(sweep(emissions,2,log(state$mixture_weight),"+"))) else NULL
     for(i in seq_len(n)) {
-      a <- state$Z[i]; b <- sample.int(K,1L,prob=probabilities[i,])
+      # Potts neighbor scores use the current sequentially updated labels.
+      # They exclude i, so the forward/reverse proposal factors cancel exactly
+      # against emission and Potts factors, leaving the two guide densities.
+      prob <- if(method=="PottsMoDE") {
+        score <- emissions[i,]+.gmde_potts_scores_cpp(input$fixed_weight,state$Z,as.integer(i),as.integer(K),cfg$potts_beta)
+        exp(score-max(score))
+      } else probabilities[i,]
+      a <- state$Z[i]; b <- sample.int(K,1L,prob=prob)
       if(a==b) next
       proposed <- proposed+1L
       up <- .gmde_dynamic_allocation_candidate(i,a,b,state$S,state$N,ctx$Y,state$d,
@@ -232,15 +271,18 @@ gmde_dynamic_fit <- function(input, method, config, progress=NULL) {
       }
     }
     # Log-coordinate MH: the following prior expressions include each Jacobian once.
+    ka <- ha <- NA
+    if(gp) {
     q <- .gmde_dynamic_gp_density(state$field,state$spec)
     next_u <- state$u+cfg$kappa_step*rnorm(1)
-    spec <- .gmde_dynamic_spectral_weights(state$spec,next_u)
+    spec <- if(method=="EucMoDE") .gmde_dynamic_euclidean(input,cfg$nu,cfg$tau,next_u) else
+      .gmde_dynamic_spectral_weights(state$spec,next_u)
     next_q <- .gmde_dynamic_gp_density(state$field,spec)
     kr <- next_q-q-((next_u-cfg$u0)^2-(state$u-cfg$u0)^2)/2
     ka <- log(runif(1))<min(0,kr)
     if(ka){state$u<-next_u;state$spec<-spec;q<-next_q}
     ha <- NA
-    if(method!="C") {
+    if(method %in% c("Exp-W","SE-W")) {
       next_v <- log(state$h)+cfg$h_step*rnorm(1); next_h <- exp(next_v)
       spec <- .gmde_dynamic_spectrum(input,method,next_h,cfg$nu,cfg$tau,state$u)
       next_q <- .gmde_dynamic_gp_density(state$field,spec)
@@ -248,20 +290,25 @@ gmde_dynamic_fit <- function(input, method, config, progress=NULL) {
       ha <- log(runif(1))<min(0,hr)
       if(ha){state$h<-next_h;state$spec<-spec}
     }
-    trace[iteration,] <- c(sum(state$N>0),sum(emissions[cbind(seq_len(n),state$Z)]),state$u,
-      if(method=="C")NA_real_ else log(state$h),mean(state$d[state$N>0]),sa/st,da/dt,
+    }
+    trace[iteration,] <- c(sum(state$N>0),sum(emissions[cbind(seq_len(n),state$Z)]),if(gp)state$u else NA_real_,
+      if(method %in% c("Exp-W","SE-W"))log(state$h) else NA_real_,mean(state$d[state$N>0]),sa/st,da/dt,
       proposed,moves,ka,ha,ess_eval,jump)
     discount[iteration,] <- state$d
     if(iteration>cfg$warmup) {
       draws <- draws+1L; saved_labels[draws,] <- state$Z
       psm <- psm+outer(state$Z,state$Z,"==")
       fitted <- fitted+t(exp(eta[,state$Z,drop=FALSE]))
+      if(!is.null(predictive_states)) predictive_states[[draws]] <- list(
+        theta=t(vapply(state$theta,function(x)x[T+1L,],numeric(ctx$p))),
+        mean=t(vapply(state$guides,function(g)g$mean[T,],numeric(ctx$p))),
+        covariance=lapply(state$guides,function(g)g$covariance[,,T]),N=state$N,d=state$d)
     }
     if(!is.null(progress)) progress(list(iteration=iteration,trace=trace[iteration,],
       elapsed=proc.time()[[3L]]-started,state=state))
   }
   list(method=method,config=cfg,trace=trace,discount=discount,labels=saved_labels,
     psm=psm/draws,fitted_intensity=fitted/draws,terminal=state,
-    elapsed=proc.time()[[3L]]-started,convergence_certified=FALSE,
+    predictive_states=predictive_states,elapsed=proc.time()[[3L]]-started,convergence_certified=FALSE,
     role="Development run; no formal simulation or predictive-performance claim.")
 }
