@@ -1,0 +1,78 @@
+{
+  "scientific_source_commit": "fdd81797cef276f81eab3bd556e60ad37f974a5e",
+  "completed_utc": "2026-11-13T16:59:46.655289+00:00",
+  "tasks_completed": 168,
+  "task_failures": 0,
+  "synthetic_inputs": {
+    "D01": {
+      "blind.rds": "0ba7d51b4de1eee6ad8fb5c33484f3e648da2ba8a78ee0f35f08cba342c24d76",
+      "design.rds": "44ff473fe64bec22980d8b98453445b84548b44b5b30069754ee4e25cce833cf",
+      "evaluation-only.rds": "26c96c7a2ccbbe6a0ba98395321c5080fc24cba477a889b7d49451d1258f96cc"
+    },
+    "D02": {
+      "blind.rds": "a235b436f3d9374f75980da3e917ae1f94c08a1df87e7fb3f47cee3c20ca29b4",
+      "design.rds": "a9f415a4a339061dade520574781c0c00a647252c7a6d7968ad7acab4f8edc84",
+      "evaluation-only.rds": "567d1fb53a40d574194266468997e083f3a448fda42f3541482213c4f50c925e"
+    }
+  },
+  "selection_on_training_prefixes": {
+    "D01": {
+      "PNAR": {
+        "p": 24,
+        "rmse": 5.084097907720084,
+        "eligible": true
+      },
+      "PottsMoDE": {
+        "beta": 4,
+        "rmse": 5.041680969167706,
+        "eligible": true
+      },
+      "STGNN": {
+        "K": 5,
+        "pool": 1,
+        "epoch": 25,
+        "rmse": 5.093232824479003,
+        "eligible": true
+      }
+    },
+    "D02": {
+      "PNAR": {
+        "p": 24,
+        "rmse": 5.056785052088572,
+        "eligible": true
+      },
+      "PottsMoDE": {
+        "beta": 4,
+        "rmse": 5.010715774389336,
+        "eligible": true
+      },
+      "STGNN": {
+        "K": 3,
+        "pool": 1,
+        "epoch": 150,
+        "rmse": 5.069229014668103,
+        "eligible": true
+      }
+    }
+  },
+  "source_registration_sha256": "9a63cb576feed5b2a27fb408670c3704309b0ddb0e66b7b81eecc96f2f8a6044",
+  "execution_launcher_sha256": "78bf08625fd740f3d73e0c8dcdf2a29263626c2feaf2fd77b4d716211a190c42",
+  "published_launcher_sha256": "6af9ac8784f8018c66161ac42d41f7babfec11490c90d4964e755f78bc082559",
+  "binary_sha256": "4ad9fcde329006314bc3bd82fb1bf326106edcab31a255d4743ec675c1ab4d67",
+  "published_launcher_difference": "Three local registration or audit path references are supplied through environment variables. The other executed source files are unchanged.",
+  "metrics_verified": {
+    "held_out_RMSE_rows": 16,
+    "representative_partition_ARI_rows": 14,
+    "bayesian_chains_constant_occupancy_through_4000_sweeps": 48,
+    "bayesian_fits_passing": 0,
+    "bayesian_fits_total": 12
+  },
+  "summary_artifact_sha256": {
+    "chains.csv": "74e1c95d45eb0bf3e7558b06bcd79a9fa69b8553ae6678e1980fb0d8e38ed8c7",
+    "comparison.csv": "b5f086415364e9c7fd7271d5d0a839facca5fd4b0408a021510fc8e54c18b75c",
+    "diagnostics.csv": "29fc6976df366c3ee7ea4d2a0c289e03ff02f1a640683914fe24fb6c93e21a96",
+    "pairs.csv": "5c5ffbce4e1e43e5930106d4784c5d6ea12f9c193fea1d27d14d82add535c874",
+    "summary.json": "45d082de5b5420541e0cbd309785bef026a1aa07617866610c86533eb940160c",
+    "task-status.csv": "337d3d72383e1a639c9d9f459086b4221d4b2261b4e7be88e84ff2eece652631"
+  }
+}
