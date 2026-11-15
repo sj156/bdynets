@@ -71,17 +71,6 @@ All 168 registered tasks completed, including training-prefix validation, final 
 
 The package calls the [discount kernels](../bdynets/src/gmde-discount.cpp) and [dynamic-model kernels](../bdynets/src/gmde-dynamic.cpp) in C++. The [study driver](scripts/run-section41-eight.py) orchestrates [input preparation](scripts/prepare-section41-eight.R), [registered fits](scripts/run-section41-eight.R) and [summaries](scripts/summarize-section41-eight.R). Reproducing the run requires the archived synthetic inputs, matching registrations and pinned external benchmark dependencies. Input hashes and the selected tuning values are in the run manifest above.
 
-## Earlier examples and custom inputs
+## Earlier implementation and frozen input provenance
 
-The original three-method examples in this directory use a shared innovation scale and mean-normalized W weights. Their commands and defaults reproduce the earlier implementation. The November results above use learned discounts and raw W weights.
-
-From the repository root, the earlier interface can be exercised with R, Python 3 and the R packages `BayesLogit`, `posterior`, `digest`, `jsonlite` and `microbenchmark`.
-
-```sh
-python3 graphMoDE/run.py test
-python3 graphMoDE/run.py example --output "$HOME/graphmode-small-example"
-```
-
-The example generates 12 sites and 48 training times and runs eight sweeps for each of three methods. Use a new output directory. The earlier `smoke` entry runs four sweeps for each of 24 chains, and `core` runs the frozen three-method pilot. The latter uses up to six single-threaded R workers and requires at least 42 GiB of available disk space. The controller stores logs, checkpoints and failure records in the external output directory and stops for diagnostics at 4,000 sweeps.
-
-For custom inputs to the earlier API, supply a node-by-training-time matrix of nonnegative integer counts, symmetric direct adjacency and length matrices, aligned training and future design matrices, and unique node IDs in the same row order. The worked example shows the complete call sequence. The earlier protocol documents its numerical safeguards and resource limits. [Custom-input example](examples/small.R) · [Comparison protocol](COMPARISON.md) · [Numerical and resource safeguards](KNOWN_ISSUES.md) · [Tests](TESTING.md) · [Source map](SOURCE_MAP.csv)
+D01 and D02 were originally generated with the earlier road simulator. The November study reads the archived inputs and verifies their hashes before fitting. The earlier shared-innovation sampler, example, and run instructions are available together at the revision immediately before cleanup. [Input checksums](preparation/2026-11-13/data-verification.json) · [Original data generator](https://github.com/sj156/bdynets/blob/079e42ec58efe6c62cfab5a8b2d90cf5cb2bf58e/graphMoDE/R/api.R) · [Earlier code and instructions](https://github.com/sj156/bdynets/tree/079e42ec58efe6c62cfab5a8b2d90cf5cb2bf58e/graphMoDE#earlier-examples-and-custom-inputs)
