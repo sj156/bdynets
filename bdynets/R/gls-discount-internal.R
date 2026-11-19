@@ -5,8 +5,7 @@ dynamic_scale <- function(cfg) if (isTRUE(cfg$static_network)) cfg$dynamic_loadi
 static_network <- function(X, pairs, B, d = NULL) {
     if (is.null(B)) return(matrix(0, nrow(X), ncol(X)))
     if (!is.null(d)) B <- B * d
-    coefficients <- pair_coefficient_matrix(B, pairs, ncol(X))
-    unname(X %*% coefficients)
+    unname(.gls_pair_product(X, pairs, B))
 }
 
 .gls_reference_step_R <- function(y, h, offset, m, C, discount) {
@@ -74,9 +73,18 @@ factor_log_density <- function(beta, ref) {
     sum(dnorm(diff(c(b0, as.numeric(beta))), sd = sqrt(ref$W), log = TRUE))
 }
 
-update_discount <- function(Y, H, offset, beta, cfg) {
-    if (cfg$factor_evolution == "unit") return(list(discount = NA_real_, ref = reference_path(Y, H, offset, NA_real_, cfg)))
-    paths <- lapply(cfg$discount_grid, function(d) reference_path(Y, H, offset, d, cfg))
+update_discount <- function(Y, H, offset, beta, cfg, current_discount = NULL,
+    current_ref = NULL) {
+    if (cfg$factor_evolution == "unit") {
+        if (is.null(current_ref)) current_ref <- reference_path(Y, H, offset, NA_real_, cfg)
+        return(list(discount = NA_real_, ref = current_ref))
+    }
+    # Reuse only the path for these same inputs and the current discount.
+    # The conditional weights still use the current factor draw.
+    paths <- lapply(cfg$discount_grid, function(d) {
+        if (!is.null(current_ref) && isTRUE(d == current_discount)) current_ref
+        else reference_path(Y, H, offset, d, cfg)
+    })
     logp <- vapply(seq_along(paths), function(j) if (is.null(paths[[j]])) -Inf else
         log(cfg$discount_prior[j]) + factor_log_density(beta, paths[[j]]), numeric(1))
     if (!any(is.finite(logp))) stop("No valid discount-grid covariance path.")
@@ -90,6 +98,32 @@ accept_reference <- function(Y, H, offset, beta, discount, ref, cfg) {
     logratio <- factor_log_density(beta, proposed) - factor_log_density(beta, ref)
     accept <- is.finite(logratio) && log(runif(1)) < min(0, logratio)
     list(accepted = accept, ref = if (accept) proposed else ref)
+}
+
+interweave_general_loading_factor <- function(Y, H, offset, beta, L, prior_var,
+    discount, ref, proposal_sd, cfg) {
+    delta <- rnorm(1L, 0, proposal_sd)
+    scale <- exp(delta)
+    initial <- attr(beta, "initial", exact = TRUE)
+    candidate_beta <- beta * scale
+    attr(candidate_beta, "initial") <- initial * scale
+    candidate_H <- H / scale
+    candidate_ref <- tryCatch(reference_path(Y, candidate_H, offset, discount, cfg),
+        error = function(e) NULL)
+    if (!is.null(candidate_ref)) {
+        # Inverse scaling of the loadings preserves the observation predictor.
+        # The initial factor and loadings still contribute to the joint density.
+        log_state_ratio <- factor_log_density(candidate_beta, candidate_ref) -
+            factor_log_density(beta, ref) - 0.5 * expm1(2 * delta) * sum(initial^2)
+        variance <- dynamic_scale(cfg)^2 * prior_var
+        log_loading_ratio <- -0.5 * expm1(-2 * delta) * sum(L^2 / variance)
+        log_jacobian <- (length(beta) + length(initial) - length(L)) * delta
+        log_ratio <- log_state_ratio + log_loading_ratio + log_jacobian
+        if (is.finite(log_ratio) && log(runif(1L)) < log_ratio)
+            return(list(beta = candidate_beta, L = L / scale, H = candidate_H,
+                reference = candidate_ref, accepted = 1L, jump = abs(delta)))
+    }
+    list(beta = beta, L = L, H = H, reference = ref, accepted = 0L, jump = 0)
 }
 
 # One predict-before-update step, conditional on a retained parameter draw.

@@ -1,15 +1,11 @@
 # GLS: portable fitting and benchmark workflow
 
-GLS is a method module of the `bdynets` package. This is the handoff guide for
-running its current fitting and benchmark workflow on another computer. It tells a human or another ChatGPT which code is canonical, how to
-fit one count-network data set, how Simulation 1 is run, where every benchmark
-comes from, and which parameters were used in the reported experiment.
+Use the [paper launchers](../GLS-paper/README.md) for Linux installation,
+a self-contained directed-grid simulation and fitting a prepared data panel.
+The same guide identifies the separate archive for the Divvy 970-relation result.
 
-The two proposed outputs are named as follows.
-
-- **GLS**: the continuous all-ordered-pairs posterior fit.
-- **GLSS**: the sparse joint DSS summary selected from the fitted GLS posterior
-  by validation predictive fidelity. GLSS is not a second MCMC fit.
+- **GLS** fits a continuous posterior over the candidate relationships.
+- **GLSS** uses validation data to select a sparse joint DSS summary of that posterior.
 
 Historical tables may contain `BDCN full`, `Revised BDCN continuous`, or
 `GLS full` for GLS, and `BDCN + DSS`, `Revised BDCN + joint DSS`, or
@@ -46,7 +42,7 @@ cd "$SIMU1"
 Rscript install_R_dependencies.R
 ```
 
-Important rules for another ChatGPT or analyst:
+For a reproducible analysis:
 
 1. Use exported `bdynets::` functions. Do not copy sampler functions into a new
    analysis script and do not `source()` individual files from `bdynets/R`.
@@ -86,8 +82,8 @@ The study sampler's FFBS and reference recursion are unchanged. The reusable
 filter and does not replace the GLS C reference implementation. See
 [CPP-KERNELS.md](CPP-KERNELS.md) for independent R/C++ reuse.
 
-The integrated package passes `R CMD check` with Status: OK. Timings from older
-scratch prototypes are not speedup measurements against GLS 0.5.1.
+The [migration record](../MIGRATION.md) identifies the revision used for the
+historical package check.
 
 The fast implementation retains the model, priors, full candidate dictionary,
 block size, iteration counts and MH covariance correction. Gaussian target
@@ -142,18 +138,20 @@ On Windows, activate with `.venv\Scripts\activate`. Current requirements are
 
 ## 3. Fit one observed count-network data set
 
-For a new data set use `gls_fit_general()`. It fits all ordered source-target
-pairs, including self, physically adjacent, multi-hop and unreachable pairs.
-The older `gls_fit()` interface excludes the separately modeled local domain
-and is retained mainly for older examples; it is not the recommended interface
-for the current all-pairs formulation.
+For a new data set use `gls_fit_general()`. By default it includes all ordered
+source-target pairs, including self, physically adjacent, multi-hop and
+unreachable pairs. Supply `pairs` to fit a restricted dictionary such as the
+projected Divvy self and one-hop links. The older `gls_fit()` interface models
+the local domain separately.
 
 Since version 0.5.0, the general interface reuses Simulation 1's conditional
 Gaussian pCN target proposal. It accepts/rejects small target blocks separately,
 retains the full reference-covariance density correction, and adapts the pCN
-step during burn-in only. The general-data covariates and fixed graph-affinity
-prior are retained; this does not substitute Simulation 1's learned dictionary
-or regenerate simulation covariates.
+step during burn-in only. General fits use the supplied covariates. The default
+`affinity_model = "fixed"` takes weights from the candidate table.
+`affinity_model = "graph_laplace"` learns the strength of a graph-derived score.
+Use a positive `fixed_tau` to fix global shrinkage, or leave it at `NULL` to
+sample the global scale.
 
 The main controls are `static_target_block_size=4L`,
 `static_pcn_initial_step=0.8`, `static_pcn_target_acceptance=0.25`, and the
@@ -335,19 +333,19 @@ The DGP is in `bdynets/R/gls-simulation.R`. Public orchestration functions are
 
 ### 4.1 Smoke check
 
-From `simulation1_GLS_directed_grid`:
-
-```sh
-Rscript run_simulation.R --smoke --output=output/smoke_validation
-```
+Run the [Linux smoke example](../GLS-paper/README.md#directed-grid-simulation)
+from the repository root. It generates data and exercises plan, run and report.
 
 ### 4.2 Current full run
 
+After installation, inspect the full study budget from the repository root.
+
 ```sh
-Rscript run_simulation.R --full \
-  --signals=0,0.1,0.2 \
-  --output=output/full_current
+Rscript --vanilla GLS-paper/run_simulation.R --action=plan --profile=full
 ```
+
+To fit the study, use the simulation launcher's run command with
+`--profile=full` and a fresh external output directory.
 
 Current `gls_study_control("full")` settings are:
 
@@ -554,7 +552,7 @@ External provenance and compatibility changes are recorded in
 `benchmarks/external/SOURCE_VERSIONS.md`. Keep each external license file when
 copying the project.
 
-## 7. Run the complete benchmark pipeline
+## 7. Complete benchmark pipeline in the external Simulation 1 archive
 
 From `simulation1_GLS_directed_grid`:
 
@@ -595,7 +593,7 @@ Rscript benchmarks/combine_benchmark_results.R \
   --result-dir=/absolute/path/to/result
 ```
 
-## 8. Rebuild figures without refitting
+## 8. Rebuild figures from the external Simulation 1 archive
 
 Run these scripts in order because the seven-method plot reads the table made
 by the first script:

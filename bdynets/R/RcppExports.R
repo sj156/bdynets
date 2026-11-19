@@ -9,6 +9,10 @@
     .Call(`_bdynets_gls_ffbs_rank1_cpp`, response, H, omega, W)
 }
 
+.gls_pair_product_cpp <- function(X, source, target, value, k) {
+    .Call(`_bdynets_gls_pair_product_cpp`, X, source, target, value, k)
+}
+
 .gmde_inverse_trigamma_cpp <- function(variance, tolerance, max_iterations) {
     .Call(`_bdynets_gmde_inverse_trigamma_cpp`, variance, tolerance, max_iterations)
 }

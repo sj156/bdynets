@@ -32,8 +32,8 @@ The former `GLS/` package directory is retired recoverably after its source is
 migrated; it is not an additional installation target.
 
 `GLS-paper/` contains the study and prepared-data application launchers. Model
-functions stay in `bdynets/R/`; the former package example is now
-`GLS-paper/multihop.R`. Datasets, chain outputs and local migration backups are
+functions stay in `bdynets/R/`. The multi-hop example is available through
+`bdynets::gls_run_multihop_example()`. Datasets, chain outputs and local migration backups are
 kept outside the source change. Legacy external benchmark scripts mentioned in
 the method guide were not part of the supplied checkout.
 

@@ -62,13 +62,17 @@
   out
 }
 
-.gls_study_affinity_from_chi <- function(Fg, chi) {
+.gls_study_affinity_from_chi <- function(Fg, chi, reject_invalid = FALSE) {
   if (!ncol(Fg)) return(rep(1, nrow(Fg)))
   if (length(chi) != ncol(Fg) || any(!is.finite(chi)) || any(chi <= 0))
     stop("chi is incompatible with the affinity feature matrix.")
   log_g <- as.numeric(Fg %*% chi)
   log_g <- log_g - mean(log_g)
   g <- exp(log_g)
+  if (any(!is.finite(g) | g <= 0)) {
+    if (reject_invalid) return(NULL)
+    stop("Non-finite or zero graph affinity.")
+  }
   if (abs(mean(log(g))) > 1e-10) stop("Affinity normalization failed.")
   g
 }

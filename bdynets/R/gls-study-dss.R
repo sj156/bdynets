@@ -1,14 +1,3 @@
-.gls_study_one_time_pair_components <- function(x, pairs, theta_bar, L, k, r, d) {
-  if (is.null(d)) d <- rep(1, nrow(pairs)); ids <- split(seq_len(nrow(pairs)), pairs$target)
-  static <- numeric(k); H <- matrix(0, k, r)
-  for (a in seq_len(k)) {
-    ii <- ids[[as.character(a)]]; src <- pairs$source[ii]
-    static[a] <- sum(x[src] * d[ii] * theta_bar[ii])
-    H[a, ] <- colSums(L[ii, , drop = FALSE] * (x[src] * d[ii]))
-  }
-  list(static = static, H = H)
-}
-
 .gls_study_rolling_prediction <- function(fit, X, Q, Y, rows,
     conditioning_rows = integer(0), d = NULL, draw_ids = NULL, seed = 1L,
     cfg, return_draws = TRUE) {

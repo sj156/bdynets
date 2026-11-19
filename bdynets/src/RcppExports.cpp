@@ -39,6 +39,20 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// gls_pair_product_cpp
+Rcpp::NumericMatrix gls_pair_product_cpp(const Rcpp::NumericMatrix& X, const Rcpp::IntegerVector& source, const Rcpp::IntegerVector& target, const Rcpp::NumericVector& value, int k);
+RcppExport SEXP _bdynets_gls_pair_product_cpp(SEXP XSEXP, SEXP sourceSEXP, SEXP targetSEXP, SEXP valueSEXP, SEXP kSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type X(XSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::IntegerVector& >::type source(sourceSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::IntegerVector& >::type target(targetSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type value(valueSEXP);
+    Rcpp::traits::input_parameter< int >::type k(kSEXP);
+    rcpp_result_gen = Rcpp::wrap(gls_pair_product_cpp(X, source, target, value, k));
+    return rcpp_result_gen;
+END_RCPP
+}
 // gmde_inverse_trigamma_cpp
 NumericVector gmde_inverse_trigamma_cpp(NumericVector variance, double tolerance, int max_iterations);
 RcppExport SEXP _bdynets_gmde_inverse_trigamma_cpp(SEXP varianceSEXP, SEXP toleranceSEXP, SEXP max_iterationsSEXP) {
@@ -236,6 +250,7 @@ END_RCPP
 static const R_CallMethodDef CallEntries[] = {
     {"_bdynets_gls_reference_path_native", (DL_FUNC) &_bdynets_gls_reference_path_native, 6},
     {"_bdynets_gls_ffbs_rank1_cpp", (DL_FUNC) &_bdynets_gls_ffbs_rank1_cpp, 4},
+    {"_bdynets_gls_pair_product_cpp", (DL_FUNC) &_bdynets_gls_pair_product_cpp, 5},
     {"_bdynets_gmde_inverse_trigamma_cpp", (DL_FUNC) &_bdynets_gmde_inverse_trigamma_cpp, 3},
     {"_bdynets_gmde_discount_guide_cpp", (DL_FUNC) &_bdynets_gmde_discount_guide_cpp, 10},
     {"_bdynets_gmde_transition_log_density_cpp", (DL_FUNC) &_bdynets_gmde_transition_log_density_cpp, 3},
