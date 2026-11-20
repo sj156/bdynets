@@ -2,15 +2,16 @@ script<-sub('^--file=','',grep('^--file=',commandArgs(FALSE),value=TRUE))
 if(length(script)!=1L)stop('Rscript entrypoint is required.')
 if(!file.exists(script))script<-gsub('~+~',' ',script,fixed=TRUE)
 base<-dirname(normalizePath(script,mustWork=TRUE))
-source(file.path(base,'..','..','bdynets','inst','preparation-session.R'))
-preparation_session(base)
-if(!requireNamespace('rmarkdown',quietly=TRUE)||!requireNamespace('knitr',quietly=TRUE)||!rmarkdown::pandoc_available())stop('Report rendering requires rmarkdown, knitr and Pandoc.')
 args<-commandArgs(TRUE)
 offline<-'--offline'%in%args
 export<-'--export'%in%args
 args<-args[!args%in%c('--offline','--export')]
-if(length(args)>1L)stop('Usage: Rscript run.R [HH:MM] [--offline] [--export]')
+if(length(args)>1L||(length(args)==1L&&!grepl('^([01][0-9]|2[0-3]):[0-5][0-9]$',args[1])))
+  stop('Usage: Rscript run.R [HH:MM] [--offline] [--export]')
 time_label<-if(length(args))args[1] else '08:00'
+source(file.path(base,'..','..','bdynets','inst','preparation-session.R'))
+preparation_session(base)
+if(!requireNamespace('rmarkdown',quietly=TRUE)||!requireNamespace('knitr',quietly=TRUE)||!rmarkdown::pandoc_available())stop('Report rendering requires rmarkdown, knitr and Pandoc.')
 parameters<-list(time_label=time_label,basemap=!offline,export=export,export_dir=file.path(base,'output'))
 scratch<-tempfile('report-render-');dir.create(scratch)
 intermediates<-file.path(scratch,'intermediates');dir.create(intermediates)

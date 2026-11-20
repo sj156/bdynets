@@ -9,6 +9,8 @@ raw<-jsonlite::read_json(file.path(base,'data/road-102-source.json'),simplifyVec
 roads<-beijing_network(raw$network)
 native<-beijing_records(raw$minutes,roads,0:9)
 x<-beijing_input(native)
+stopifnot(is.null(x[['schema']]),all(c('roads','flow','unit')%in%names(x)),
+ !any(c('nodes','od','flows','od_unit','od_time_kind')%in%names(x)))
 stopifnot(identical(x$flow$flow,c(24,0)),all(x$interval_seconds==300))
 reject(beijing_records(rbind(raw$minutes,raw$minutes[1,]),roads,0:9))
 reject(beijing_records(raw$minutes[-1,],roads,0:9))
@@ -18,6 +20,23 @@ fields<-beijing_fields;fields['rate']<-'source_rate'
 stopifnot(identical(beijing_input(beijing_records(renamed,roads,0:9,fields))$flow,x$flow))
 full<-beijing_input(readRDS(file.path(base,'data/source.rds')))
 gold<-readRDS(file.path(base,'data/input.rds'))
+map_path<-file.path(base,'data/map-frame-0800.rds')
+stopifnot(file.exists(map_path))
+map_input<-readRDS(map_path)
+stopifnot(inherits(map_input,'trafficmap_data'),length(map_input$times)==1L,
+  is.null(map_input$time_labels),identical(map_input$time_label_format,'%H:%M'))
+day_view<-read_traffic(file.path(base,'data/input.rds'))
+map_index<-which(day_view$times == 8*3600)
+stopifnot(length(map_index)==1L)
+map_view<-traffic_flow_map(map_path,basemap=NULL,draw=FALSE)$data
+stopifnot(identical(map_view$time_labels,'08:00'),
+  identical(map_view$times,day_view$times[map_index]),
+  identical(map_view$interval_seconds,day_view$interval_seconds[map_index]),
+  identical(map_view$unit,day_view$unit),identical(map_view$roads,day_view$roads),
+  identical(map_view$values,day_view$values[map_index,,drop=FALSE]))
+cat('The shipped 08:00 single-frame RDS is a direct Flow input.\n')
+stopifnot(is.null(gold$time_labels),is.null(full$time_labels),
+  is.null(jsonlite::read_json(file.path(base,'data','metadata.json'))$time_labels))
 for(key in c('roads','flow','events','nodes','od','measurements','times','time_labels','interval_seconds','unit','timezone'))
  stopifnot(identical(full[[key]],gold[[key]]))
 if(!is.null(gold$trends))stopifnot(identical(full$trends$value,gold$trends$value))

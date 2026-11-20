@@ -82,10 +82,56 @@ test_that('canonical OD rejects invalid declared times and node sizes', {
  z<-od_fixture();z$nodes$member_weight<-c(-1,1)
  expect_error(traffic_od_data(z$nodes,z$flows),'sizes')
 })
-# OD layers are clipped to the plot panel; the aggregation reference is unchanged.
-test_that('reference bodies match recorded implementation fingerprints', {
+test_that('prepared OD routes draw with the same counts and classes without reprocessing', {
+ nodes<-data.frame(node_id=c('a','b'),longitude=c(12,12.1),latitude=c(51,51.1),member_weight=1)
+ flows<-data.frame(origin_id=c('a','a','b','a','b'),destination_id=c('b','b','a','a','a'),
+   flow=c(1L,2L,1L,2L,9L),time=paste('2026-01-01',c('01:00:00','01:15:00','01:30:00','01:45:00','02:00:00')))
+ start<-'2026-01-01 01:00:00';end<-'2026-01-01 02:00:00'
+ reference<-traffic_od_map(nodes,flows,start_time=start,end_time=end,basemap=NULL,draw=FALSE)
+ prepared<-traffic_od_pairs(traffic_od_select(nodes,flows,start_time=start,end_time=end))
+ local_mocked_bindings(
+   traffic_od_select=function(...)stop('The prepared input was filtered again'),
+   traffic_od_pairs=function(...)stop('The prepared input was aggregated again'),
+   .package='bdynets')
+ png<-tempfile(fileext='.png');on.exit(unlink(png),add=TRUE)
+ result<-traffic_od_map(prepared,basemap=NULL,output_file=png,draw=FALSE)
+ expect_true(file.info(png)$size>0)
+ expect_identical(result$nodes,reference$nodes)
+ expect_identical(result$routes,reference$routes)
+ expect_identical(result$summary,reference$summary)
+ expect_equal(result$summary$selected_flow,6)
+ expect_equal(result$summary$within_node_flow,2)
+ expect_equal(result$summary$displayed_flow,4)
+ expect_identical(result$summary$flow_classes,
+   stats::setNames(c(1L,1L,0L,0L,0L),c('1','2-3','4-5','6-7','>= 8')))
+})
+
+test_that('prepared OD input rejects data selection and mapping overrides', {
+ nodes<-data.frame(node_id=c('a','b'),longitude=c(12,12.1),latitude=c(51,51.1),member_weight=1)
+ flows<-data.frame(origin_id='a',destination_id='b',flow=3,time='2026-01-01 01:00:00')
+ prepared<-traffic_od_pairs(traffic_od_select(nodes,flows))
+ drawing<-list(nodes=prepared,basemap=NULL,draw=FALSE)
+ conflicts<-list(start_time='2026-01-01 00:00:00',end_time='2026-01-01 03:00:00',
+   hour_window=c(0,3),top_n=Inf,include_loops=FALSE,active_nodes_only=TRUE,
+   node_columns=c(id='node_id',longitude='longitude',latitude='latitude'),
+   flow_columns=c(origin='origin_id',destination='destination_id',count='flow'))
+ for (name in names(conflicts)) {
+   expect_error(do.call(traffic_od_map,c(drawing,conflicts[name])),
+     paste0('Prepared OD input.*',name))
+ }
+ expect_error(do.call(traffic_od_map,c(drawing,conflicts[c('start_time','end_time','top_n')])),
+   'start_time, end_time, top_n')
+ expect_identical(traffic_od_map(prepared,start_time=NULL,end_time=NULL,hour_window=NULL,
+   basemap=NULL,draw=FALSE)$routes,prepared$routes)
+ event<-data.frame(time='2026-01-01 01:00:00',lon=12.05,lat=51.05)
+ overlay<-traffic_od_map(prepared,events=event,timezone='America/Chicago',
+   title='Prepared trips',basemap=NULL,draw=FALSE)
+ expect_identical(overlay$routes,prepared$routes)
+ expect_equal(nrow(overlay$event_overlay$events),1)
+})
+
+test_that('the OD aggregation reference body matches its recorded fingerprint', {
  fingerprint<-function(f) {p<-tempfile();on.exit(unlink(p));writeLines(deparse(body(f),width.cutoff=500L),p);unname(tools::md5sum(p))}
- expect_identical(fingerprint(bdynets:::.tm_od_map_reference),'cededa227e43611a132fe866531b15ad')
  expect_identical(fingerprint(bdynets:::.tm_aggregate_od_reference),'37a2460150a0ae6d80387764378e240c')
 })
 test_that('canonical OD stores one shared schema independent of source names', {
@@ -100,6 +146,14 @@ test_that('canonical object feeds aggregation and accepts plot timezone override
  a<-aggregate_od_data(x,radius_m=1)
  expect_equal(sum(a$flows$flow),30)
  expect_equal(plot(x,timezone='UTC',basemap=NULL,draw=FALSE)$summary$selected_flow,30)
+})
+
+test_that('a named OD list feeds traffic_od_map directly', {
+ z<-od_fixture();x<-list(nodes=z$nodes,flows=z$flows,timezone='UTC',title='Named OD list')
+ mapped<-traffic_od_map(x,basemap=NULL,draw=FALSE)
+ expect_equal(mapped$summary$selected_flow,sum(as.numeric(as.character(z$flows$flow))))
+ expect_identical(mapped$all_nodes$node_id,z$nodes$node_id)
+ expect_error(traffic_od_map(x,z$flows,basemap=NULL,draw=FALSE),'omit flows')
 })
 test_that('OD event composition renders selected events in the frozen viewport', {
  frozen_usr<-NULL
@@ -176,10 +230,11 @@ test_that('external events occupy the reference panel in a multi-panel device', 
  graphics::par(mfrow=c(1,2))
  reference_panel<-NULL;event_panel<-NULL
  layer<-bdynets:::.tm_event_layer
- local_mocked_bindings(.tm_static_context=function(base,limits){reference_panel<<-graphics::par(c('mfg','fig'))},
-   .tm_event_layer=function(events){event_panel<<-graphics::par(c('mfg','fig'));layer(events)},.package='bdynets')
- traffic_od_map(z$nodes,z$flows,events=e,basemap=NULL,draw=TRUE)
+ local_mocked_bindings(.tm_static_context=function(base,limits){reference_panel<<-graphics::par(c('mfg','fig','usr'))},
+   .tm_event_layer=function(events){event_panel<<-graphics::par(c('mfg','fig','usr'));layer(events)},.package='bdynets')
+ result<-traffic_od_map(z$nodes,z$flows,events=e,basemap=NULL,draw=TRUE)
  expect_identical(event_panel,reference_panel)
+ expect_identical(result$event_overlay$viewport,reference_panel$usr)
  expect_identical(reference_panel$mfg,c(1L,1L,1L,2L))
  expect_identical(graphics::par('mfrow'),c(1L,2L))
 })

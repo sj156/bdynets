@@ -1,0 +1,2621 @@
+{
+  "unit": "trips",
+  "timezone": "America/Chicago",
+  "time_kind": "instant",
+  "title": "Divvy station departures (1.5 km groups)",
+  "description": "Station nodes grouped within 1.5 km during data preparation.",
+  "provenance": {
+    "station_preparation": {
+      "source_columns": ["ride_id", "started_at", "start_station_id", "end_station_id", "start_station_name", "end_station_name", "start_lat", "start_lng", "end_lat", "end_lng"],
+      "departure_date": "2026-01-01",
+      "timezone": "America/Chicago",
+      "source_departures": 1950,
+      "duplicate_rows": 0,
+      "missing_origin_only": 186,
+      "missing_destination_only": 288,
+      "missing_both": 246,
+      "unmatched_coordinates": 0,
+      "retained_trips": 1230,
+      "geometry": "Per-station median of valid paired source endpoint coordinates on the selected departure day.",
+      "preparation_sources": [
+        {
+          "file": "trips-2026-01-01.csv",
+          "bytes": 351719,
+          "sha256": "fdfb401b63720ec44a106e5f1bb2b6f7ee37ef805311e9150525b15740f6076f"
+        }
+      ]
+    },
+    "display_radius_m": 1500,
+    "spatial_aggregation": {
+      "schema_version": 1,
+      "method": "activity-prioritized radius cover with nearest-representative assignment",
+      "radius_m": 1500,
+      "timezone": "America/Chicago",
+      "source_nodes": "in-memory",
+      "source_flows": "in-memory",
+      "raw_nodes": 512,
+      "aggregate_nodes": 62,
+      "raw_flow_rows": 1230,
+      "aggregate_flow_rows": 1230,
+      "total_flow": 1230,
+      "max_assignment_distance_m": 1469.41939973949,
+      "created_utc": "2026-11-19 08:17:55 UTC",
+      "membership": [
+        {
+          "raw_node_id": "CHI00005",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 474.878
+        },
+        {
+          "raw_node_id": "CHI00216",
+          "aggregate_node_id": "CHI00448",
+          "distance_to_representative_m": 700.694
+        },
+        {
+          "raw_node_id": "CHI00219",
+          "aggregate_node_id": "CHI00623",
+          "distance_to_representative_m": 1000.645
+        },
+        {
+          "raw_node_id": "CHI00224",
+          "aggregate_node_id": "CHI00386",
+          "distance_to_representative_m": 819.233
+        },
+        {
+          "raw_node_id": "CHI00225",
+          "aggregate_node_id": "CHI00339",
+          "distance_to_representative_m": 918.173
+        },
+        {
+          "raw_node_id": "CHI00226",
+          "aggregate_node_id": "CHI00353",
+          "distance_to_representative_m": 869.094
+        },
+        {
+          "raw_node_id": "CHI00228",
+          "aggregate_node_id": "CHI00261",
+          "distance_to_representative_m": 571.85
+        },
+        {
+          "raw_node_id": "CHI00229",
+          "aggregate_node_id": "CHI00286",
+          "distance_to_representative_m": 535.587
+        },
+        {
+          "raw_node_id": "CHI00230",
+          "aggregate_node_id": "CHI00230",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00232",
+          "aggregate_node_id": "CHI00339",
+          "distance_to_representative_m": 413.449
+        },
+        {
+          "raw_node_id": "CHI00233",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00234",
+          "aggregate_node_id": "CHI00353",
+          "distance_to_representative_m": 995.659
+        },
+        {
+          "raw_node_id": "CHI00236",
+          "aggregate_node_id": "CHI00339",
+          "distance_to_representative_m": 778.975
+        },
+        {
+          "raw_node_id": "CHI00237",
+          "aggregate_node_id": "CHI00386",
+          "distance_to_representative_m": 607.876
+        },
+        {
+          "raw_node_id": "CHI00238",
+          "aggregate_node_id": "CHI00230",
+          "distance_to_representative_m": 637.847
+        },
+        {
+          "raw_node_id": "CHI00239",
+          "aggregate_node_id": "CHI00353",
+          "distance_to_representative_m": 619.895
+        },
+        {
+          "raw_node_id": "CHI00240",
+          "aggregate_node_id": "CHI02023",
+          "distance_to_representative_m": 304.921
+        },
+        {
+          "raw_node_id": "CHI00241",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 844.331
+        },
+        {
+          "raw_node_id": "CHI00242",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 937.046
+        },
+        {
+          "raw_node_id": "CHI00243",
+          "aggregate_node_id": "CHI02039",
+          "distance_to_representative_m": 409.341
+        },
+        {
+          "raw_node_id": "CHI00244",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 885.761
+        },
+        {
+          "raw_node_id": "CHI00245",
+          "aggregate_node_id": "CHI00286",
+          "distance_to_representative_m": 944.41
+        },
+        {
+          "raw_node_id": "CHI00246",
+          "aggregate_node_id": "CHI00448",
+          "distance_to_representative_m": 734.075
+        },
+        {
+          "raw_node_id": "CHI00250",
+          "aggregate_node_id": "CHI00448",
+          "distance_to_representative_m": 613.316
+        },
+        {
+          "raw_node_id": "CHI00251",
+          "aggregate_node_id": "CHI00345",
+          "distance_to_representative_m": 688.302
+        },
+        {
+          "raw_node_id": "CHI00252",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 625.447
+        },
+        {
+          "raw_node_id": "CHI00253",
+          "aggregate_node_id": "CHI00345",
+          "distance_to_representative_m": 838.943
+        },
+        {
+          "raw_node_id": "CHI00254",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 76.346
+        },
+        {
+          "raw_node_id": "CHI00255",
+          "aggregate_node_id": "CHI00493",
+          "distance_to_representative_m": 457.161
+        },
+        {
+          "raw_node_id": "CHI00257",
+          "aggregate_node_id": "CHI00474",
+          "distance_to_representative_m": 835.165
+        },
+        {
+          "raw_node_id": "CHI00258",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 650.154
+        },
+        {
+          "raw_node_id": "CHI00259",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 1203.863
+        },
+        {
+          "raw_node_id": "CHI00260",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 608.481
+        },
+        {
+          "raw_node_id": "CHI00261",
+          "aggregate_node_id": "CHI00261",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00262",
+          "aggregate_node_id": "CHI00474",
+          "distance_to_representative_m": 708.298
+        },
+        {
+          "raw_node_id": "CHI00263",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 1031.307
+        },
+        {
+          "raw_node_id": "CHI00264",
+          "aggregate_node_id": "CHI02023",
+          "distance_to_representative_m": 352.656
+        },
+        {
+          "raw_node_id": "CHI00265",
+          "aggregate_node_id": "CHI00230",
+          "distance_to_representative_m": 552.138
+        },
+        {
+          "raw_node_id": "CHI00266",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 663.213
+        },
+        {
+          "raw_node_id": "CHI00267",
+          "aggregate_node_id": "CHI00312",
+          "distance_to_representative_m": 661.986
+        },
+        {
+          "raw_node_id": "CHI00268",
+          "aggregate_node_id": "CHI00641",
+          "distance_to_representative_m": 672.093
+        },
+        {
+          "raw_node_id": "CHI00269",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 762.508
+        },
+        {
+          "raw_node_id": "CHI00270",
+          "aggregate_node_id": "CHI00270",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00271",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 93.141
+        },
+        {
+          "raw_node_id": "CHI00272",
+          "aggregate_node_id": "CHI00270",
+          "distance_to_representative_m": 939.389
+        },
+        {
+          "raw_node_id": "CHI00273",
+          "aggregate_node_id": "CHI00339",
+          "distance_to_representative_m": 577.902
+        },
+        {
+          "raw_node_id": "CHI00274",
+          "aggregate_node_id": "CHI00353",
+          "distance_to_representative_m": 442.995
+        },
+        {
+          "raw_node_id": "CHI00275",
+          "aggregate_node_id": "CHI00286",
+          "distance_to_representative_m": 207.163
+        },
+        {
+          "raw_node_id": "CHI00276",
+          "aggregate_node_id": "CHI00339",
+          "distance_to_representative_m": 380.098
+        },
+        {
+          "raw_node_id": "CHI00277",
+          "aggregate_node_id": "CHI00261",
+          "distance_to_representative_m": 626.722
+        },
+        {
+          "raw_node_id": "CHI00278",
+          "aggregate_node_id": "CHI00230",
+          "distance_to_representative_m": 547.221
+        },
+        {
+          "raw_node_id": "CHI00279",
+          "aggregate_node_id": "CHI00345",
+          "distance_to_representative_m": 684.512
+        },
+        {
+          "raw_node_id": "CHI00280",
+          "aggregate_node_id": "CHI00230",
+          "distance_to_representative_m": 996.376
+        },
+        {
+          "raw_node_id": "CHI00281",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 741.44
+        },
+        {
+          "raw_node_id": "CHI00282",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 1028.122
+        },
+        {
+          "raw_node_id": "CHI00283",
+          "aggregate_node_id": "CHI00230",
+          "distance_to_representative_m": 967.95
+        },
+        {
+          "raw_node_id": "CHI00285",
+          "aggregate_node_id": "CHI00339",
+          "distance_to_representative_m": 582.474
+        },
+        {
+          "raw_node_id": "CHI00286",
+          "aggregate_node_id": "CHI00286",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00287",
+          "aggregate_node_id": "CHI00493",
+          "distance_to_representative_m": 648.677
+        },
+        {
+          "raw_node_id": "CHI00288",
+          "aggregate_node_id": "CHI00345",
+          "distance_to_representative_m": 811.322
+        },
+        {
+          "raw_node_id": "CHI00290",
+          "aggregate_node_id": "CHI00455",
+          "distance_to_representative_m": 599.281
+        },
+        {
+          "raw_node_id": "CHI00291",
+          "aggregate_node_id": "CHI00474",
+          "distance_to_representative_m": 1053.911
+        },
+        {
+          "raw_node_id": "CHI00294",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 520.734
+        },
+        {
+          "raw_node_id": "CHI00295",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 298.257
+        },
+        {
+          "raw_node_id": "CHI00296",
+          "aggregate_node_id": "CHI00316",
+          "distance_to_representative_m": 626.175
+        },
+        {
+          "raw_node_id": "CHI00299",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 855.938
+        },
+        {
+          "raw_node_id": "CHI00301",
+          "aggregate_node_id": "CHI00455",
+          "distance_to_representative_m": 1122.47
+        },
+        {
+          "raw_node_id": "CHI00303",
+          "aggregate_node_id": "CHI00474",
+          "distance_to_representative_m": 1202.508
+        },
+        {
+          "raw_node_id": "CHI00304",
+          "aggregate_node_id": "CHI00455",
+          "distance_to_representative_m": 571.312
+        },
+        {
+          "raw_node_id": "CHI00305",
+          "aggregate_node_id": "CHI00230",
+          "distance_to_representative_m": 988.753
+        },
+        {
+          "raw_node_id": "CHI00306",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 283.844
+        },
+        {
+          "raw_node_id": "CHI00307",
+          "aggregate_node_id": "CHI00307",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00309",
+          "aggregate_node_id": "CHI00475",
+          "distance_to_representative_m": 1340.316
+        },
+        {
+          "raw_node_id": "CHI00310",
+          "aggregate_node_id": "CHI00353",
+          "distance_to_representative_m": 1027.732
+        },
+        {
+          "raw_node_id": "CHI00311",
+          "aggregate_node_id": "CHI00270",
+          "distance_to_representative_m": 427.553
+        },
+        {
+          "raw_node_id": "CHI00312",
+          "aggregate_node_id": "CHI00312",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00313",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 592.215
+        },
+        {
+          "raw_node_id": "CHI00314",
+          "aggregate_node_id": "CHI00493",
+          "distance_to_representative_m": 669.228
+        },
+        {
+          "raw_node_id": "CHI00316",
+          "aggregate_node_id": "CHI00316",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00318",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 679.721
+        },
+        {
+          "raw_node_id": "CHI00321",
+          "aggregate_node_id": "CHI00230",
+          "distance_to_representative_m": 652.335
+        },
+        {
+          "raw_node_id": "CHI00322",
+          "aggregate_node_id": "CHI00261",
+          "distance_to_representative_m": 847.164
+        },
+        {
+          "raw_node_id": "CHI00323",
+          "aggregate_node_id": "CHI00426",
+          "distance_to_representative_m": 731.482
+        },
+        {
+          "raw_node_id": "CHI00325",
+          "aggregate_node_id": "CHI00618",
+          "distance_to_representative_m": 773.063
+        },
+        {
+          "raw_node_id": "CHI00326",
+          "aggregate_node_id": "CHI00326",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00327",
+          "aggregate_node_id": "CHI00353",
+          "distance_to_representative_m": 897.619
+        },
+        {
+          "raw_node_id": "CHI00328",
+          "aggregate_node_id": "CHI00386",
+          "distance_to_representative_m": 710.467
+        },
+        {
+          "raw_node_id": "CHI00329",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 470.635
+        },
+        {
+          "raw_node_id": "CHI00330",
+          "aggregate_node_id": "CHI00345",
+          "distance_to_representative_m": 893.755
+        },
+        {
+          "raw_node_id": "CHI00332",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 882.334
+        },
+        {
+          "raw_node_id": "CHI00333",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 906.033
+        },
+        {
+          "raw_node_id": "CHI00334",
+          "aggregate_node_id": "CHI00334",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00335",
+          "aggregate_node_id": "CHI00353",
+          "distance_to_representative_m": 897.543
+        },
+        {
+          "raw_node_id": "CHI00336",
+          "aggregate_node_id": "CHI00353",
+          "distance_to_representative_m": 1279.502
+        },
+        {
+          "raw_node_id": "CHI00337",
+          "aggregate_node_id": "CHI00571",
+          "distance_to_representative_m": 633.674
+        },
+        {
+          "raw_node_id": "CHI00338",
+          "aggregate_node_id": "CHI00316",
+          "distance_to_representative_m": 779.177
+        },
+        {
+          "raw_node_id": "CHI00339",
+          "aggregate_node_id": "CHI00339",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00340",
+          "aggregate_node_id": "CHI02080",
+          "distance_to_representative_m": 815.802
+        },
+        {
+          "raw_node_id": "CHI00341",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 984.986
+        },
+        {
+          "raw_node_id": "CHI00342",
+          "aggregate_node_id": "CHI00448",
+          "distance_to_representative_m": 764.404
+        },
+        {
+          "raw_node_id": "CHI00343",
+          "aggregate_node_id": "CHI00386",
+          "distance_to_representative_m": 1469.419
+        },
+        {
+          "raw_node_id": "CHI00344",
+          "aggregate_node_id": "CHI02023",
+          "distance_to_representative_m": 1229.234
+        },
+        {
+          "raw_node_id": "CHI00345",
+          "aggregate_node_id": "CHI00345",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00347",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 672.081
+        },
+        {
+          "raw_node_id": "CHI00348",
+          "aggregate_node_id": "CHI00339",
+          "distance_to_representative_m": 1205.696
+        },
+        {
+          "raw_node_id": "CHI00349",
+          "aggregate_node_id": "CHI00286",
+          "distance_to_representative_m": 655.581
+        },
+        {
+          "raw_node_id": "CHI00350",
+          "aggregate_node_id": "CHI00350",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00351",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 191.884
+        },
+        {
+          "raw_node_id": "CHI00353",
+          "aggregate_node_id": "CHI00353",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00354",
+          "aggregate_node_id": "CHI00455",
+          "distance_to_representative_m": 966.876
+        },
+        {
+          "raw_node_id": "CHI00357",
+          "aggregate_node_id": "CHI00508",
+          "distance_to_representative_m": 799.018
+        },
+        {
+          "raw_node_id": "CHI00358",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 700.37
+        },
+        {
+          "raw_node_id": "CHI00359",
+          "aggregate_node_id": "CHI00261",
+          "distance_to_representative_m": 1114.026
+        },
+        {
+          "raw_node_id": "CHI00360",
+          "aggregate_node_id": "CHI02039",
+          "distance_to_representative_m": 1378.386
+        },
+        {
+          "raw_node_id": "CHI00361",
+          "aggregate_node_id": "CHI00613",
+          "distance_to_representative_m": 1080.338
+        },
+        {
+          "raw_node_id": "CHI00365",
+          "aggregate_node_id": "CHI00270",
+          "distance_to_representative_m": 710.318
+        },
+        {
+          "raw_node_id": "CHI00367",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 831.321
+        },
+        {
+          "raw_node_id": "CHI00368",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 240.502
+        },
+        {
+          "raw_node_id": "CHI00369",
+          "aggregate_node_id": "CHI00475",
+          "distance_to_representative_m": 1328.454
+        },
+        {
+          "raw_node_id": "CHI00370",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 341.995
+        },
+        {
+          "raw_node_id": "CHI00371",
+          "aggregate_node_id": "CHI00613",
+          "distance_to_representative_m": 386.935
+        },
+        {
+          "raw_node_id": "CHI00373",
+          "aggregate_node_id": "CHI00426",
+          "distance_to_representative_m": 419.843
+        },
+        {
+          "raw_node_id": "CHI00374",
+          "aggregate_node_id": "CHI00345",
+          "distance_to_representative_m": 478.146
+        },
+        {
+          "raw_node_id": "CHI00375",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 1066.315
+        },
+        {
+          "raw_node_id": "CHI00376",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 659.166
+        },
+        {
+          "raw_node_id": "CHI00377",
+          "aggregate_node_id": "CHI00353",
+          "distance_to_representative_m": 610.222
+        },
+        {
+          "raw_node_id": "CHI00378",
+          "aggregate_node_id": "CHI00307",
+          "distance_to_representative_m": 1188.584
+        },
+        {
+          "raw_node_id": "CHI00379",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 649.492
+        },
+        {
+          "raw_node_id": "CHI00381",
+          "aggregate_node_id": "CHI00508",
+          "distance_to_representative_m": 428.704
+        },
+        {
+          "raw_node_id": "CHI00383",
+          "aggregate_node_id": "CHI00345",
+          "distance_to_representative_m": 245.001
+        },
+        {
+          "raw_node_id": "CHI00384",
+          "aggregate_node_id": "CHI00230",
+          "distance_to_representative_m": 984.417
+        },
+        {
+          "raw_node_id": "CHI00385",
+          "aggregate_node_id": "CHI00493",
+          "distance_to_representative_m": 671.004
+        },
+        {
+          "raw_node_id": "CHI00386",
+          "aggregate_node_id": "CHI00386",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00388",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 737.489
+        },
+        {
+          "raw_node_id": "CHI00389",
+          "aggregate_node_id": "CHI00261",
+          "distance_to_representative_m": 992.236
+        },
+        {
+          "raw_node_id": "CHI00390",
+          "aggregate_node_id": "CHI00353",
+          "distance_to_representative_m": 788.766
+        },
+        {
+          "raw_node_id": "CHI00391",
+          "aggregate_node_id": "CHI00270",
+          "distance_to_representative_m": 552.304
+        },
+        {
+          "raw_node_id": "CHI00393",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 1237.202
+        },
+        {
+          "raw_node_id": "CHI00394",
+          "aggregate_node_id": "CHI00394",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00395",
+          "aggregate_node_id": "CHI00455",
+          "distance_to_representative_m": 348.966
+        },
+        {
+          "raw_node_id": "CHI00396",
+          "aggregate_node_id": "CHI00474",
+          "distance_to_representative_m": 699.469
+        },
+        {
+          "raw_node_id": "CHI00400",
+          "aggregate_node_id": "CHI00334",
+          "distance_to_representative_m": 1295.185
+        },
+        {
+          "raw_node_id": "CHI00401",
+          "aggregate_node_id": "CHI00401",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00402",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 831.339
+        },
+        {
+          "raw_node_id": "CHI00403",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 1192.472
+        },
+        {
+          "raw_node_id": "CHI00404",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 692.497
+        },
+        {
+          "raw_node_id": "CHI00405",
+          "aggregate_node_id": "CHI00345",
+          "distance_to_representative_m": 888.685
+        },
+        {
+          "raw_node_id": "CHI00406",
+          "aggregate_node_id": "CHI00230",
+          "distance_to_representative_m": 598.222
+        },
+        {
+          "raw_node_id": "CHI00407",
+          "aggregate_node_id": "CHI02023",
+          "distance_to_representative_m": 517.5
+        },
+        {
+          "raw_node_id": "CHI00408",
+          "aggregate_node_id": "CHI00339",
+          "distance_to_representative_m": 947.85
+        },
+        {
+          "raw_node_id": "CHI00410",
+          "aggregate_node_id": "CHI00307",
+          "distance_to_representative_m": 1312.434
+        },
+        {
+          "raw_node_id": "CHI00411",
+          "aggregate_node_id": "CHI00353",
+          "distance_to_representative_m": 492.768
+        },
+        {
+          "raw_node_id": "CHI00412",
+          "aggregate_node_id": "CHI00307",
+          "distance_to_representative_m": 728.453
+        },
+        {
+          "raw_node_id": "CHI00413",
+          "aggregate_node_id": "CHI00474",
+          "distance_to_representative_m": 322.565
+        },
+        {
+          "raw_node_id": "CHI00414",
+          "aggregate_node_id": "CHI00270",
+          "distance_to_representative_m": 700.859
+        },
+        {
+          "raw_node_id": "CHI00415",
+          "aggregate_node_id": "CHI00401",
+          "distance_to_representative_m": 418.203
+        },
+        {
+          "raw_node_id": "CHI00416",
+          "aggregate_node_id": "CHI00345",
+          "distance_to_representative_m": 589.349
+        },
+        {
+          "raw_node_id": "CHI00417",
+          "aggregate_node_id": "CHI00316",
+          "distance_to_representative_m": 366.74
+        },
+        {
+          "raw_node_id": "CHI00418",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 593.391
+        },
+        {
+          "raw_node_id": "CHI00419",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 918.268
+        },
+        {
+          "raw_node_id": "CHI00420",
+          "aggregate_node_id": "CHI00493",
+          "distance_to_representative_m": 840.555
+        },
+        {
+          "raw_node_id": "CHI00421",
+          "aggregate_node_id": "CHI02023",
+          "distance_to_representative_m": 912.346
+        },
+        {
+          "raw_node_id": "CHI00422",
+          "aggregate_node_id": "CHI00334",
+          "distance_to_representative_m": 512.815
+        },
+        {
+          "raw_node_id": "CHI00424",
+          "aggregate_node_id": "CHI00261",
+          "distance_to_representative_m": 685.461
+        },
+        {
+          "raw_node_id": "CHI00425",
+          "aggregate_node_id": "CHI00581",
+          "distance_to_representative_m": 800.018
+        },
+        {
+          "raw_node_id": "CHI00426",
+          "aggregate_node_id": "CHI00426",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00427",
+          "aggregate_node_id": "CHI00455",
+          "distance_to_representative_m": 1157.21
+        },
+        {
+          "raw_node_id": "CHI00428",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 391.912
+        },
+        {
+          "raw_node_id": "CHI00430",
+          "aggregate_node_id": "CHI00353",
+          "distance_to_representative_m": 797.728
+        },
+        {
+          "raw_node_id": "CHI00431",
+          "aggregate_node_id": "CHI00401",
+          "distance_to_representative_m": 859.201
+        },
+        {
+          "raw_node_id": "CHI00432",
+          "aggregate_node_id": "CHI00345",
+          "distance_to_representative_m": 329.514
+        },
+        {
+          "raw_node_id": "CHI00434",
+          "aggregate_node_id": "CHI00261",
+          "distance_to_representative_m": 476.966
+        },
+        {
+          "raw_node_id": "CHI00435",
+          "aggregate_node_id": "CHI00581",
+          "distance_to_representative_m": 430.27
+        },
+        {
+          "raw_node_id": "CHI00437",
+          "aggregate_node_id": "CHI00261",
+          "distance_to_representative_m": 432.222
+        },
+        {
+          "raw_node_id": "CHI00438",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 974.66
+        },
+        {
+          "raw_node_id": "CHI00439",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 840.554
+        },
+        {
+          "raw_node_id": "CHI00441",
+          "aggregate_node_id": "CHI00474",
+          "distance_to_representative_m": 618.314
+        },
+        {
+          "raw_node_id": "CHI00442",
+          "aggregate_node_id": "CHI00307",
+          "distance_to_representative_m": 851.333
+        },
+        {
+          "raw_node_id": "CHI00443",
+          "aggregate_node_id": "CHI00312",
+          "distance_to_representative_m": 598.353
+        },
+        {
+          "raw_node_id": "CHI00444",
+          "aggregate_node_id": "CHI00474",
+          "distance_to_representative_m": 790.379
+        },
+        {
+          "raw_node_id": "CHI00446",
+          "aggregate_node_id": "CHI00475",
+          "distance_to_representative_m": 698.984
+        },
+        {
+          "raw_node_id": "CHI00447",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 856.581
+        },
+        {
+          "raw_node_id": "CHI00448",
+          "aggregate_node_id": "CHI00448",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00450",
+          "aggregate_node_id": "CHI00448",
+          "distance_to_representative_m": 390.321
+        },
+        {
+          "raw_node_id": "CHI00451",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 801.243
+        },
+        {
+          "raw_node_id": "CHI00452",
+          "aggregate_node_id": "CHI00345",
+          "distance_to_representative_m": 785.881
+        },
+        {
+          "raw_node_id": "CHI00453",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 528.912
+        },
+        {
+          "raw_node_id": "CHI00454",
+          "aggregate_node_id": "CHI00474",
+          "distance_to_representative_m": 758.651
+        },
+        {
+          "raw_node_id": "CHI00455",
+          "aggregate_node_id": "CHI00455",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00456",
+          "aggregate_node_id": "CHI00401",
+          "distance_to_representative_m": 748.892
+        },
+        {
+          "raw_node_id": "CHI00457",
+          "aggregate_node_id": "CHI00286",
+          "distance_to_representative_m": 1020.427
+        },
+        {
+          "raw_node_id": "CHI00458",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 1133.587
+        },
+        {
+          "raw_node_id": "CHI00459",
+          "aggregate_node_id": "CHI00508",
+          "distance_to_representative_m": 711.882
+        },
+        {
+          "raw_node_id": "CHI00460",
+          "aggregate_node_id": "CHI00583",
+          "distance_to_representative_m": 617.721
+        },
+        {
+          "raw_node_id": "CHI00461",
+          "aggregate_node_id": "CHI00508",
+          "distance_to_representative_m": 592.895
+        },
+        {
+          "raw_node_id": "CHI00462",
+          "aggregate_node_id": "CHI00474",
+          "distance_to_representative_m": 1213.077
+        },
+        {
+          "raw_node_id": "CHI00463",
+          "aggregate_node_id": "CHI00508",
+          "distance_to_representative_m": 806.39
+        },
+        {
+          "raw_node_id": "CHI00464",
+          "aggregate_node_id": "CHI00475",
+          "distance_to_representative_m": 1401.84
+        },
+        {
+          "raw_node_id": "CHI00465",
+          "aggregate_node_id": "CHI00339",
+          "distance_to_representative_m": 833.911
+        },
+        {
+          "raw_node_id": "CHI00466",
+          "aggregate_node_id": "CHI00339",
+          "distance_to_representative_m": 892.874
+        },
+        {
+          "raw_node_id": "CHI00467",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 1015.906
+        },
+        {
+          "raw_node_id": "CHI00468",
+          "aggregate_node_id": "CHI00455",
+          "distance_to_representative_m": 465.178
+        },
+        {
+          "raw_node_id": "CHI00469",
+          "aggregate_node_id": "CHI00493",
+          "distance_to_representative_m": 777.417
+        },
+        {
+          "raw_node_id": "CHI00470",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 565.721
+        },
+        {
+          "raw_node_id": "CHI00473",
+          "aggregate_node_id": "CHI00353",
+          "distance_to_representative_m": 505.235
+        },
+        {
+          "raw_node_id": "CHI00474",
+          "aggregate_node_id": "CHI00474",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00475",
+          "aggregate_node_id": "CHI00475",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00476",
+          "aggregate_node_id": "CHI00455",
+          "distance_to_representative_m": 561.155
+        },
+        {
+          "raw_node_id": "CHI00477",
+          "aggregate_node_id": "CHI00475",
+          "distance_to_representative_m": 898.05
+        },
+        {
+          "raw_node_id": "CHI00478",
+          "aggregate_node_id": "CHI00475",
+          "distance_to_representative_m": 606.158
+        },
+        {
+          "raw_node_id": "CHI00479",
+          "aggregate_node_id": "CHI00261",
+          "distance_to_representative_m": 477.25
+        },
+        {
+          "raw_node_id": "CHI00480",
+          "aggregate_node_id": "CHI00493",
+          "distance_to_representative_m": 938.644
+        },
+        {
+          "raw_node_id": "CHI00481",
+          "aggregate_node_id": "CHI00455",
+          "distance_to_representative_m": 1294.908
+        },
+        {
+          "raw_node_id": "CHI00482",
+          "aggregate_node_id": "CHI00455",
+          "distance_to_representative_m": 410.642
+        },
+        {
+          "raw_node_id": "CHI00483",
+          "aggregate_node_id": "CHI00345",
+          "distance_to_representative_m": 683.381
+        },
+        {
+          "raw_node_id": "CHI00486",
+          "aggregate_node_id": "CHI00401",
+          "distance_to_representative_m": 854.77
+        },
+        {
+          "raw_node_id": "CHI00487",
+          "aggregate_node_id": "CHI00474",
+          "distance_to_representative_m": 480.426
+        },
+        {
+          "raw_node_id": "CHI00489",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 833.687
+        },
+        {
+          "raw_node_id": "CHI00490",
+          "aggregate_node_id": "CHI00583",
+          "distance_to_representative_m": 796.478
+        },
+        {
+          "raw_node_id": "CHI00492",
+          "aggregate_node_id": "CHI00270",
+          "distance_to_representative_m": 419.224
+        },
+        {
+          "raw_node_id": "CHI00493",
+          "aggregate_node_id": "CHI00493",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00494",
+          "aggregate_node_id": "CHI00474",
+          "distance_to_representative_m": 1059.211
+        },
+        {
+          "raw_node_id": "CHI00495",
+          "aggregate_node_id": "CHI00508",
+          "distance_to_representative_m": 757.999
+        },
+        {
+          "raw_node_id": "CHI00496",
+          "aggregate_node_id": "CHI00455",
+          "distance_to_representative_m": 980.324
+        },
+        {
+          "raw_node_id": "CHI00497",
+          "aggregate_node_id": "CHI00261",
+          "distance_to_representative_m": 979.774
+        },
+        {
+          "raw_node_id": "CHI00498",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 141.582
+        },
+        {
+          "raw_node_id": "CHI00499",
+          "aggregate_node_id": "CHI00316",
+          "distance_to_representative_m": 789.995
+        },
+        {
+          "raw_node_id": "CHI00500",
+          "aggregate_node_id": "CHI02023",
+          "distance_to_representative_m": 953.46
+        },
+        {
+          "raw_node_id": "CHI00503",
+          "aggregate_node_id": "CHI00475",
+          "distance_to_representative_m": 1320.436
+        },
+        {
+          "raw_node_id": "CHI00504",
+          "aggregate_node_id": "CHI00493",
+          "distance_to_representative_m": 1114.365
+        },
+        {
+          "raw_node_id": "CHI00506",
+          "aggregate_node_id": "CHI00339",
+          "distance_to_representative_m": 409.03
+        },
+        {
+          "raw_node_id": "CHI00507",
+          "aggregate_node_id": "CHI00339",
+          "distance_to_representative_m": 1159.469
+        },
+        {
+          "raw_node_id": "CHI00508",
+          "aggregate_node_id": "CHI00508",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00509",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 127.941
+        },
+        {
+          "raw_node_id": "CHI00512",
+          "aggregate_node_id": "CHI00307",
+          "distance_to_representative_m": 467.98
+        },
+        {
+          "raw_node_id": "CHI00513",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 198.346
+        },
+        {
+          "raw_node_id": "CHI00514",
+          "aggregate_node_id": "CHI00426",
+          "distance_to_representative_m": 1060.111
+        },
+        {
+          "raw_node_id": "CHI00515",
+          "aggregate_node_id": "CHI00312",
+          "distance_to_representative_m": 836.192
+        },
+        {
+          "raw_node_id": "CHI00517",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 830.737
+        },
+        {
+          "raw_node_id": "CHI00518",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 456.821
+        },
+        {
+          "raw_node_id": "CHI00520",
+          "aggregate_node_id": "CHI00394",
+          "distance_to_representative_m": 1143.785
+        },
+        {
+          "raw_node_id": "CHI00521",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 405.073
+        },
+        {
+          "raw_node_id": "CHI00522",
+          "aggregate_node_id": "CHI00493",
+          "distance_to_representative_m": 237.808
+        },
+        {
+          "raw_node_id": "CHI00524",
+          "aggregate_node_id": "CHI00448",
+          "distance_to_representative_m": 394.301
+        },
+        {
+          "raw_node_id": "CHI00525",
+          "aggregate_node_id": "CHI00474",
+          "distance_to_representative_m": 1072.862
+        },
+        {
+          "raw_node_id": "CHI00530",
+          "aggregate_node_id": "CHI00508",
+          "distance_to_representative_m": 1181.591
+        },
+        {
+          "raw_node_id": "CHI00532",
+          "aggregate_node_id": "CHI00448",
+          "distance_to_representative_m": 1139.123
+        },
+        {
+          "raw_node_id": "CHI00533",
+          "aggregate_node_id": "CHI00448",
+          "distance_to_representative_m": 945.39
+        },
+        {
+          "raw_node_id": "CHI00535",
+          "aggregate_node_id": "CHI00570",
+          "distance_to_representative_m": 1047.639
+        },
+        {
+          "raw_node_id": "CHI00537",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 637.12
+        },
+        {
+          "raw_node_id": "CHI00540",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 874.923
+        },
+        {
+          "raw_node_id": "CHI00544",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 1156.254
+        },
+        {
+          "raw_node_id": "CHI00550",
+          "aggregate_node_id": "CHI00623",
+          "distance_to_representative_m": 777.08
+        },
+        {
+          "raw_node_id": "CHI00551",
+          "aggregate_node_id": "CHI00583",
+          "distance_to_representative_m": 340.378
+        },
+        {
+          "raw_node_id": "CHI00552",
+          "aggregate_node_id": "CHI00307",
+          "distance_to_representative_m": 1076.999
+        },
+        {
+          "raw_node_id": "CHI00553",
+          "aggregate_node_id": "CHI00345",
+          "distance_to_representative_m": 428.605
+        },
+        {
+          "raw_node_id": "CHI00555",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 743.448
+        },
+        {
+          "raw_node_id": "CHI00556",
+          "aggregate_node_id": "CHI00401",
+          "distance_to_representative_m": 1305.011
+        },
+        {
+          "raw_node_id": "CHI00559",
+          "aggregate_node_id": "CHI00394",
+          "distance_to_representative_m": 672.865
+        },
+        {
+          "raw_node_id": "CHI00560",
+          "aggregate_node_id": "CHI02039",
+          "distance_to_representative_m": 382.359
+        },
+        {
+          "raw_node_id": "CHI00562",
+          "aggregate_node_id": "CHI00508",
+          "distance_to_representative_m": 1019.744
+        },
+        {
+          "raw_node_id": "CHI00563",
+          "aggregate_node_id": "CHI00571",
+          "distance_to_representative_m": 560.236
+        },
+        {
+          "raw_node_id": "CHI00570",
+          "aggregate_node_id": "CHI00570",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00571",
+          "aggregate_node_id": "CHI00571",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00572",
+          "aggregate_node_id": "CHI00572",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00574",
+          "aggregate_node_id": "CHI00394",
+          "distance_to_representative_m": 470.92
+        },
+        {
+          "raw_node_id": "CHI00575",
+          "aggregate_node_id": "CHI02023",
+          "distance_to_representative_m": 1124.03
+        },
+        {
+          "raw_node_id": "CHI00576",
+          "aggregate_node_id": "CHI00316",
+          "distance_to_representative_m": 839.853
+        },
+        {
+          "raw_node_id": "CHI00577",
+          "aggregate_node_id": "CHI00570",
+          "distance_to_representative_m": 789.857
+        },
+        {
+          "raw_node_id": "CHI00579",
+          "aggregate_node_id": "CHI00570",
+          "distance_to_representative_m": 954.881
+        },
+        {
+          "raw_node_id": "CHI00581",
+          "aggregate_node_id": "CHI00581",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00583",
+          "aggregate_node_id": "CHI00583",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00585",
+          "aggregate_node_id": "CHI00583",
+          "distance_to_representative_m": 561.42
+        },
+        {
+          "raw_node_id": "CHI00586",
+          "aggregate_node_id": "CHI00583",
+          "distance_to_representative_m": 611.595
+        },
+        {
+          "raw_node_id": "CHI00592",
+          "aggregate_node_id": "CHI00350",
+          "distance_to_representative_m": 773.039
+        },
+        {
+          "raw_node_id": "CHI00593",
+          "aggregate_node_id": "CHI00570",
+          "distance_to_representative_m": 1419.154
+        },
+        {
+          "raw_node_id": "CHI00602",
+          "aggregate_node_id": "CHI00602",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00604",
+          "aggregate_node_id": "CHI02039",
+          "distance_to_representative_m": 612.988
+        },
+        {
+          "raw_node_id": "CHI00605",
+          "aggregate_node_id": "CHI00345",
+          "distance_to_representative_m": 796.48
+        },
+        {
+          "raw_node_id": "CHI00607",
+          "aggregate_node_id": "CHI02039",
+          "distance_to_representative_m": 695.76
+        },
+        {
+          "raw_node_id": "CHI00608",
+          "aggregate_node_id": "CHI00571",
+          "distance_to_representative_m": 1011.214
+        },
+        {
+          "raw_node_id": "CHI00612",
+          "aggregate_node_id": "CHI00448",
+          "distance_to_representative_m": 647.02
+        },
+        {
+          "raw_node_id": "CHI00613",
+          "aggregate_node_id": "CHI00613",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00615",
+          "aggregate_node_id": "CHI00475",
+          "distance_to_representative_m": 542.72
+        },
+        {
+          "raw_node_id": "CHI00616",
+          "aggregate_node_id": "CHI00570",
+          "distance_to_representative_m": 1041.699
+        },
+        {
+          "raw_node_id": "CHI00617",
+          "aggregate_node_id": "CHI00270",
+          "distance_to_representative_m": 424.436
+        },
+        {
+          "raw_node_id": "CHI00618",
+          "aggregate_node_id": "CHI00618",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00619",
+          "aggregate_node_id": "CHI00652",
+          "distance_to_representative_m": 901.503
+        },
+        {
+          "raw_node_id": "CHI00620",
+          "aggregate_node_id": "CHI00602",
+          "distance_to_representative_m": 741.247
+        },
+        {
+          "raw_node_id": "CHI00621",
+          "aggregate_node_id": "CHI02039",
+          "distance_to_representative_m": 807.777
+        },
+        {
+          "raw_node_id": "CHI00622",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 635.471
+        },
+        {
+          "raw_node_id": "CHI00623",
+          "aggregate_node_id": "CHI00623",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00625",
+          "aggregate_node_id": "CHI00508",
+          "distance_to_representative_m": 928.263
+        },
+        {
+          "raw_node_id": "CHI00626",
+          "aggregate_node_id": "CHI00474",
+          "distance_to_representative_m": 626.651
+        },
+        {
+          "raw_node_id": "CHI00627",
+          "aggregate_node_id": "CHI00230",
+          "distance_to_representative_m": 802.002
+        },
+        {
+          "raw_node_id": "CHI00628",
+          "aggregate_node_id": "CHI00307",
+          "distance_to_representative_m": 446.263
+        },
+        {
+          "raw_node_id": "CHI00631",
+          "aggregate_node_id": "CHI00571",
+          "distance_to_representative_m": 801.7
+        },
+        {
+          "raw_node_id": "CHI00632",
+          "aggregate_node_id": "CHI00286",
+          "distance_to_representative_m": 673.583
+        },
+        {
+          "raw_node_id": "CHI00634",
+          "aggregate_node_id": "CHI00307",
+          "distance_to_representative_m": 683.94
+        },
+        {
+          "raw_node_id": "CHI00639",
+          "aggregate_node_id": "CHI01594",
+          "distance_to_representative_m": 465.489
+        },
+        {
+          "raw_node_id": "CHI00640",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 365.583
+        },
+        {
+          "raw_node_id": "CHI00641",
+          "aggregate_node_id": "CHI00641",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00642",
+          "aggregate_node_id": "CHI00613",
+          "distance_to_representative_m": 720.654
+        },
+        {
+          "raw_node_id": "CHI00644",
+          "aggregate_node_id": "CHI00641",
+          "distance_to_representative_m": 850.306
+        },
+        {
+          "raw_node_id": "CHI00645",
+          "aggregate_node_id": "CHI00641",
+          "distance_to_representative_m": 473.575
+        },
+        {
+          "raw_node_id": "CHI00646",
+          "aggregate_node_id": "CHI00350",
+          "distance_to_representative_m": 1042.51
+        },
+        {
+          "raw_node_id": "CHI00647",
+          "aggregate_node_id": "CHI00652",
+          "distance_to_representative_m": 907.897
+        },
+        {
+          "raw_node_id": "CHI00648",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 844.517
+        },
+        {
+          "raw_node_id": "CHI00652",
+          "aggregate_node_id": "CHI00652",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00653",
+          "aggregate_node_id": "CHI00652",
+          "distance_to_representative_m": 742.544
+        },
+        {
+          "raw_node_id": "CHI00656",
+          "aggregate_node_id": "CHI00897",
+          "distance_to_representative_m": 1010.646
+        },
+        {
+          "raw_node_id": "CHI00657",
+          "aggregate_node_id": "CHI02080",
+          "distance_to_representative_m": 619.473
+        },
+        {
+          "raw_node_id": "CHI00674",
+          "aggregate_node_id": "CHI00353",
+          "distance_to_representative_m": 500.052
+        },
+        {
+          "raw_node_id": "CHI00697",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 708.055
+        },
+        {
+          "raw_node_id": "CHI00698",
+          "aggregate_node_id": "CHI00570",
+          "distance_to_representative_m": 796.955
+        },
+        {
+          "raw_node_id": "CHI00700",
+          "aggregate_node_id": "CHI02080",
+          "distance_to_representative_m": 538.24
+        },
+        {
+          "raw_node_id": "CHI00701",
+          "aggregate_node_id": "CHI00286",
+          "distance_to_representative_m": 1147.677
+        },
+        {
+          "raw_node_id": "CHI00702",
+          "aggregate_node_id": "CHI01826",
+          "distance_to_representative_m": 735.84
+        },
+        {
+          "raw_node_id": "CHI00713",
+          "aggregate_node_id": "CHI00316",
+          "distance_to_representative_m": 404.605
+        },
+        {
+          "raw_node_id": "CHI00715",
+          "aggregate_node_id": "CHI00230",
+          "distance_to_representative_m": 938.863
+        },
+        {
+          "raw_node_id": "CHI00737",
+          "aggregate_node_id": "CHI01114",
+          "distance_to_representative_m": 1221.634
+        },
+        {
+          "raw_node_id": "CHI00746",
+          "aggregate_node_id": "CHI00230",
+          "distance_to_representative_m": 984.91
+        },
+        {
+          "raw_node_id": "CHI00750",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 989.771
+        },
+        {
+          "raw_node_id": "CHI00751",
+          "aggregate_node_id": "CHI00613",
+          "distance_to_representative_m": 892.587
+        },
+        {
+          "raw_node_id": "CHI00754",
+          "aggregate_node_id": "CHI00613",
+          "distance_to_representative_m": 691.628
+        },
+        {
+          "raw_node_id": "CHI00761",
+          "aggregate_node_id": "CHI00345",
+          "distance_to_representative_m": 950.932
+        },
+        {
+          "raw_node_id": "CHI00762",
+          "aggregate_node_id": "CHI00762",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00765",
+          "aggregate_node_id": "CHI00583",
+          "distance_to_representative_m": 1023.858
+        },
+        {
+          "raw_node_id": "CHI00773",
+          "aggregate_node_id": "CHI00350",
+          "distance_to_representative_m": 1270.611
+        },
+        {
+          "raw_node_id": "CHI00781",
+          "aggregate_node_id": "CHI00448",
+          "distance_to_representative_m": 771.486
+        },
+        {
+          "raw_node_id": "CHI00786",
+          "aggregate_node_id": "CHI00345",
+          "distance_to_representative_m": 776.038
+        },
+        {
+          "raw_node_id": "CHI00787",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 867.38
+        },
+        {
+          "raw_node_id": "CHI00788",
+          "aggregate_node_id": "CHI00316",
+          "distance_to_representative_m": 563.697
+        },
+        {
+          "raw_node_id": "CHI00790",
+          "aggregate_node_id": "CHI00790",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00793",
+          "aggregate_node_id": "CHI01041",
+          "distance_to_representative_m": 805.369
+        },
+        {
+          "raw_node_id": "CHI00795",
+          "aggregate_node_id": "CHI00795",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00801",
+          "aggregate_node_id": "CHI00602",
+          "distance_to_representative_m": 769.542
+        },
+        {
+          "raw_node_id": "CHI00813",
+          "aggregate_node_id": "CHI00813",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00816",
+          "aggregate_node_id": "CHI00316",
+          "distance_to_representative_m": 709.046
+        },
+        {
+          "raw_node_id": "CHI00834",
+          "aggregate_node_id": "CHI00353",
+          "distance_to_representative_m": 1004.878
+        },
+        {
+          "raw_node_id": "CHI00878",
+          "aggregate_node_id": "CHI00286",
+          "distance_to_representative_m": 1012.466
+        },
+        {
+          "raw_node_id": "CHI00882",
+          "aggregate_node_id": "CHI00316",
+          "distance_to_representative_m": 115.342
+        },
+        {
+          "raw_node_id": "CHI00891",
+          "aggregate_node_id": "CHI00813",
+          "distance_to_representative_m": 681.861
+        },
+        {
+          "raw_node_id": "CHI00897",
+          "aggregate_node_id": "CHI00897",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00910",
+          "aggregate_node_id": "CHI00910",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00917",
+          "aggregate_node_id": "CHI00917",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00920",
+          "aggregate_node_id": "CHI00570",
+          "distance_to_representative_m": 556.183
+        },
+        {
+          "raw_node_id": "CHI00922",
+          "aggregate_node_id": "CHI00570",
+          "distance_to_representative_m": 317.144
+        },
+        {
+          "raw_node_id": "CHI00929",
+          "aggregate_node_id": "CHI00350",
+          "distance_to_representative_m": 749.989
+        },
+        {
+          "raw_node_id": "CHI00936",
+          "aggregate_node_id": "CHI00350",
+          "distance_to_representative_m": 641.247
+        },
+        {
+          "raw_node_id": "CHI00942",
+          "aggregate_node_id": "CHI00813",
+          "distance_to_representative_m": 1221.722
+        },
+        {
+          "raw_node_id": "CHI00951",
+          "aggregate_node_id": "CHI00581",
+          "distance_to_representative_m": 807.326
+        },
+        {
+          "raw_node_id": "CHI00959",
+          "aggregate_node_id": "CHI00959",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI00962",
+          "aggregate_node_id": "CHI00623",
+          "distance_to_representative_m": 981.177
+        },
+        {
+          "raw_node_id": "CHI00977",
+          "aggregate_node_id": "CHI00977",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI01041",
+          "aggregate_node_id": "CHI01041",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI01076",
+          "aggregate_node_id": "CHI00448",
+          "distance_to_representative_m": 673.882
+        },
+        {
+          "raw_node_id": "CHI01081",
+          "aggregate_node_id": "CHI01081",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI01091",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 372.031
+        },
+        {
+          "raw_node_id": "CHI01097",
+          "aggregate_node_id": "CHI00613",
+          "distance_to_representative_m": 1252.711
+        },
+        {
+          "raw_node_id": "CHI01114",
+          "aggregate_node_id": "CHI01114",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI01143",
+          "aggregate_node_id": "CHI00613",
+          "distance_to_representative_m": 527.85
+        },
+        {
+          "raw_node_id": "CHI01150",
+          "aggregate_node_id": "CHI00394",
+          "distance_to_representative_m": 282.677
+        },
+        {
+          "raw_node_id": "CHI01161",
+          "aggregate_node_id": "CHI02023",
+          "distance_to_representative_m": 422.737
+        },
+        {
+          "raw_node_id": "CHI01163",
+          "aggregate_node_id": "CHI00448",
+          "distance_to_representative_m": 265.939
+        },
+        {
+          "raw_node_id": "CHI01183",
+          "aggregate_node_id": "CHI00316",
+          "distance_to_representative_m": 419.359
+        },
+        {
+          "raw_node_id": "CHI01209",
+          "aggregate_node_id": "CHI00455",
+          "distance_to_representative_m": 1131.49
+        },
+        {
+          "raw_node_id": "CHI01212",
+          "aggregate_node_id": "CHI01041",
+          "distance_to_representative_m": 868.089
+        },
+        {
+          "raw_node_id": "CHI01214",
+          "aggregate_node_id": "CHI01041",
+          "distance_to_representative_m": 904.415
+        },
+        {
+          "raw_node_id": "CHI01237",
+          "aggregate_node_id": "CHI02080",
+          "distance_to_representative_m": 869.457
+        },
+        {
+          "raw_node_id": "CHI01251",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 762.064
+        },
+        {
+          "raw_node_id": "CHI01287",
+          "aggregate_node_id": "CHI00613",
+          "distance_to_representative_m": 923.899
+        },
+        {
+          "raw_node_id": "CHI01542",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 642.824
+        },
+        {
+          "raw_node_id": "CHI01594",
+          "aggregate_node_id": "CHI01594",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI01677",
+          "aggregate_node_id": "CHI00345",
+          "distance_to_representative_m": 435.344
+        },
+        {
+          "raw_node_id": "CHI01742",
+          "aggregate_node_id": "CHI00345",
+          "distance_to_representative_m": 558.253
+        },
+        {
+          "raw_node_id": "CHI01743",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 286.63
+        },
+        {
+          "raw_node_id": "CHI01744",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 533.682
+        },
+        {
+          "raw_node_id": "CHI01745",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 584.779
+        },
+        {
+          "raw_node_id": "CHI01746",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 445.719
+        },
+        {
+          "raw_node_id": "CHI01747",
+          "aggregate_node_id": "CHI00345",
+          "distance_to_representative_m": 1043.064
+        },
+        {
+          "raw_node_id": "CHI01748",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 1050.425
+        },
+        {
+          "raw_node_id": "CHI01749",
+          "aggregate_node_id": "CHI02039",
+          "distance_to_representative_m": 865.083
+        },
+        {
+          "raw_node_id": "CHI01750",
+          "aggregate_node_id": "CHI00286",
+          "distance_to_representative_m": 534.246
+        },
+        {
+          "raw_node_id": "CHI01751",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 435.241
+        },
+        {
+          "raw_node_id": "CHI01765",
+          "aggregate_node_id": "CHI00623",
+          "distance_to_representative_m": 1460.247
+        },
+        {
+          "raw_node_id": "CHI01772",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI01774",
+          "aggregate_node_id": "CHI00448",
+          "distance_to_representative_m": 400.346
+        },
+        {
+          "raw_node_id": "CHI01775",
+          "aggregate_node_id": "CHI00448",
+          "distance_to_representative_m": 347.397
+        },
+        {
+          "raw_node_id": "CHI01776",
+          "aggregate_node_id": "CHI00448",
+          "distance_to_representative_m": 456.432
+        },
+        {
+          "raw_node_id": "CHI01777",
+          "aggregate_node_id": "CHI01594",
+          "distance_to_representative_m": 401.326
+        },
+        {
+          "raw_node_id": "CHI01785",
+          "aggregate_node_id": "CHI01795",
+          "distance_to_representative_m": 817.827
+        },
+        {
+          "raw_node_id": "CHI01795",
+          "aggregate_node_id": "CHI01795",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI01800",
+          "aggregate_node_id": "CHI00959",
+          "distance_to_representative_m": 743.065
+        },
+        {
+          "raw_node_id": "CHI01806",
+          "aggregate_node_id": "CHI00394",
+          "distance_to_representative_m": 1148.071
+        },
+        {
+          "raw_node_id": "CHI01826",
+          "aggregate_node_id": "CHI01826",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI01837",
+          "aggregate_node_id": "CHI00475",
+          "distance_to_representative_m": 740.275
+        },
+        {
+          "raw_node_id": "CHI01838",
+          "aggregate_node_id": "CHI01838",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI01842",
+          "aggregate_node_id": "CHI00326",
+          "distance_to_representative_m": 463.84
+        },
+        {
+          "raw_node_id": "CHI01856",
+          "aggregate_node_id": "CHI01856",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI01868",
+          "aggregate_node_id": "CHI00350",
+          "distance_to_representative_m": 1243.775
+        },
+        {
+          "raw_node_id": "CHI01880",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 815.922
+        },
+        {
+          "raw_node_id": "CHI01885",
+          "aggregate_node_id": "CHI01838",
+          "distance_to_representative_m": 511.069
+        },
+        {
+          "raw_node_id": "CHI01902",
+          "aggregate_node_id": "CHI00583",
+          "distance_to_representative_m": 973.072
+        },
+        {
+          "raw_node_id": "CHI01903",
+          "aggregate_node_id": "CHI00230",
+          "distance_to_representative_m": 755.711
+        },
+        {
+          "raw_node_id": "CHI01915",
+          "aggregate_node_id": "CHI00345",
+          "distance_to_representative_m": 546.285
+        },
+        {
+          "raw_node_id": "CHI01926",
+          "aggregate_node_id": "CHI00910",
+          "distance_to_representative_m": 1014.138
+        },
+        {
+          "raw_node_id": "CHI01928",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 490.897
+        },
+        {
+          "raw_node_id": "CHI01945",
+          "aggregate_node_id": "CHI00959",
+          "distance_to_representative_m": 909.437
+        },
+        {
+          "raw_node_id": "CHI01979",
+          "aggregate_node_id": "CHI01979",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI01981",
+          "aggregate_node_id": "CHI00795",
+          "distance_to_representative_m": 1204.436
+        },
+        {
+          "raw_node_id": "CHI01982",
+          "aggregate_node_id": "CHI01982",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI01983",
+          "aggregate_node_id": "CHI00571",
+          "distance_to_representative_m": 1240.261
+        },
+        {
+          "raw_node_id": "CHI01988",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 655.543
+        },
+        {
+          "raw_node_id": "CHI01993",
+          "aggregate_node_id": "CHI01856",
+          "distance_to_representative_m": 1047.895
+        },
+        {
+          "raw_node_id": "CHI01996",
+          "aggregate_node_id": "CHI00583",
+          "distance_to_representative_m": 684.889
+        },
+        {
+          "raw_node_id": "CHI02010",
+          "aggregate_node_id": "CHI02010",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI02012",
+          "aggregate_node_id": "CHI00316",
+          "distance_to_representative_m": 844.227
+        },
+        {
+          "raw_node_id": "CHI02021",
+          "aggregate_node_id": "CHI02039",
+          "distance_to_representative_m": 1142.328
+        },
+        {
+          "raw_node_id": "CHI02022",
+          "aggregate_node_id": "CHI02023",
+          "distance_to_representative_m": 867.747
+        },
+        {
+          "raw_node_id": "CHI02023",
+          "aggregate_node_id": "CHI02023",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI02025",
+          "aggregate_node_id": "CHI00448",
+          "distance_to_representative_m": 196.824
+        },
+        {
+          "raw_node_id": "CHI02028",
+          "aggregate_node_id": "CHI00286",
+          "distance_to_representative_m": 972.142
+        },
+        {
+          "raw_node_id": "CHI02033",
+          "aggregate_node_id": "CHI00401",
+          "distance_to_representative_m": 1215.364
+        },
+        {
+          "raw_node_id": "CHI02034",
+          "aggregate_node_id": "CHI00394",
+          "distance_to_representative_m": 951.215
+        },
+        {
+          "raw_node_id": "CHI02038",
+          "aggregate_node_id": "CHI02038",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI02039",
+          "aggregate_node_id": "CHI02039",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI02041",
+          "aggregate_node_id": "CHI02041",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI02042",
+          "aggregate_node_id": "CHI01114",
+          "distance_to_representative_m": 987.108
+        },
+        {
+          "raw_node_id": "CHI02043",
+          "aggregate_node_id": "CHI01114",
+          "distance_to_representative_m": 862.138
+        },
+        {
+          "raw_node_id": "CHI02046",
+          "aggregate_node_id": "CHI00316",
+          "distance_to_representative_m": 683.413
+        },
+        {
+          "raw_node_id": "CHI02050",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 652.679
+        },
+        {
+          "raw_node_id": "CHI02052",
+          "aggregate_node_id": "CHI00353",
+          "distance_to_representative_m": 869.094
+        },
+        {
+          "raw_node_id": "CHI02054",
+          "aggregate_node_id": "CHI00353",
+          "distance_to_representative_m": 764.257
+        },
+        {
+          "raw_node_id": "CHI02055",
+          "aggregate_node_id": "CHI00353",
+          "distance_to_representative_m": 803.931
+        },
+        {
+          "raw_node_id": "CHI02056",
+          "aggregate_node_id": "CHI00286",
+          "distance_to_representative_m": 714.141
+        },
+        {
+          "raw_node_id": "CHI02057",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI02061",
+          "aggregate_node_id": "CHI00353",
+          "distance_to_representative_m": 541.491
+        },
+        {
+          "raw_node_id": "CHI02068",
+          "aggregate_node_id": "CHI00353",
+          "distance_to_representative_m": 849.008
+        },
+        {
+          "raw_node_id": "CHI02071",
+          "aggregate_node_id": "CHI00353",
+          "distance_to_representative_m": 1089.521
+        },
+        {
+          "raw_node_id": "CHI02072",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 613.602
+        },
+        {
+          "raw_node_id": "CHI02075",
+          "aggregate_node_id": "CHI00307",
+          "distance_to_representative_m": 361.301
+        },
+        {
+          "raw_node_id": "CHI02080",
+          "aggregate_node_id": "CHI02080",
+          "distance_to_representative_m": 0
+        },
+        {
+          "raw_node_id": "CHI02081",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 742.442
+        },
+        {
+          "raw_node_id": "CHI02084",
+          "aggregate_node_id": "CHI00307",
+          "distance_to_representative_m": 1362.08
+        },
+        {
+          "raw_node_id": "CHI02085",
+          "aggregate_node_id": "CHI00570",
+          "distance_to_representative_m": 1263.92
+        },
+        {
+          "raw_node_id": "CHI02087",
+          "aggregate_node_id": "CHI00493",
+          "distance_to_representative_m": 495.924
+        },
+        {
+          "raw_node_id": "CHI02088",
+          "aggregate_node_id": "CHI00493",
+          "distance_to_representative_m": 712.956
+        },
+        {
+          "raw_node_id": "CHI02089",
+          "aggregate_node_id": "CHI00455",
+          "distance_to_representative_m": 822.042
+        },
+        {
+          "raw_node_id": "CHI02095",
+          "aggregate_node_id": "CHI00286",
+          "distance_to_representative_m": 259.118
+        },
+        {
+          "raw_node_id": "CHI02096",
+          "aggregate_node_id": "CHI02023",
+          "distance_to_representative_m": 927.074
+        },
+        {
+          "raw_node_id": "CHI02097",
+          "aggregate_node_id": "CHI00286",
+          "distance_to_representative_m": 499.347
+        },
+        {
+          "raw_node_id": "CHI02100",
+          "aggregate_node_id": "CHI02023",
+          "distance_to_representative_m": 684.199
+        },
+        {
+          "raw_node_id": "CHI02101",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 768.474
+        },
+        {
+          "raw_node_id": "CHI02103",
+          "aggregate_node_id": "CHI00286",
+          "distance_to_representative_m": 751.284
+        },
+        {
+          "raw_node_id": "CHI02104",
+          "aggregate_node_id": "CHI02080",
+          "distance_to_representative_m": 869.446
+        },
+        {
+          "raw_node_id": "CHI02105",
+          "aggregate_node_id": "CHI00474",
+          "distance_to_representative_m": 1204.118
+        },
+        {
+          "raw_node_id": "CHI02107",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 467.369
+        },
+        {
+          "raw_node_id": "CHI02108",
+          "aggregate_node_id": "CHI00345",
+          "distance_to_representative_m": 611.756
+        },
+        {
+          "raw_node_id": "CHI02109",
+          "aggregate_node_id": "CHI00493",
+          "distance_to_representative_m": 754.423
+        },
+        {
+          "raw_node_id": "CHI02110",
+          "aggregate_node_id": "CHI00474",
+          "distance_to_representative_m": 307.947
+        },
+        {
+          "raw_node_id": "CHI02111",
+          "aggregate_node_id": "CHI02023",
+          "distance_to_representative_m": 928.518
+        },
+        {
+          "raw_node_id": "CHI02112",
+          "aggregate_node_id": "CHI00474",
+          "distance_to_representative_m": 484.036
+        },
+        {
+          "raw_node_id": "CHI02114",
+          "aggregate_node_id": "CHI00339",
+          "distance_to_representative_m": 1128.27
+        },
+        {
+          "raw_node_id": "CHI02116",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 886.006
+        },
+        {
+          "raw_node_id": "CHI02118",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 758.245
+        },
+        {
+          "raw_node_id": "CHI02119",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 619.489
+        },
+        {
+          "raw_node_id": "CHI02121",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 671.778
+        },
+        {
+          "raw_node_id": "CHI02122",
+          "aggregate_node_id": "CHI00353",
+          "distance_to_representative_m": 726.611
+        },
+        {
+          "raw_node_id": "CHI02123",
+          "aggregate_node_id": "CHI00641",
+          "distance_to_representative_m": 879.267
+        },
+        {
+          "raw_node_id": "CHI02124",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 605.845
+        },
+        {
+          "raw_node_id": "CHI02125",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 861.367
+        },
+        {
+          "raw_node_id": "CHI02126",
+          "aggregate_node_id": "CHI00307",
+          "distance_to_representative_m": 436.624
+        },
+        {
+          "raw_node_id": "CHI02127",
+          "aggregate_node_id": "CHI00270",
+          "distance_to_representative_m": 692.336
+        },
+        {
+          "raw_node_id": "CHI02128",
+          "aggregate_node_id": "CHI00455",
+          "distance_to_representative_m": 318.431
+        },
+        {
+          "raw_node_id": "CHI02130",
+          "aggregate_node_id": "CHI00307",
+          "distance_to_representative_m": 706.747
+        },
+        {
+          "raw_node_id": "CHI02131",
+          "aggregate_node_id": "CHI00307",
+          "distance_to_representative_m": 896.303
+        },
+        {
+          "raw_node_id": "CHI02132",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 990.559
+        },
+        {
+          "raw_node_id": "CHI02133",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 324.638
+        },
+        {
+          "raw_node_id": "CHI02134",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 833.789
+        },
+        {
+          "raw_node_id": "CHI02135",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 406.077
+        },
+        {
+          "raw_node_id": "CHI02137",
+          "aggregate_node_id": "CHI00353",
+          "distance_to_representative_m": 260.944
+        },
+        {
+          "raw_node_id": "CHI02138",
+          "aggregate_node_id": "CHI00353",
+          "distance_to_representative_m": 137.645
+        },
+        {
+          "raw_node_id": "CHI02139",
+          "aggregate_node_id": "CHI00286",
+          "distance_to_representative_m": 876.122
+        },
+        {
+          "raw_node_id": "CHI02140",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 450.653
+        },
+        {
+          "raw_node_id": "CHI02141",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 678.07
+        },
+        {
+          "raw_node_id": "CHI02143",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 680.88
+        },
+        {
+          "raw_node_id": "CHI02148",
+          "aggregate_node_id": "CHI00581",
+          "distance_to_representative_m": 538.885
+        },
+        {
+          "raw_node_id": "CHI02151",
+          "aggregate_node_id": "CHI00508",
+          "distance_to_representative_m": 1012.745
+        },
+        {
+          "raw_node_id": "CHI02153",
+          "aggregate_node_id": "CHI00353",
+          "distance_to_representative_m": 733.389
+        },
+        {
+          "raw_node_id": "CHI02154",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 368.141
+        },
+        {
+          "raw_node_id": "CHI02155",
+          "aggregate_node_id": "CHI00270",
+          "distance_to_representative_m": 556.946
+        },
+        {
+          "raw_node_id": "CHI02157",
+          "aggregate_node_id": "CHI00455",
+          "distance_to_representative_m": 1392.103
+        },
+        {
+          "raw_node_id": "CHI02158",
+          "aggregate_node_id": "CHI00493",
+          "distance_to_representative_m": 587.723
+        },
+        {
+          "raw_node_id": "CHI02160",
+          "aggregate_node_id": "CHI02057",
+          "distance_to_representative_m": 798.896
+        },
+        {
+          "raw_node_id": "CHI02162",
+          "aggregate_node_id": "CHI00353",
+          "distance_to_representative_m": 335.273
+        },
+        {
+          "raw_node_id": "CHI02165",
+          "aggregate_node_id": "CHI02023",
+          "distance_to_representative_m": 974.387
+        },
+        {
+          "raw_node_id": "CHI02166",
+          "aggregate_node_id": "CHI00286",
+          "distance_to_representative_m": 539.684
+        },
+        {
+          "raw_node_id": "CHI02168",
+          "aggregate_node_id": "CHI00448",
+          "distance_to_representative_m": 805.443
+        },
+        {
+          "raw_node_id": "CHI02169",
+          "aggregate_node_id": "CHI00286",
+          "distance_to_representative_m": 935.639
+        },
+        {
+          "raw_node_id": "CHI02170",
+          "aggregate_node_id": "CHI00583",
+          "distance_to_representative_m": 768.611
+        },
+        {
+          "raw_node_id": "CHI02171",
+          "aggregate_node_id": "CHI00583",
+          "distance_to_representative_m": 951
+        },
+        {
+          "raw_node_id": "CHI02172",
+          "aggregate_node_id": "CHI00394",
+          "distance_to_representative_m": 490.809
+        },
+        {
+          "raw_node_id": "CHI02173",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 853.588
+        },
+        {
+          "raw_node_id": "CHI02174",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 551.339
+        },
+        {
+          "raw_node_id": "CHI02176",
+          "aggregate_node_id": "CHI00345",
+          "distance_to_representative_m": 832.299
+        },
+        {
+          "raw_node_id": "CHI02177",
+          "aggregate_node_id": "CHI00623",
+          "distance_to_representative_m": 983.495
+        },
+        {
+          "raw_node_id": "CHI02179",
+          "aggregate_node_id": "CHI00307",
+          "distance_to_representative_m": 563.016
+        },
+        {
+          "raw_node_id": "CHI02180",
+          "aggregate_node_id": "CHI00623",
+          "distance_to_representative_m": 1080.687
+        },
+        {
+          "raw_node_id": "CHI02181",
+          "aggregate_node_id": "CHI00233",
+          "distance_to_representative_m": 867.764
+        },
+        {
+          "raw_node_id": "CHI02182",
+          "aggregate_node_id": "CHI01772",
+          "distance_to_representative_m": 544.455
+        },
+        {
+          "raw_node_id": "CHI02183",
+          "aggregate_node_id": "CHI02080",
+          "distance_to_representative_m": 952.941
+        }
+      ]
+    },
+    "preparation_sources": [
+      {
+        "file": "input.rds",
+        "bytes": 34128,
+        "sha256": "f495e851065d4dd1835f6d4259c9e1991cebe63ee3c5f49450d3f47e4a6342ce"
+      }
+    ]
+  },
+  "input_type": "od",
+  "csv": {
+    "missing": "\\N",
+    "timestamp": "POSIXct times are Unix seconds; numeric times retain the declared source clock.",
+    "identifiers": "Read identifier fields as character.",
+    "data": "input.rds preserves original types, geometry, timezones and nested provenance."
+  }
+}

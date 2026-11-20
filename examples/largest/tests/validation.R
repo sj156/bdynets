@@ -16,7 +16,29 @@ stopifnot(events$reported_time=='2026-06-16 08:00:00',events$district=='04')
 native<-readRDS(file.path(base,'data/source.rds'));full<-pems_input(native)
 shifted<-native;shifted$d04$minute<-shifted$d04$minute+60;reject(pems_input(shifted))
 stopifnot(sum(is.na(full$flow$flow))==1344L,nrow(full$events)==1019L)
+stopifnot(is.null(full[['schema']]),all(c('roads','flow','unit')%in%names(full)),
+ !any(c('nodes','od','flows','od_unit','od_time_kind')%in%names(full)))
 gold<-readRDS(file.path(base,'data/input.rds'))
+map_path<-file.path(base,'data/map-frame-0800.rds')
+stopifnot(file.exists(map_path))
+map_input<-readRDS(map_path)
+stopifnot(inherits(map_input,'trafficmap_data'),length(map_input$times)==1L,
+  is.null(map_input$time_labels),identical(map_input$time_label_format,'%Y-%m-%d %H:%M'))
+day_view<-read_traffic(file.path(base,'data/input.rds'))
+map_index<-which(format(as.POSIXct(day_view$times,origin='1970-01-01',tz='UTC'),'%H:%M',tz='UTC')=='08:00')
+stopifnot(length(map_index)==1L)
+map_view<-traffic_flow_map(map_path,basemap=NULL,draw=FALSE)$data
+stopifnot(identical(map_view$time_labels,format(as.POSIXct(map_view$times,origin='1970-01-01',tz='UTC'),'%Y-%m-%d %H:%M',tz='UTC')),
+  identical(map_view$times,day_view$times[map_index]),
+  identical(map_view$interval_seconds,day_view$interval_seconds[map_index]),
+  identical(map_view$unit,day_view$unit),identical(map_view$roads,day_view$roads),
+  identical(map_view$values,day_view$values[map_index,,drop=FALSE]))
+expected_events<-day_view$events[day_view$events$frame==map_index,,drop=FALSE]
+expected_events$frame<-rep(1L,nrow(expected_events))
+stopifnot(identical(map_view$events,expected_events))
+cat('The shipped 08:00 single-frame RDS is a direct Flow input.\n')
+stopifnot(is.null(gold$time_labels),is.null(full$time_labels),
+  is.null(jsonlite::read_json(file.path(base,'data','metadata.json'))$time_labels))
 for(key in c('roads','flow','events','nodes','od','measurements','times','time_labels','interval_seconds','unit','timezone'))
  stopifnot(identical(full[[key]],gold[[key]]))
 if(!is.null(gold$trends))stopifnot(identical(full$trends$value,gold$trends$value))

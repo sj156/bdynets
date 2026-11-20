@@ -400,11 +400,19 @@ traffic_input <- function(roads = NULL, flow = NULL, events = NULL, nodes = NULL
          od_time_kind = od_time_kind, od_interval_seconds = od_interval_seconds), road_args)
 }
 
+.tm_untagged_road_input <- function(input) {
+  is.list(input) && is.null(input[["schema"]]) &&
+    !is.null(input[["roads"]]) && !is.null(input[["flow"]]) &&
+    !anyDuplicated(names(input)) &&
+    all(names(input) %in% c("schema", names(formals(traffic_data))))
+}
+
 #' @export
 #' @noRd
 read_traffic <- function(file) {
   input <- readRDS(file)
-  if (is.list(input) && identical(input$schema, "bdynets-traffic-input-v1")) {
+  if (is.list(input) && (identical(input[["schema"]], "bdynets-traffic-input-v1") ||
+      .tm_untagged_road_input(input))) {
     if (is.null(input$roads) && is.null(input$events)) {
       stop("This input contains OD tables. Use traffic_od_data(input$nodes, input$od).")
     }

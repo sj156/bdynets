@@ -217,45 +217,50 @@ The [Beijing](../examples/beijing/README.md),
 [PeMS](../examples/largest/README.md),
 [City-traffic-M](../examples/metropolis/README.md) and
 [Divvy](../examples/DivvyBike/README.md) examples prepare source records for the
-same package. Each `prepare.R` reads its original formats, validates source IDs
-and clocks, and constructs canonical tables. `traffic_input()` combines road,
-flow, event, node and OD tables into the common object described in the
-[input specification](inst/INPUT-FORMAT.md). The [source index](../examples/DATA-SOURCES.md)
-records measurements, selections and known limitations.
+same package. Each `prepare.R` reads its original formats, validates source IDs and clocks,
+and prepares the tables needed by its map type. Road maps use roads, road-time
+observations and optional events or measurements. OD maps use stations and
+directed trip records with their own timing. The two input forms are described
+in the [input specification](inst/INPUT-FORMAT.md); the
+[source index](../examples/DATA-SOURCES.md) records their origins and limits.
 
-From the repository root, after installation:
+From the bundle root, run this in a fresh R session to load the bundled package.
 
 ```r
+source("bdynets/inst/preparation-session.R")
+preparation_session("examples/beijing")
 library(bdynets)
-input <- readRDS("examples/beijing/data/input.rds")
-traffic_map(input, index = 1, basemap = NULL)
-x <- read_traffic("examples/beijing/data/input.rds")
-traffic_summary(x, index = 1)
-traffic_coverage(x)
-plot(traffic_trend(x), metric = "mean", index = 1)
+traffic_flow_map(readRDS("examples/beijing/data/map-frame-0800.rds"), basemap = NULL)
+traffic_od_map(readRDS("examples/DivvyBike/data/spatial-1500m/window-0000-0300.rds"),
+               basemap = NULL)
 ```
 
-`traffic_map(input)` accepts road, OD or mixed standard inputs. Source units and
-missing values are retained. Road flow uses seven log1p green/yellow/red classes.
+`traffic_flow_map()` draws the ready road frame and `traffic_od_map()` draws the
+prepared OD stations and routes. Existing unified and mixed-map calls can
+continue to use `traffic_map()` with `traffic_input()`. For the full-day road trend, load
+`examples/beijing/data/input.rds` with `read_traffic()` and call
+`traffic_trend()`. Source units and missing values are retained. Road flow
+uses seven log1p green/yellow/red classes.
 The default OD style has five trip-count classes; the Divvy report supplies
 seven integer-count classes for its grouped display. `traffic_map_html()`
 provides the interactive road HTML interface.
 
-The traffic implementation has five source files:
+The traffic implementation has six source files.
 
 | File | Responsibility |
 |---|---|
-| `R/traffic-data.R` | Standard input, field mappings, validation, summaries and trends |
+| `R/traffic-data.R` | Existing data interfaces, field mappings, validation, summaries and trends |
 | `R/traffic-preparation.R` | Prepared-data export, source protection, dictionaries and readback |
 | `R/traffic-map.R` | Road and OD maps, event layers, spatial layout and figure exports |
+| `R/traffic-map-parts.R` | OD selection and shared static map components |
 | `R/traffic-basemap.R` | Coordinate-derived OpenStreetMap context and caching |
 | `R/aggregate-od-data.R` | Spatial OD aggregation and timestamp parsing |
 
 Beijing contains one simulation day. PeMS contains 24 hours on 2026-06-16,
 with Los Angeles and Bay Area flow and CHP reported starts shown separately.
 City-traffic-M contains the selected observations for 2024-10-18. Divvy contains
-individual station departures on 2026-01-01, with independent hourly and 1000 m
-spatial preparation examples and a 1500 m grouped map.
+individual station departures on 2026-01-01, with separate hourly station totals
+and 1500 m spatial groups. Its map draws a selected time window of the grouped day.
 
 Each case has its own `run.R`. It installs this repository's package into a
 temporary library and renders the named R Markdown report. Rendering requires
@@ -273,33 +278,6 @@ The reports are [Beijing](../examples/beijing/beijing-traffic-report.html),
 [City-traffic-M](../examples/metropolis/metropolis-traffic-report-demo.html) and
 [Divvy](../examples/DivvyBike/divvy-od-report.html).
 Each report includes original fields, conversion steps, intermediate data,
-standard tables, source checks and export/readback. `write_traffic_input()`
-exports standard RDS and CSV data, a field dictionary, validation and provenance
-to a new directory. The [historical traffic examples](../examples/traffic-reference/)
-remain separate from these current reports.
-
-Source extraction and optional measurement views share the same interfaces:
-
-```r
-source <- extract_traffic_data("source.json")
-# Field mapping belongs in the example's prepare.R.
-plot(x, index = 2, mode = "change")
-plot(x, index = 2, mode = "change", reference = 1)
-```
-
-extract_traffic_data supports local RDS, JSON/JSON.GZ, CSV/CSV.GZ and explicit
-JSON-literal JS/HTML assignments without script execution or field guessing.
-It records source identities and refuses an existing extraction output.
-Optional metric tables retain their units, definitions, provided trends and
-explicit display scales. Metropolis preserves saved volume, speed and congestion
-arrays and source aggregate series. Primary flow maps retain the shared log1p
-palette; changes use blue/neutral/red by sign, with no magnitude bins.
-
-Duration maps first use explicitly supplied duration records. An object that also
-contains durations requires metric="flow" to compute a separate flow-based rule.
-Computed durations
-require interval_seconds, threshold, comparison and a complete duration_rule:
-definition, interval_meaning, unit (minutes or seconds), missing_policy="break"
-and a declared scale for rendering. There is no percentile fallback. Missing
-values and time gaps interrupt confirmed continuity. No rule is taken as a
-physical congestion standard. Source objects remain unchanged.
+map-specific tables, source checks and export/readback. `write_traffic_input()`
+exports road or OD RDS/CSV data, a field dictionary, validation and provenance
+to a new directory.

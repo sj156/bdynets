@@ -8,10 +8,10 @@
 "nodes","n_raw_stations","integer","One source station per node.","",FALSE
 "nodes","member_weight","integer","One station per node, for the existing OD interface.","",FALSE
 "nodes","coordinate_available","logical","Valid paired station coordinates are available.","",FALSE
-"od","ride_id","character","Stable identifier for one individual trip.","",FALSE
-"od","origin_id","character","Departure node ID joining nodes.node_id.","",TRUE
-"od","destination_id","character","Arrival node ID joining nodes.node_id.","",TRUE
-"od","time","timestamp_seconds","Observation time. POSIXct values are Unix seconds in CSV; numeric values retain the supplied source clock.","seconds",FALSE
-"od","flow","integer","Primary value in the declared unit. An observed zero and a missing value have separate meanings.","trips",TRUE
-"od","origin_node_idx","integer","Generated zero-based departure index joining nodes.node_idx.","",FALSE
-"od","destination_node_idx","integer","Generated zero-based arrival index joining nodes.node_idx.","",FALSE
+"flows","ride_id","character","Stable identifier for one individual trip.","",FALSE
+"flows","origin_id","character","Departure node ID joining nodes.node_id.","",TRUE
+"flows","destination_id","character","Arrival node ID joining nodes.node_id.","",TRUE
+"flows","time","timestamp_seconds","Observation time. POSIXct values are Unix seconds in CSV; numeric values retain the supplied source clock.","seconds",FALSE
+"flows","flow","integer","Primary value in the declared unit. An observed zero and a missing value have separate meanings.","trips",TRUE
+"flows","origin_node_idx","integer","Generated zero-based departure index joining nodes.node_idx.","",FALSE
+"flows","destination_node_idx","integer","Generated zero-based arrival index joining nodes.node_idx.","",FALSE

@@ -8,7 +8,7 @@ water<-list(type='FeatureCollection',features=list(list(type='Feature',propertie
 x<-traffic_data(r,f,e,interval_seconds=60,title='Independent records',basemap=water)
 out<-tempfile();dir.create(out)
 map<-file.path(out,'map.html');report<-file.path(out,'report.html')
-traffic_map(x,map);traffic_report(x,report)
+traffic_map_html(x,map);traffic_report(x,report)
 a<-paste(readLines(map,warn=FALSE),collapse='\n');b<-paste(readLines(report,warn=FALSE),collapse='\n')
 stopifnot(grepl('Independent records',a,fixed=TRUE),grepl('log1p',a,fixed=TRUE),
  grepl('Preparation',b,fixed=TRUE),grepl('Summary',b,fixed=TRUE),
@@ -17,7 +17,7 @@ stopifnot(grepl('Independent records',a,fixed=TRUE),grepl('log1p',a,fixed=TRUE),
 grDevices::pdf(file.path(out,'figure.pdf'));plot(x);grDevices::dev.off()
 stopifnot(file.info(file.path(out,'figure.pdf'))$size>1000)
 large<-x;large$description<-strrep('x',1100000)
-traffic_map(large,file.path(out,'large.html'))
+traffic_map_html(large,file.path(out,'large.html'))
 stopifnot(file.info(file.path(out,'large.html'))$size>1100000)
 unlink(out,recursive=TRUE)
 cat('One map/report/static interface renders flow and events without external assets.\n')

@@ -20,7 +20,7 @@ d<-inside('.tm_view')(x,'duration',threshold=10,comparison='>=',duration_rule=ru
 c<-inside('.tm_view')(x,'change');stopifnot(identical(inside('.tm_colors')(c(-1,0,1,NA),c$scale),c('#2166ac','#f7f7f7','#b2182b','#94a3b8')))
 out<-tempfile();dir.create(out)
 traffic_report(x,file.path(out,'index.html'),metric='index',trend_method='provided')
-traffic_map(x,file.path(out,'index-map.html'),metric='index',trend_method='provided')
+traffic_map_html(x,file.path(out,'index-map.html'),metric='index',trend_method='provided')
 traffic_export(y,file.path(out,'duration'),mode='duration',index=2)
 s<-readRDS(file.path(out,'duration','selected-frame.rds'));stopifnot(s$measurement$origin=='provided',s$metric=='saved_duration',identical(s$flow$flow,c(7,2)))
 unlink(out,recursive=TRUE);cat('Source metrics, supplied trends, provided durations, explicit rules, source colors and original primary measurements passed.\n')
@@ -30,7 +30,7 @@ z<-traffic_data(r,f,times=c(0,60),interval_seconds=60,measurements=m,metric_info
 stopifnot(fail(traffic_trend(z,region='West',metric='index',method='provided')))
 without_scale<-info;without_scale$index$scale<-NULL
 z<-traffic_data(r,f,times=c(0,60),interval_seconds=60,measurements=m,metric_info=without_scale)
-stopifnot(traffic_summary(z,metric='index')$available==2,fail(traffic_map(z,tempfile(),metric='index')))
+stopifnot(traffic_summary(z,metric='index')$available==2,fail(traffic_map_html(z,tempfile(),metric='index')))
 double<-rbind(dm,transform(dm,metric='second_duration'));two<-c(di,list(second_duration=di$saved_duration))
 z<-traffic_data(r,f,times=c(0,60),interval_seconds=60,measurements=double,metric_info=two)
 stopifnot(fail(inside('.tm_view')(z,'duration')),identical(inside('.tm_view')(z,'duration',metric='second_duration')$values,matrix(c(5,7,0,2),2)))

@@ -111,10 +111,10 @@ Malformed IDs, coordinates, timestamps and styles still raise errors.
 Numeric source-clock events remain unaligned when no time filter is requested;
 absolute timestamp filtering requires explicitly aligned event timestamps.
 
-\code{traffic_map_html} preserves the earlier self-contained interactive road
-map writer. New code should use \code{traffic_map} for static standard-input
-maps and call \code{traffic_map_html} explicitly when HTML interaction is
-required.
+\code{traffic_map} remains available for existing unified and mixed-map
+calls. Use \code{\link{traffic_flow_map}} for a prepared road frame and
+\code{\link{traffic_od_map}} for prepared OD routes.
+\code{traffic_map_html} writes the interactive road map.
 }
 \value{
 Invisibly, a list describing the rendered type, selections, summaries,

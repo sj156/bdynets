@@ -165,7 +165,7 @@ gls_plot_neighbor_recovery <- function(selection, graph, target_edge = 8L,
   node_data <- merge(facet_key, data.frame(x = nodes$col, y = nodes$row),
                      by = NULL)
   gg <- asNamespace("ggplot2")
-  plot <- gg$ggplot(background) +
+  plot <- ggplot2::ggplot(background) +
     gg$geom_segment(gg$aes(x, y, xend = xend, yend = yend),
       colour = "grey82", linewidth = 0.75,
       arrow = grid::arrow(length = grid::unit(0.075, "cm"), type = "closed"),

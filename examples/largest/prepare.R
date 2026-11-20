@@ -93,8 +93,8 @@ pems_input <- function(native) {
   events<-data.frame(id=e$id,time=event_clock,lon=as.numeric(e$lon),lat=as.numeric(e$lat),category=category,
     description=e$description,time_label=e$reported_time,
     region=ifelse(e$district=='04','San Francisco Bay Area','Los Angeles Area'),stringsAsFactors=FALSE)
-  bdynets::traffic_input(roads=roads,flow=flow,events=events,times=times,time_labels=labels,
-    interval_seconds=rep(3600,hours),unit='vehicles/hour',title='PeMS traffic flow and reported events | 2026-06-16',
+  result <- list(crs='EPSG:4326',roads=roads,flow=flow,events=events,times=times,
+    interval_seconds=rep(3600,hours),unit='vehicles/hour',
     provenance=list(source_dataset='PeMS and CHP',day='2026-06-16',
       clock='Supplied source wall clock; numeric encoding does not establish a UTC offset.',
       source_position_hours=length(position),d04_source_records=length(d04$counts),d04_retained_records=length(counts),
@@ -102,6 +102,7 @@ pems_input <- function(native) {
       excluded_d04_stations=setdiff(d04$station_id,d04$matched_station_id),source_incidents=nrow(source),
       included_incidents=nrow(events),outside_scope=sum(!keep),missing_link_hours=sum(is.na(values)),
       measurement='Original LA station-position means and D04 sums of twelve native five-minute counts; available endpoint station means for display links.'))
+  result
 }
 
 prepare_example <- function(base='.',output_dir=file.path(base,'prepared'),source_file=file.path(base,'data','source.rds'),

@@ -6,7 +6,7 @@
 traffic_od_map(
   nodes,
   flows = NULL,
-  basemap = "auto",
+  basemap = NULL,
   node_columns = c(id = "node_id", longitude = "longitude", latitude = "latitude", size =
     "member_weight"),
   flow_columns = c(origin = "origin_id", destination = "destination_id", count = "flow",
@@ -28,13 +28,17 @@ traffic_od_map(
   flow_breaks = c(1, 3, 5, 7),
   flow_labels = c("1", "2-3", "4-5", "6-7", ">= 8"),
   flow_palette = c("#69afe0", "#a1c181", "#e9c46a", "#f4a261", "#e76f51"),
+  flow_right = TRUE,
   single_flow_dashed = TRUE,
+  flow_style = list(),
   curvature = 0.1,
   arrow_length = 0.065,
   node_fill = "white",
   node_colour = "#17324d",
   node_size = 0.82,
   scale_node_size = FALSE,
+  north_arrow = TRUE,
+  scale_bar = TRUE,
   output_file = NULL,
   width = 11,
   height = 9,
@@ -45,13 +49,19 @@ traffic_od_map(
 )
 }
 \arguments{
-\item{nodes}{Node table, CSV/CSV.GZ/RDS path, \code{traffic_od_data} object, or \code{od_aggregation} object.}
+\item{nodes}{Node table, CSV/CSV.GZ/RDS path, a named OD list containing
+\code{nodes} and \code{flows}, a \code{traffic_od_data} or
+\code{od_aggregation} object, or a prepared \code{bdynets_od_pairs} object
+from \code{traffic_od_pairs()}. A named OD list may also supply \code{timezone}
+and \code{title}; these are used when the corresponding arguments are omitted.}
 
-\item{flows}{Flow table or CSV/CSV.GZ/RDS path; omit for a canonical or aggregation object.}
+\item{flows}{Flow table or CSV/CSV.GZ/RDS path. Omit it when passing an OD object.}
 
-\item{basemap}{A trafficmap GeoJSON FeatureCollection, grouped line table,
-CSV/RDS path, or \code{NULL}. The default \code{auto} obtains context from the
-displayed coordinate bounds and caches it in data/basemap-cache.}
+\item{basemap}{Defaults to \code{NULL} for a map without street context.
+Supply \code{"auto"} or a list of cache settings such as \code{cache_dir}
+and \code{offline} to obtain context while drawing. A GeoJSON
+FeatureCollection, grouped line table, or CSV/RDS path can supply existing
+context.}
 
 \item{node_columns}{Named canonical-key-to-source-column mappings for \code{id}, \code{longitude}, \code{latitude}, and optional \code{size}. Missing optional size in the default mapping is ignored. An explicit mapping must refer to existing columns or use \code{NA} for an omitted optional field.}
 
@@ -82,6 +92,12 @@ with \code{start_time} and \code{end_time}.}
 
 \item{flow_breaks, flow_labels, flow_palette}{Fixed flow classes, labels and colours.}
 
+\item{flow_right}{Whether fixed class intervals are right closed.}
+
+\item{flow_style}{Uniquely named style list with optional \code{breaks},
+\code{labels}, \code{palette}, \code{right}, and OD-specific
+\code{single_flow_dashed} fields. Values here override the legacy direct fields.}
+
 \item{single_flow_dashed}{Whether flow-one routes use dashed lines.}
 
 \item{curvature}{Curve magnitude as a fraction of line length.}
@@ -91,6 +107,8 @@ with \code{start_time} and \code{end_time}.}
 \item{node_fill, node_colour, node_size}{Station-symbol styling.}
 
 \item{scale_node_size}{Whether the mapped node-size column controls symbol size.}
+
+\item{north_arrow, scale_bar}{Whether to draw the shared map annotations.}
 
 \item{output_file}{Optional PNG or PDF output path.}
 
@@ -125,10 +143,25 @@ colours \code{#69afe0}, \code{#a1c181}, \code{#e9c46a}, \code{#f4a261} and
 widths and singleton dashes are retained. Curves connect endpoints and are not
 observed road paths.
 
-Event overlays use red diamonds with white borders and exclamation marks. The
-OD node-derived or explicitly supplied viewport is preserved: events do not
-expand it and locations outside it are clipped. Event categories do not select
+\code{traffic_od_map} and \code{traffic_flow_map} share the static canvas,
+projection, basemap, output device, north arrow, scale bar and text helpers.
+Only their data selection and line renderers differ. There is no combined
+flow-and-OD static-map interface.
+
+When supplied a prepared \code{bdynets_od_pairs} object, the map uses its
+already selected routes and stations directly. Apply time windows
+(\code{start_time}, \code{end_time}, \code{hour_window}), route and station
+selection (\code{top_n}, \code{include_loops}, \code{active_nodes_only}), and
+column mappings (\code{node_columns}, \code{flow_columns}) during OD
+preparation. Leave these arguments at their implicit defaults when drawing
+prepared pairs. Passing a non-\code{NULL} time window or explicitly supplying
+a route, station, or mapping option produces an error. \code{timezone}
+remains available for parsing external events.
+
+Event overlays use red diamonds with white borders and exclamation marks.
+Events share the same panel and coordinate limits as the OD routes, with
+locations outside the viewport clipped. Event categories do not select
 alternative styles. Overlay composition leaves OD routes, counts and selection
 statistics unchanged. Omitted events retain the reference OD rendering.
 }
-\seealso{\code{\link{traffic_od_data}}, \code{\link{aggregate_od_data}}}
+\seealso{\code{\link{traffic_flow_map}}, \code{\link{traffic_od_data}}, \code{\link{aggregate_od_data}}}

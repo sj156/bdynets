@@ -178,9 +178,11 @@ views and display geometries reuse cached results. Statistics and Full extent
 continue to use all records in the selected scope. Caches create no extra files.
 
 
-The trafficmap-input-v1 RDS bundle contains the named constructor arguments
-and a schema field. Input descriptions and source identities are rendered as
-provided. Interactive map HTML embeds observations, context and Leaflet and uses a modern browser with DecompressionStream support. Static report HTML embeds map and trend figures, whole-period coverage and selected-interval statistics, without browser map controls. Both outputs are offline. Only R and jsonlite are required for generation.
+\code{read_traffic()} accepts \code{bdynets-traffic-input-v1} and
+\code{trafficmap-input-v1} road RDS bundles and older road files containing
+untagged named constructor arguments. A tagged file identifies its format in
+the \code{schema} field. Input descriptions and source identities are rendered
+as provided. Interactive map HTML embeds observations, context and Leaflet and uses a modern browser with DecompressionStream support. Static report HTML embeds map and trend figures, whole-period coverage and selected-interval statistics, without browser map controls. Both outputs are offline. Only R and jsonlite are required for generation.
 }
 \section{Shared trends and measurement views}{
 \code{plot(traffic_trend(x))} draws the same mean or event-start trend used by reports and exports. Optional \code{index} marks a supplied frame; data columns remain directly accessible. All-missing and single-frame series have defined axes. Missing road values are excluded from each interval mean.

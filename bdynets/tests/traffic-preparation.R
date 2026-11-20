@@ -86,3 +86,70 @@ status<-system2(file.path(R.home('bin'),'Rscript'),c('--vanilla',shQuote(script)
 if(status!=0L)stop('Failed-install session check: ',paste(readLines(log,warn=FALSE),collapse='\n'))
 unlink(qa,recursive=TRUE)
 cat('A failed session install cannot fall back to a different installed package.\n')
+
+# Road and OD preparation outputs have independent table contracts.
+qa<-tempfile('separate-inputs-');dir.create(qa)
+roads<-data.frame(road_id='001',source_attribute='kept')
+roads$geometry<-list(rbind(c(12,51),c(12.1,51.1)))
+road<-list(roads=roads,
+ flow=data.frame(road_id=c('001','001'),time=c(0,300),flow=c(0,NA_real_)),
+ times=c(0,300),time_labels=c('00:00','00:05'),interval_seconds=c(300,300),
+ unit='vehicles/hour',provenance=list(native_missing=c(FALSE,TRUE)))
+legacy_path<-file.path(qa,'road-untagged.rds')
+saveRDS(road,legacy_path)
+legacy_view<-read_traffic(legacy_path)
+stopifnot(identical(as.numeric(legacy_view$values),c(0,NA_real_)),
+ identical(legacy_view$roads$road_id,'001'),identical(legacy_view$times,road$times),
+ identical(legacy_view$time_labels,road$time_labels),
+ identical(legacy_view$interval_seconds,road$interval_seconds),identical(legacy_view$unit,road$unit),
+ identical(legacy_view$provenance,road$provenance),
+ identical(traffic_flow_map(legacy_path,basemap=NULL,draw=FALSE)$data$values,legacy_view$values),
+ identical(traffic_flow_map(road,basemap=NULL,draw=FALSE)$data$values,legacy_view$values))
+path<-write_traffic_input(road,file.path(qa,'road'))
+restored<-readRDS(path)
+stopifnot(identical(restored$roads,road$roads),identical(restored$flow,road$flow),
+ identical(restored[['schema']],'bdynets-traffic-input-v1'),
+ !any(c('nodes','od','flows','od_unit')%in%names(restored)),
+ identical(restored$provenance$native_missing,road$provenance$native_missing),
+ identical(read_traffic(path)$values,legacy_view$values),
+ identical(traffic_flow_map(path,basemap=NULL,draw=FALSE)$data$values,legacy_view$values))
+metadata<-jsonlite::read_json(file.path(dirname(path),'metadata.json'),simplifyVector=TRUE)
+stopifnot(metadata$input_type=='road',metadata$unit=='vehicles/hour',identical(metadata$schema,restored$schema))
+unsupported_path<-file.path(qa,'road-unsupported.rds')
+unsupported<-road
+unsupported$schema<-'unrecognized-road-format'
+saveRDS(unsupported,unsupported_path)
+fail(read_traffic(unsupported_path),'Unsupported traffic input schema')
+fail(traffic_flow_map(unsupported_path,basemap=NULL,draw=FALSE),'bdynets-traffic-input-v1')
+od<-list(nodes=data.frame(node_id=c('001','017'),longitude=c(12,12.1),latitude=c(51,51.1),
+ display_name=c('First','Second'),node_idx=0:1),
+ flows=data.frame(ride_id='trip',origin_id='001',destination_id='017',flow=1L,
+ time=as.POSIXct(1767247200.125,origin='1970-01-01',tz='America/Chicago')),
+ unit='trips',timezone='America/Chicago',time_kind='instant',provenance=list(source='test'))
+path<-write_traffic_input(od,file.path(qa,'od'))
+restored<-readRDS(path)
+fail(read_traffic(path),'Unsupported traffic input schema')
+fail(traffic_flow_map(path,basemap=NULL,draw=FALSE),'bdynets-traffic-input-v1')
+stopifnot(identical(restored$nodes,od$nodes),identical(restored$flows,od$flows),
+ !any(c('schema','roads','flow','events','od')%in%names(restored)))
+metadata<-jsonlite::read_json(file.path(dirname(path),'metadata.json'),simplifyVector=TRUE)
+csv<-read.csv(file.path(dirname(path),'flows.csv'),colClasses=c(ride_id='character',origin_id='character',destination_id='character'))
+stopifnot(metadata$input_type=='od',metadata$unit=='trips',metadata$time_kind=='instant',
+ metadata$timezone=='America/Chicago',identical(csv$origin_id,od$flows$origin_id),
+ identical(as.numeric(csv$time),as.numeric(od$flows$time)))
+dictionary<-read.csv(file.path(dirname(path),'data-dictionary.csv'))
+stopifnot(all(dictionary$unit[dictionary$table=='flows'&dictionary$field=='flow']=='trips'))
+bad<-road;bad$nodes<-od$nodes;bad$flows<-od$flows
+fail(write_traffic_input(bad,file.path(qa,'mixed')),'separate')
+bad<-od;bad$interval_seconds<-3600
+fail(write_traffic_input(bad,file.path(qa,'bad-interval')),'interval')
+bad<-road;bad$flow$road_id[1]<-'missing'
+fail(write_traffic_input(bad,file.path(qa,'bad-road')),'[Ii][Dd]|road')
+bad<-road;bad$roads$road_id<-1;bad$flow$road_id<-c(1,1)
+fail(write_traffic_input(bad,file.path(qa,'numeric-road-ids')),'character')
+bad<-od;bad$nodes$node_id<-c(1,17);bad$flows$origin_id<-1;bad$flows$destination_id<-17
+fail(write_traffic_input(bad,file.path(qa,'numeric-od-ids')),'character')
+bad<-od;bad$flows$time<-'2026-01-01 08:00:00';bad$timezone<-NULL
+fail(write_traffic_input(bad,file.path(qa,'unresolved-text-clock')),'timezone')
+unlink(qa,recursive=TRUE)
+cat('Separate road and OD inputs preserve source attributes, missingness, units and clocks.\n')

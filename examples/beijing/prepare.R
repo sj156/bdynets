@@ -56,14 +56,14 @@ beijing_input <- function(native,interval_minutes=5L) {
   starts<-minute[first]*60
   roads$road_id<-as.character(roads$edge_index)
   flow<-data.frame(road_id=rep(roads$road_id,length(starts)),time=rep(starts,each=nrow(roads)),flow=as.vector(values))
-  bdynets::traffic_input(roads=roads,flow=flow,times=starts,
-    time_labels=sprintf('%02d:%02d',starts%/%3600,(starts%/%60)%%60),
-    interval_seconds=rep(interval_minutes*60,length(starts)),unit='vehicles/hour',title='Beijing simulated entry flow',
+  result <- list(crs='EPSG:4326',roads=roads,flow=flow,times=starts,
+    interval_seconds=rep(interval_minutes*60,length(starts)),unit='vehicles/hour',
     provenance=list(source_fields=if(is.null(native$source_columns))beijing_fields else native$source_columns,day_no=native$day_no,source=native$source,
       source_pairs=length(native$road_pairs),display_roads=nrow(roads),
       excluded_pairs=length(native$road_pairs)-nrow(roads),native_minutes=length(minute),
       native_records=length(rates),retained_minute_records=nrow(roads)*length(minute),
       operation='Arithmetic mean of the minute-sampled hourly entry rates; original example interval is five minutes.'))
+  result
 }
 
 read_beijing_raw <- function(moe_file,geometry_file,fields=beijing_fields,day=10L,expected_minutes=0:1439) {

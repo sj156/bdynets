@@ -111,8 +111,8 @@ metropolis_input <- function(native) {
     congestionP95=round(apply(congestion,2,quantile,probs=.95,na.rm=TRUE),3),row.names=NULL)
   sample_summaries<-list(peakFrame=labels[which.max(colSums(congestion,na.rm=TRUE))],
     volumeP95=round(p95,2),congestionP95=round(as.numeric(quantile(congestion,.95,na.rm=TRUE)),3))
-  bdynets::traffic_input(roads=roads,flow=flow,measurements=measurements,trends=trends,
-    times=times,time_labels=labels,interval_seconds=rep(900,length(times)),unit='source volume',title='City-traffic-M traffic volume',
+  result <- list(crs='EPSG:4326',roads=roads,flow=flow,measurements=measurements,trends=trends,
+    times=times,interval_seconds=rep(900,length(times)),unit='source volume',
     provenance=list(source_dataset='mightyneghbor/city-traffic-benchmarks v4',clock='Source wall clock; timezone is unspecified.',
       selection='The supplied 720-road register and 2024-10-18 source date.',source_files=native$source_files,
       source_summary_definition=native$summary_definition,frame_summaries=frame_summaries,sample_summaries=sample_summaries,
@@ -123,6 +123,7 @@ metropolis_input <- function(native) {
       congestion=list(unit='dimensionless index',kind='index',label='Congestion index',
         definition='The source map slowdown relative to full-history nonzero speed P90, weighted by clipped log1p volume relative to frame volume P95.',
         scale=list(kind='gradient',stops=c(0,.52,1),palette=c('#00a651','#ffb000','#e02424')))))
+  result
 }
 
 read_metropolis_raw <- function(base,raw_dir,selection_file=file.path(base,'data','selected-roads.csv'),python='python3',minutes=NULL,calibration_file=NULL,day='2024-10-18') {

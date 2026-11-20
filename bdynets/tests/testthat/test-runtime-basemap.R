@@ -33,7 +33,7 @@ test_that('regional traffic bounds keep separate spatial scopes', {
   bounds<-bdynets:::.bm_bounds(x)
   expect_length(bounds,2L);expect_true(all(vapply(bounds,function(b)b[2]-b[1]<1,logical(1))))
 })
-test_that('rendering obtains missing context from coordinates by default', {
+test_that('road background and explicit OD basemaps obtain context from coordinates', {
   (function(){
     previous<-options(bdynets.basemap.auto=TRUE);on.exit(options(previous))
     calls<-0L
@@ -43,11 +43,20 @@ test_that('rendering obtains missing context from coordinates by default', {
     expect_null(x$basemap)
     expect_equal(bdynets:::.tm_background(x)$basemap$attribution,'Synthetic test context')
     expect_equal(calls,1L)
-    p<-tempfile(fileext='.png')
-    traffic_od_map(data.frame(node_id=c('a','b'),longitude=c(10,10.01),latitude=c(50,50.01)),
-      data.frame(origin_id='a',destination_id='b',flow=1),node_columns=c(id='node_id',longitude='longitude',latitude='latitude'),
-      flow_columns=c(origin='origin_id',destination='destination_id',count='flow'),output_file=p,draw=FALSE)
-    expect_equal(calls,2L);expect_true(file.exists(p));unlink(p)
+    nodes<-data.frame(node_id=c('a','b'),longitude=c(10,10.01),latitude=c(50,50.01))
+    flows<-data.frame(origin_id='a',destination_id='b',flow=1)
+    without_background<-tempfile(fileext='.png')
+    with_background<-tempfile(fileext='.png')
+    on.exit(unlink(c(without_background,with_background)),add=TRUE)
+    plain<-traffic_od_map(nodes,flows,output_file=without_background,draw=FALSE)
+    expect_equal(calls,1L)
+    expect_null(plain$basemap)
+    with_context<-traffic_od_map(nodes,flows,basemap='auto',output_file=with_background,draw=FALSE)
+    expect_equal(calls,2L)
+    expect_identical(with_context$basemap$attribution,'Synthetic test context')
+    expect_identical(with_context$routes,plain$routes)
+    expect_identical(with_context$summary,plain$summary)
+    expect_true(all(file.exists(c(without_background,with_background))))
   })()
 })
 test_that('partial ways are rejected before any cache is committed', {

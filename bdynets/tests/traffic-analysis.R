@@ -22,7 +22,7 @@ stopifnot(fail(inside('.tm_view')(implicit,'duration',threshold=10)),fail(inside
 only_events<-traffic_data(events=data.frame(time=0,lon=10,lat=50),times=0,interval_seconds=60)
 grDevices::png(file.path(out,'events.png'));plot(traffic_trend(only_events));grDevices::dev.off()
 stopifnot(fail(inside('.tm_view')(only_events,'change')))
-traffic_map(x,file.path(out,'change.html'),mode='change')
+traffic_map_html(x,file.path(out,'change.html'),mode='change')
 traffic_report(x,file.path(out,'duration.html'),index=2,mode='duration',threshold=10,comparison='>=',duration_rule=rule)
 h<-paste(readLines(file.path(out,'duration.html')),collapse='\n');stopifnot(grepl('mode = &quot;duration&quot;',h,fixed=TRUE))
 traffic_export(x,file.path(out,'change'),index=3,mode='change',reference=1)
