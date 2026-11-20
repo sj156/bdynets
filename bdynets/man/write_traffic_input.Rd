@@ -6,7 +6,7 @@ write_traffic_input(input, output_dir, source_files = character(),
   native = NULL, dictionary = NULL, validation = NULL)
 }
 \arguments{
-\item{input}{Road-map arguments containing \code{roads}, \code{flow} and a declared \code{unit}, or OD-map inputs containing \code{nodes}, \code{flows}, \code{unit} and \code{time_kind}. Evaluated after destination validation. Earlier objects produced by \code{traffic_input()} remain supported for compatibility.}
+\item{input}{Road-map arguments containing \code{roads}, \code{flow} and a declared \code{unit}, or OD-map inputs containing \code{nodes}, \code{flows}, \code{unit} and \code{time_kind}. Evaluated after destination validation.}
 \item{output_dir}{A new directory. Existing files, directories and source aliases are rejected.}
 \item{source_files}{Existing source paths to protect and identify. Directory paths protect their descendants. File contents are identified by SHA-256.}
 \item{native}{Optional native source snapshot, saved as \code{source.rds}.}

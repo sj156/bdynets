@@ -10,7 +10,7 @@ raw<-file.path(qa,'rides.csv');writeLines(c('id,value','001,0'),raw)
 initial<-unname(tools::md5sum(raw))
 nodes<-data.frame(node_id=c('001','002'),longitude=c(-87.6,-87.7),latitude=c(41.8,41.9))
 od<-data.frame(ride_id='r',origin_id='001',destination_id='002',flow=1L)
-x<-traffic_input(nodes=nodes,od=od,provenance=list(source='test records'))
+x<-list(nodes=nodes,flows=od,unit='trips',time_kind='untimed',provenance=list(source='test records'))
 fail(write_traffic_input(stop('must not read data'),raw,source_files=raw),'source|exist|protected')
 fail(write_traffic_input(x,file.path(qa,'..',basename(qa),'rides.csv'),source_files=raw),'source|exist|protected')
 if(file.symlink(raw,file.path(qa,'alias')))fail(write_traffic_input(x,file.path(qa,'alias'),source_files=raw),'source|exist|protected')
@@ -21,11 +21,11 @@ fail(write_traffic_input(stop('conversion failed'),file.path(qa,'failed'),source
 stopifnot(!file.exists(file.path(qa,'failed')),identical(initial,unname(tools::md5sum(raw))))
 out<-file.path(qa,'result');write_traffic_input(x,out,source_files=raw)
 y<-readRDS(file.path(out,'input.rds'))
-stopifnot(identical(x$nodes,y$nodes),identical(x$od,y$od),length(y$provenance$preparation_sources$sha256)==1L)
+stopifnot(identical(x$nodes,y$nodes),identical(x$flows,y$flows),length(y$provenance$preparation_sources$sha256)==1L)
 fail(write_traffic_input(x,out,source_files=raw),'exist')
-expected<-c('input.rds','nodes.csv','od.csv','metadata.json','data-dictionary.csv','validation.csv','source-files.csv','checksums.csv')
+expected<-c('input.rds','nodes.csv','flows.csv','metadata.json','data-dictionary.csv','validation.csv','source-files.csv','checksums.csv')
 stopifnot(setequal(list.files(out),expected))
-f<-read.csv(file.path(out,'od.csv'),colClasses='character',check.names=FALSE)
+f<-read.csv(file.path(out,'flows.csv'),colClasses='character',check.names=FALSE)
 stopifnot(f$origin_id=='001',f$destination_id=='002')
 check<-read.csv(file.path(out,'checksums.csv'))
 stopifnot(identical(unname(tools::md5sum(file.path(out,check$file))),check$md5))
@@ -45,14 +45,14 @@ if(.Platform$OS.type=='unix') {
   result<-parallel::mccollect(first)
   stopifnot(!inherits(result[[1]],'try-error'),file.exists(file.path(target,'input.rds')))
 }
-zeros<-traffic_input(nodes=data.frame(node_id=c('001','002','\\N'),longitude=1:3,latitude=1:3),
- od=data.frame(ride_id=c('a','b'),origin_id=c('001','\\N'),destination_id=c('002','001'),
+zeros<-list(unit='trips',time_kind='instant',nodes=data.frame(node_id=c('001','002','\\N'),longitude=1:3,latitude=1:3),
+ flows=data.frame(ride_id=c('a','b'),origin_id=c('001','\\N'),destination_id=c('002','001'),
  time=as.POSIXct(c(1767247200.125,1767247200.5),origin='1970-01-01',tz='America/Chicago'),flow=c(0L,1L)))
 write_traffic_input(zeros,file.path(qa,'precision'))
 meta<-jsonlite::read_json(file.path(qa,'precision','metadata.json'),simplifyVector=TRUE)
-actual<-read.csv(file.path(qa,'precision','od.csv'),colClasses='character',na.strings=meta$csv$missing)
-stopifnot(identical(actual$origin_id,zeros$od$origin_id),identical(as.numeric(actual$time),as.numeric(zeros$od$time)),
- identical(as.numeric(actual$flow),as.numeric(zeros$od$flow)))
+actual<-read.csv(file.path(qa,'precision','flows.csv'),colClasses='character',na.strings=meta$csv$missing)
+stopifnot(identical(actual$origin_id,zeros$flows$origin_id),identical(as.numeric(actual$time),as.numeric(zeros$flows$time)),
+ identical(as.numeric(actual$flow),as.numeric(zeros$flows$flow)))
 unlink(qa,recursive=TRUE)
 cat('Failed validations, concurrent publication, literal missing tokens and fractional clocks passed.\n')
 
@@ -141,6 +141,10 @@ dictionary<-read.csv(file.path(dirname(path),'data-dictionary.csv'))
 stopifnot(all(dictionary$unit[dictionary$table=='flows'&dictionary$field=='flow']=='trips'))
 bad<-road;bad$nodes<-od$nodes;bad$flows<-od$flows
 fail(write_traffic_input(bad,file.path(qa,'mixed')),'separate')
+bad$schema<-'bdynets-traffic-input-v1'
+fail(write_traffic_input(bad,file.path(qa,'mixed-tagged')),'separate')
+fail(traffic_flow_map(bad,basemap=NULL,draw=FALSE),'separate')
+fail(traffic_od_map(bad,basemap=NULL,draw=FALSE),'separate')
 bad<-od;bad$interval_seconds<-3600
 fail(write_traffic_input(bad,file.path(qa,'bad-interval')),'interval')
 bad<-road;bad$flow$road_id[1]<-'missing'

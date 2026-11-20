@@ -264,7 +264,7 @@ traffic_basemap <- function(x=NULL,bounds=NULL,region=NULL,
   detail="auto",road_classes=NULL,view_size=c(1024,768)) {
   if(is.list(x)&&identical(x$schema,'bdynets-traffic-input-v1')&&
      (!is.null(x$roads)||!is.null(x$events)))
-    x<-.tm_standard_road_data(.tm_standard_map_input(x))
+    x<-.tm_standard_road_data(x)
   .tm_assert(is.character(cache_dir)&&length(cache_dir)==1L&&!is.na(cache_dir)&&nzchar(cache_dir),"cache_dir must be one visible directory path")
   .tm_assert(is.logical(offline)&&length(offline)==1L&&!is.na(offline)&&is.logical(refresh)&&length(refresh)==1L&&!is.na(refresh),"offline and refresh must be logical flags")
   .tm_assert(is.character(endpoints)&&length(endpoints)>0L&&!anyNA(endpoints)&&all(grepl('^https?://',endpoints)),"Supply HTTP(S) Overpass endpoints")

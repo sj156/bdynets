@@ -10,7 +10,8 @@ flow_map_fixture <- function() {
     time = rep(times, each = 2),
     flow = c(0, 5, 10, NA)
   )
-  traffic_input(
+  list(
+    schema = "bdynets-traffic-input-v1",
     roads = roads,
     flow = flow,
     times = times,
@@ -38,9 +39,10 @@ prepared_od_fixture <- function() {
   )
 }
 
-test_that("prepared drawing and unified compatibility are public entry points", {
+test_that("the public map interfaces use separate inputs", {
   exports <- getNamespaceExports("bdynets")
-  expect_true(all(c("traffic_flow_map", "traffic_od_map", "traffic_map", "traffic_map_html") %in% exports))
+  expect_true(all(c("traffic_flow_map", "traffic_od_map", "traffic_map_html") %in% exports))
+  expect_false(any(c("traffic_map", "traffic_input") %in% exports))
 })
 
 test_that("traffic_flow_map renders a road frame and preserves missing flow", {

@@ -219,8 +219,7 @@ traffic_od_map(readRDS("examples/DivvyBike/data/spatial-1500m/window-0000-0300.r
 ```
 
 `traffic_flow_map()` draws the ready road frame and `traffic_od_map()` draws the
-prepared OD stations and routes. Existing unified and mixed-map calls can
-continue to use `traffic_map()` with `traffic_input()`. For the full-day road trend, load
+prepared OD stations and routes. For the full-day road trend, load
 `examples/beijing/data/input.rds` with `read_traffic()` and call
 `traffic_trend()`. Source units and missing values are retained. Road flow
 uses seven log1p green/yellow/red classes.

@@ -40,15 +40,13 @@
 .prep_input_type <- function(input) {
   if(!is.list(input)||is.null(names(input))||anyDuplicated(names(input)))
     stop('Supply named road inputs or named OD inputs.',call.=FALSE)
-  if(identical(input[['schema']],'bdynets-traffic-input-v1')) {
-    args<-input[intersect(names(input),names(formals(traffic_input)))]
-    do.call(traffic_input,args)
-    return('legacy')
-  }
   has_road<-any(c('roads','flow','events','measurements','metric_info','trends')%in%names(input))
   has_od<-any(c('nodes','flows','od')%in%names(input))
   if(has_road&&has_od)stop('Road and OD inputs are separate formats; do not combine their tables.',call.=FALSE)
   if(has_road) {
+    if(!is.null(input[['schema']])&&!identical(input[['schema']],'bdynets-traffic-input-v1'))
+      stop('Unrecognized road input schema.',call.=FALSE)
+    input[['schema']]<-NULL
     if(!all(c('roads','flow','unit')%in%names(input))||is.null(input[['roads']])||is.null(input[['flow']]))
       stop('Road inputs require roads, flow and a declared unit.',call.=FALSE)
     if(!is.data.frame(input[['roads']])||!all(c('road_id','geometry')%in%names(input[['roads']]))||
@@ -90,7 +88,7 @@
   stop('Supply road tables (roads and flow) or OD tables (nodes and flows).',call.=FALSE)
 }
 .prep_tables <- function(input) {
-  keys<-c('roads','flow','events','nodes','flows','od','measurements','trends')
+  keys<-c('roads','flow','events','nodes','flows','measurements','trends')
   tables<-input[keys[!vapply(input[keys],is.null,logical(1))]]
   if(!is.null(tables$roads)) {
     roads<-tables$roads
@@ -117,7 +115,7 @@
     id='Source record identifier.',category='Source-supplied or explicitly mapped classification.',
     description='Retained source description.',region='Declared geographic selection.',time_label='Supplied human-readable clock label.')
   required<-list(roads='road_id',flow=c('road_id','time','flow'),nodes=c('node_id','longitude','latitude'),
-    od=c('origin_id','destination_id','flow'),flows=c('origin_id','destination_id','flow'),events=c('time','lon','lat'),measurements=c('road_id','time','metric','value'),
+    flows=c('origin_id','destination_id','flow'),events=c('time','lon','lat'),measurements=c('road_id','time','metric','value'),
     `road-vertices`=c('road_id','vertex','longitude','latitude'))
   rows<-lapply(names(tables),function(name) {
     tab<-tables[[name]]
@@ -126,7 +124,7 @@
     meaning[is.na(meaning)]<-paste('Retained source attribute',fields[is.na(meaning)])
     type<-vapply(tab,function(x)if(inherits(x,'POSIXct'))'timestamp_seconds' else if(is.factor(x))'character' else if(is.list(x))'json' else typeof(x),'')
     units<-rep('',length(fields))
-    units[fields=='flow']<-if(name=='od')input$od_unit else input$unit
+    units[fields=='flow']<-input$unit
     units[fields %in% c('longitude','latitude','lon','lat')]<-'degrees'
     units[fields=='time']<-'seconds'
     data.frame(table=name,field=fields,type=unname(type),meaning=meaning,unit=units,
@@ -176,7 +174,7 @@
 
 #' Publish validated prepared data to a new directory
 #' @param input Road inputs (roads and flow) or OD inputs (nodes and flows).
-#'   Evaluation starts after path protection. Earlier standard objects remain readable.
+#'   Evaluation starts after path protection.
 #' @param output_dir A new output directory, distinct from all sources.
 #' @param source_files Source paths to protect. Existing directory paths protect descendants.
 #' @param native Optional native source object to preserve in source.rds.

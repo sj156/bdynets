@@ -17,7 +17,7 @@ traffic_flow_map(input, index = NULL, time_label = NULL, region = NULL, mode = "
 \arguments{
 \item{input}{A prepared single-frame \code{trafficmap_data} object or its
 RDS path. Compatibility inputs include full-day \code{trafficmap_data},
-road-bearing \code{bdynets-traffic-input-v1} lists, older untagged named
+road-only \code{bdynets-traffic-input-v1} lists, older untagged named
 road arguments, and their RDS paths.}
 \item{index}{One-based frame index. The first frame is used when omitted.}
 \item{time_label}{Optional unique frame label such as \code{"08:00"}. Supply

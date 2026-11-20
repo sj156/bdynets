@@ -664,6 +664,8 @@ traffic_od_map <- function(
     args$pairs<-nodes;args$nodes<-NULL;args$flows<-NULL
   } else if(is.list(nodes)&&all(c('nodes','flows')%in%names(nodes))) {
     .tm_assert(is.null(flows),'When nodes is a named OD list, omit flows')
+    .tm_assert(is.null(nodes[['roads']])&&is.null(nodes[['flow']]),
+      'Flow and OD inputs are separate; pass prepared road frames to traffic_flow_map()')
     bundle<-nodes
     if(missing(timezone)&&is.character(bundle$timezone)&&length(bundle$timezone)==1L)
       args$timezone<-bundle$timezone
@@ -810,52 +812,21 @@ plot.traffic_od_data <- function(x,timezone=x$timezone,...) traffic_od_map(x,tim
  invisible(file)
 }
 
-# Unified static-map entry point -------------------------------------------------
-.tm_standard_map_input <- function(input) {
+.tm_standard_road_data <- function(input) {
  if(is.character(input)&&length(input)==1L) {
-  .tm_assert(file.exists(input)&&!dir.exists(input),'input must be a standard RDS file or object')
+  .tm_assert(file.exists(input)&&!dir.exists(input),'input must be a road RDS file or object')
   input<-readRDS(input)
  }
- if(inherits(input,'trafficmap_data')||inherits(input,'traffic_od_data'))return(input)
- if(.tm_untagged_road_input(input))return(input)
- .tm_assert(is.list(input)&&identical(input$schema,'bdynets-traffic-input-v1'),
-  'The map interface requires a bdynets-traffic-input-v1 bundle or untagged road input')
- args<-input[intersect(names(input),names(formals(traffic_input)))]
- do.call(traffic_input,args)
-}
-
-.tm_standard_road_data <- function(input) {
  if(inherits(input,'trafficmap_data'))return(input)
- .tm_assert(is.list(input)&&(!is.null(input$roads)||!is.null(input$events)),
-  'The standard input has no road or event layer')
+ .tm_assert(is.list(input)&&(identical(input[['schema']],'bdynets-traffic-input-v1')||
+  .tm_untagged_road_input(input)),
+  'Flow requires a prepared road frame or road arguments with bdynets-traffic-input-v1 or no schema')
+ .tm_assert(all(vapply(input[c('nodes','flows','od')],is.null,logical(1))),
+  'Flow and OD inputs are separate; pass prepared OD routes to traffic_od_map()')
+ .tm_assert(!is.null(input[['roads']])||!is.null(input[['events']]),
+  'The road input has no roads or events')
  args<-input[intersect(names(input),names(formals(traffic_data)))]
  do.call(traffic_data,args)
-}
-
-# Empty selections carry missing flow totals rather than fabricated zero observations.
-.tm_map_od_call <- function(args,allow_empty=FALSE,time_alignment='unfiltered') {
-  empty <- function(condition) {
-    if(!allow_empty)stop(condition)
-    missing_window <- inherits(condition,'traffic_od_empty_window')
-    labels <- if(is.null(args$flow_labels))c('1','2-3','4-5','6-7','>= 8') else args$flow_labels
-    nodes <- condition$nodes
-    routes <- data.frame(origin_id=character(),destination_id=character(),flow=numeric(),
-      origin_longitude=numeric(),origin_latitude=numeric(),destination_longitude=numeric(),destination_latitude=numeric())
-    list(status=if(missing_window)'no_records' else 'no_routes',time_alignment=time_alignment,
-      nodes=nodes[0,,drop=FALSE],all_nodes=nodes,routes=routes,
-      summary=list(selected_records=if(missing_window)0L else as.integer(condition$selected_records),
-        selected_flow=if(missing_window)NA_real_ else condition$selected_flow,
-        within_node_flow=if(missing_window)NA_real_ else condition$within_node_flow,
-        nonloop_flow=if(missing_window)NA_real_ else condition$nonloop_flow,
-        active_nonloop_pairs=0L,displayed_pairs=0L,displayed_flow=if(missing_window)NA_real_ else 0,
-        displayed_nodes=0L,flow_classes=stats::setNames(integer(length(labels)),labels),
-        time_window=condition$time_window,loops_included_in_summary=isTRUE(args$include_loops)),
-      basemap=NULL,output_file=NULL)
-  }
-  result <- tryCatch(do.call(traffic_od_map,args),traffic_od_empty_window=empty,traffic_od_no_routes=empty)
-  if(is.null(result$status))result$status <- if(nrow(result$routes))'ok' else 'no_routes'
-  result$time_alignment <- time_alignment
-  result
 }
 
 .tm_map_device <- function(draw_fun,output_file,width,height,dpi,draw) {
@@ -906,121 +877,12 @@ plot.traffic_od_data <- function(x,timezone=x$timezone,...) traffic_od_map(x,tim
  invisible(bounds)
 }
 
-.tm_map_od_overlay <- function(result,od_style=list(),node_style=list()) {
- .tm_assert(is.list(result)&&is.data.frame(result$routes)&&is.data.frame(result$nodes),'Invalid OD overlay')
- allowed_od<-c('flow_breaks','flow_labels','flow_palette','flow_right','single_flow_dashed','curvature','arrow_length')
- allowed_node<-c('node_fill','node_colour','node_size','scale_node_size')
- .tm_assert(is.list(od_style)&&!length(setdiff(names(od_style),allowed_od)),'Unknown od_style field')
- .tm_assert(is.list(node_style)&&!length(setdiff(names(node_style),allowed_node)),'Unknown node_style field')
- style<-utils::modifyList(list(flow_breaks=c(1,3,5,7),flow_labels=c('1','2-3','4-5','6-7','>= 8'),
-  flow_palette=c('#69afe0','#a1c181','#e9c46a','#f4a261','#e76f51'),flow_right=TRUE,single_flow_dashed=TRUE,
-  curvature=.10,arrow_length=.065),od_style)
- nodes<-result$nodes;routes<-result$routes
- node<-utils::modifyList(list(node_fill='white',node_colour='#17324d',node_size=.82,scale_node_size=FALSE),node_style)
- layer_style<-.tm_od_layer_style(routes,nodes,style$flow_breaks,style$flow_labels,
-  style$flow_palette,style$flow_right,style$single_flow_dashed,style$curvature,style$arrow_length,
-  node$node_fill,node$node_colour,node$node_size,node$scale_node_size)
- .tm_draw_od_layer(routes,nodes,layer_style,'bottomright',legend=TRUE)
- invisible(result)
-}
-
-# The OD renderer retains its drawing algorithm; composition owns selection and bounds.
-.tm_map_od_extent <- function(nodes,events,args) {
-  .tm_assert(is.numeric(args$padding)&&length(args$padding)==1L&&is.finite(args$padding)&&args$padding>=0,
-    'padding must be one nonnegative number')
-  if(!is.null(args$bounds)) {
-    b<-args$bounds
-    .tm_assert(is.numeric(b)&&length(b)==4L&&all(is.finite(b))&&b[1]<b[2]&&b[3]<b[4],
-      'bounds must be c(west,east,south,north)')
-    return(as.numeric(b))
-  }
-  coordinates<-as.matrix(nodes[,c('longitude','latitude'),drop=FALSE])
-  if(!is.null(events)&&nrow(events))coordinates<-rbind(coordinates,as.matrix(events[,c('lon','lat'),drop=FALSE]))
-  if(!nrow(coordinates))return(NULL)
-  xr<-range(coordinates[,1]);yr<-range(coordinates[,2])
-  dx<-max(diff(xr),1e-6);dy<-max(diff(yr),1e-6)
-  c(xr[1]-args$padding*dx,xr[2]+args$padding*dx,yr[1]-args$padding*dy,yr[2]+args$padding*dy)
-}
-
-.tm_map_empty_od <- function(result,args,events=NULL) {
-  # These are supplied locations, not evidence of active trips in an empty window.
-  result$nodes<-result$all_nodes
-  result$summary$displayed_nodes<-as.integer(nrow(result$nodes))
-  result$node_scope<-'provided reference locations'
-  keys<-setdiff(names(formals(.tm_od_layer_style)),c('routes','nodes'))
-  defaults<-lapply(formals(traffic_od_map)[keys],eval,envir=baseenv())
-  style<-do.call(.tm_od_layer_style,c(list(routes=result$routes,nodes=result$nodes),
-    utils::modifyList(defaults,args[intersect(names(args),keys)])))
-  extent<-.tm_map_od_extent(result$nodes,events,args)
-  base<-args$basemap
-  if(identical(base,'auto'))base<-if(!is.null(extent)&&(isTRUE(args$draw)||!is.null(args$output_file))&&
-    isTRUE(getOption('bdynets.basemap.auto',TRUE)))traffic_basemap(bounds=extent) else NULL
-  base<-.tm_basemap(base)
-  note<-if(identical(result$status,'no_records'))'OD: no available records; supplied station locations are reference context'
-    else if(identical(result$summary$selected_flow,0)||isTRUE(result$summary$selected_flow==0))'OD: recorded flow is zero; no positive routes'
-    else 'OD: no nonloop routes; source records remain in the summary'
-  title<-if(is.null(args$subtitle))args$title else paste(args$title,args$subtitle,sep='\n')
-  if(is.null(args$subtitle)&&!is.null(result$summary$time_window))title<-paste(title,result$summary$time_window,sep='\n')
-  viewport<-NULL
-  draw_fun<-function() {
-    saved<-graphics::par(no.readonly=TRUE);on.exit(graphics::par(saved),add=TRUE)
-    graphics::par(mar=c(3.6,1.2,5.1,1.2),xpd=FALSE);graphics::plot.new()
-    if(is.null(extent)) {
-      graphics::text(.5,.5,'No supplied locations are available')
-    } else {
-      limits<-.tm_project(matrix(c(extent[1],extent[3],extent[2],extent[4]),ncol=2,byrow=TRUE))
-      viewport<<-.tm_map_canvas(c(limits[,1],limits[,2]),c(3.6,1.2,5.1,1.2))
-      .tm_static_context(base,viewport)
-      .tm_draw_od_layer(result$routes,result$nodes,style,'topleft',TRUE)
-      if(!is.null(events)).tm_event_layer(events)
-      if(isTRUE(args$north_arrow)).tm_map_north_arrow()
-      if(isTRUE(args$scale_bar)).tm_map_scale_bar()
-    }
-    graphics::title(main=title,cex.main=.9)
-    graphics::mtext(paste(c(args$caption,note),collapse=' | '),side=1,line=1,cex=.65,col='#56636a')
-    if(!is.null(base))graphics::mtext(base$attribution,side=1,line=2.2,cex=.55,col='#657278')
-  }
-  result$output_file<-.tm_map_device(draw_fun,args$output_file,args$width,args$height,args$dpi,args$draw)
-  result$basemap<-base
-  if(!is.null(events))result$event_overlay<-list(events=events,
-    projected=.tm_project(as.matrix(events[,c('lon','lat'),drop=FALSE])),viewport=viewport)
-  result
-}
-
-.tm_map_od_standalone <- function(args,events=NULL,time_alignment='unfiltered') {
-  args$events<-NULL
-  if(is.null(events)&&!isTRUE(args$include_loops)) {
-    result<-.tm_map_od_call(args,allow_empty=TRUE,time_alignment=time_alignment)
-    if(!identical(result$status,'ok'))result<-.tm_map_empty_od(result,args)
-    return(result)
-  }
-  analysis<-args;analysis$draw<-FALSE;analysis$output_file<-NULL
-  result<-.tm_map_od_call(analysis,allow_empty=TRUE,time_alignment=time_alignment)
-  if(!is.null(events)&&(!is.null(args$start_time)||!is.null(args$end_time))&&!inherits(events$time,'POSIXt'))
-    stop('Timestamp filtering of OD and events requires explicitly aligned event timestamps; numeric source clocks are not inferred.',call.=FALSE)
-  numeric_events<-!is.null(events)&&is.numeric(events$time)&&!inherits(events$time,'POSIXt')
-  selected<-if(is.null(events))NULL else if(numeric_events)events else .tm_od_event_input(events,NULL,args)
-  if(identical(result$status,'ok')&&!nrow(result$routes))result$status<-'no_routes'
-  if(!identical(result$status,'ok'))return(.tm_map_empty_od(result,args,selected))
-  if(is.null(events))return(.tm_map_od_call(args,allow_empty=TRUE,time_alignment=time_alignment))
-  args$bounds<-.tm_map_od_extent(result$nodes,selected,args)
-  node_columns<-if(is.null(args$node_columns))eval(formals(traffic_od_map)$node_columns) else args$node_columns
-  flow_columns<-if(is.null(args$flow_columns))eval(formals(traffic_od_map)$flow_columns) else args$flow_columns
-  normalized<-.tm_od_input(args$nodes,args$flows,node_columns,flow_columns,is.null(args$node_columns),is.null(args$flow_columns))
-  args$nodes<-normalized$nodes;args$flows<-normalized$flows
-  args$node_columns<-normalized$node_columns;args$flow_columns<-normalized$flow_columns
-  if(numeric_events)args$caption<-paste(c(args$caption,'Events retain their supplied source clock; no OD time alignment is inferred'),collapse=' | ')
-  result<-.tm_od_with_events(args,selected,NULL,preselected=TRUE)
-  result$status<-'ok';result$time_alignment<-time_alignment
-  result
-}
-
 #' @export
 #' @noRd
 traffic_map_html <- function(x,file,mode='flow',reference=NULL,threshold=NULL,comparison=NULL,metric=NULL,duration_rule=NULL,trend_method='mean') {
  if(is.character(x)&&length(x)==1L)x<-read_traffic(x)
  if(is.list(x)&&identical(x$schema,'bdynets-traffic-input-v1'))
-  x<-.tm_standard_road_data(.tm_standard_map_input(x))
+  x<-.tm_standard_road_data(x)
  .tm_write(x,file,FALSE,mode=mode,reference=reference,threshold=threshold,comparison=comparison,metric=metric,duration_rule=duration_rule,trend_method=trend_method)
 }
 
@@ -1087,8 +949,7 @@ traffic_flow_map <- function(input,index=NULL,time_label=NULL,region=NULL,mode='
  threshold=NULL,comparison=NULL,metric=NULL,duration_rule=NULL,basemap=NULL,
  title=NULL,subtitle=NULL,caption=NULL,flow_style=list(),north_arrow=TRUE,
  scale_bar=TRUE,output_file=NULL,width=11,height=9,dpi=220,draw=TRUE) {
- object<-.tm_standard_map_input(input)
- road<-.tm_standard_road_data(object)
+ road<-.tm_standard_road_data(input)
  if(!is.null(title))road$title<-title
  if(!is.null(subtitle)&&nzchar(subtitle))road$title<-paste(road$title,subtitle,sep=' | ')
  if(is.null(basemap))road$basemap<-NULL
@@ -1123,106 +984,6 @@ traffic_flow_map <- function(input,index=NULL,time_label=NULL,region=NULL,mode='
   road_summary=traffic_summary(road,index,region),basemap=road$basemap,output_file=output_file))
 }
 
-#' Draw every spatial component of a standard traffic input
-#' @export
-#' @noRd
-traffic_map <- function(input=NULL,file=NULL,index=NULL,region=NULL,start_time=NULL,end_time=NULL,
- layers='auto',mode='flow',reference=NULL,threshold=NULL,comparison=NULL,metric=NULL,duration_rule=NULL,
- basemap='auto',bounds=NULL,padding=.045,top_n=Inf,include_loops=FALSE,active_nodes_only=TRUE,
- title=NULL,subtitle=NULL,caption=NULL,flow_style=list(),od_style=list(),node_style=list(),event_style=list(),
- north_arrow=TRUE,scale_bar=TRUE,output_file=NULL,width=11,height=9,dpi=220,draw=TRUE,trend_method='mean',x=NULL) {
- .tm_assert(missing(input)||missing(x),'Supply only one of input and x, not both')
- if(missing(input)&&!missing(x))input<-x
- # Preserve the pre-0.2 HTML writer contract. Static files use .png or .pdf.
- if(!is.null(file)&&is.null(output_file)&&!tolower(tools::file_ext(file))%in%c('png','pdf')) {
-  # Rematch the original call against the legacy signature before evaluating it.
-  legacy <- as.list(sys.call());keys <- names(legacy)
-  if(!is.null(keys)){keys[keys=='input']<-'x';names(legacy)<-keys}
-  legacy[[1L]] <- traffic_map_html
-  legacy <- match.call(definition=traffic_map_html,call=as.call(legacy))
-  return(eval(legacy,envir=parent.frame()))
- }
- if(!is.null(file)&&is.null(output_file))output_file<-file
- object<-.tm_standard_map_input(input)
- standard<-is.list(object)&&identical(object$schema,'bdynets-traffic-input-v1')
- has_road_path<-inherits(object,'trafficmap_data')||(standard&&!is.null(object$roads)&&nrow(object$roads)>0L)
- has_roads<-has_road_path||(standard&&!is.null(object$events)&&is.null(object$od))
- has_od<-inherits(object,'traffic_od_data')||(standard&&!is.null(object$nodes)&&!is.null(object$od))
- .tm_assert(has_roads||has_od,'The standard input has no drawable geographic layer')
- allowed_layers<-c('flow','od','events','nodes')
- if(identical(layers,'auto'))layers<-c(if(has_roads)'flow',if(has_od)c('od','nodes'),
-  if(standard&&!is.null(object$events))'events')
- .tm_assert(is.character(layers)&&length(layers)>0L&&!anyNA(layers)&&!length(setdiff(layers,allowed_layers)),
-  'layers must be auto or a subset of flow, od, events and nodes')
- draw_roads<-has_roads&&'flow'%in%layers;draw_od<-has_od&&'od'%in%layers
- .tm_assert(draw_roads||draw_od,'The requested layers contain no drawable flow or OD data')
- .tm_assert(is.list(flow_style)&&is.list(od_style)&&is.list(node_style)&&is.list(event_style),
-  'Layer styles must be lists')
- .tm_assert(!length(event_style),'event_style is reserved; current standard events retain the package style')
-
- if(!draw_roads) {
-  if(standard&&identical(object$od_time_kind,'untimed')&&(!is.null(start_time)||!is.null(end_time)))
-   stop('Untimed OD cannot be filtered by a timestamp window; no time is inferred.',call.=FALSE)
-  if(standard&&identical(basemap,'auto')&&!is.null(object$basemap))basemap<-object$basemap
-  nodes<-if(inherits(object,'traffic_od_data'))object else object$nodes
-  flows<-if(inherits(object,'traffic_od_data'))NULL else object$od
-  defaults<-list(nodes=nodes,flows=flows,basemap=basemap,start_time=start_time,end_time=end_time,
-   timezone=if(inherits(object,'traffic_od_data'))object$timezone else if(is.null(object$timezone))'UTC' else object$timezone,
-   top_n=top_n,include_loops=include_loops,active_nodes_only=active_nodes_only,bounds=bounds,padding=padding,
-   title=if(is.null(title))if(standard)object$title else 'Directed OD flows' else title,subtitle=subtitle,caption=caption,
-   output_file=output_file,width=width,height=height,dpi=dpi,draw=draw,
-   events=if(standard&&'events'%in%layers)object$events else NULL)
-  args<-utils::modifyList(defaults,od_style);args<-utils::modifyList(args,node_style)
-  alignment<-if(standard&&identical(object$od_time_kind,'untimed'))'untimed' else if(!is.null(start_time))'explicit_window' else 'unfiltered'
-  events<-args$events
-  return(invisible(.tm_map_od_standalone(args,events,time_alignment=alignment)))
- }
-
- road<-.tm_standard_road_data(object)
- if(!is.null(title))road$title<-title
- if(!is.null(subtitle)&&nzchar(subtitle))road$title<-paste(road$title,subtitle,sep=' | ')
- if(is.null(basemap))road$basemap<-NULL else if(!(is.character(basemap)&&length(basemap)==1L&&basemap=='auto'))road$basemap<-.tm_basemap(basemap)
- if(is.character(basemap)&&length(basemap)==1L&&basemap=='auto'&&is.null(road$basemap)&&
-    isTRUE(getOption('bdynets.basemap.auto',TRUE))&&(isTRUE(draw)||!is.null(output_file)))
-  road$basemap<-traffic_basemap(road,region=region,road_classes=character())
- road<-.tm_view(road,mode,reference,threshold,comparison,metric,duration_rule)
- if(is.null(index))index<-road$initial
- traffic_summary(road,index,region)
- .tm_assert(!length(setdiff(names(flow_style),c('palette','breaks','labels','right'))),'Unknown flow_style field')
- road<-.tm_apply_flow_style(road,flow_style)
- od_result<-NULL
- if(draw_od) {
-  untimed<-identical(object$od_time_kind,'untimed')||!('time'%in%names(object$od))
-  if(untimed&&(!is.null(start_time)||!is.null(end_time)))
-   stop('Untimed OD cannot be filtered by a timestamp window; no time is inferred.',call.=FALSE)
-  alignment<-if(untimed)'untimed' else if(!is.null(start_time)||!is.null(end_time))'explicit_window' else 'unfiltered'
-  if(!untimed&&is.null(start_time)&&is.null(end_time)&&road$clock=='absolute') {
-   start_time<-as.POSIXct(road$times[index],origin='1970-01-01',tz='UTC')
-   end_time<-as.POSIXct(road$times[index]+road$interval_seconds[index],origin='1970-01-01',tz='UTC')
-   alignment<-'road_interval'
-  }
-  defaults<-list(nodes=object$nodes,flows=object$od,basemap=NULL,start_time=start_time,end_time=end_time,
-   timezone=if(is.null(object$timezone))'UTC' else object$timezone,top_n=top_n,include_loops=include_loops,
-   active_nodes_only=active_nodes_only,bounds=bounds,padding=padding,draw=FALSE)
-  od_result<-.tm_map_od_call(utils::modifyList(utils::modifyList(defaults,od_style),node_style),allow_empty=TRUE,time_alignment=alignment)
- }
- old_auto<-getOption('bdynets.basemap.auto',TRUE);on.exit(options(bdynets.basemap.auto=old_auto),add=TRUE)
- if(is.null(basemap))options(bdynets.basemap.auto=FALSE)
- draw_fun<-function() {
-  saved<-graphics::par(no.readonly=TRUE);on.exit(graphics::par(saved),add=TRUE)
-  graphics::plot(road,index=index,region=region)
-  .tm_map_restore_road_window(road,region)
-  if(!is.null(od_result)).tm_map_od_overlay(od_result,od_style,node_style)
-  if(isTRUE(north_arrow)).tm_map_north_arrow()
-  if(isTRUE(scale_bar)).tm_map_scale_bar()
-  od_note<-if(is.null(od_result))NULL else if(identical(od_result$status,'no_records'))'OD: no records in the selected window' else if(identical(od_result$time_alignment,'untimed'))'OD: untimed aggregate' else if(identical(od_result$status,'no_routes'))'OD: no drawable nonloop routes' else NULL
-  notes<-paste(c(caption,od_note),collapse=' | ')
-  if(nzchar(notes))graphics::mtext(notes,side=1,line=2.7,cex=.58,col='#56636a')
- }
- output_file<-.tm_map_device(draw_fun,output_file,width,height,dpi,draw)
- invisible(list(type=if(is.null(od_result))'flow' else 'combined',index=index,region=region,
-  road_summary=traffic_summary(road,index,region),od=od_result,basemap=road$basemap,output_file=output_file))
-}
 #' @export
 #' @noRd
 traffic_report <- function(x,file,index=NULL,region=NULL,mode='flow',reference=NULL,threshold=NULL,comparison=NULL,metric=NULL,duration_rule=NULL,trend_method='mean') .tm_write(x,file,TRUE,index,region,mode,reference,threshold,comparison,metric,duration_rule,trend_method)

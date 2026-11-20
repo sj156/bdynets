@@ -42,9 +42,7 @@ The road day files `data/input.rds` contain `roads` and a long `flow` table with
 
 The legacy OD call still accepts station and directed flow tables (`nodes` and `flows`) or their supported adapters. That route can filter and aggregate the supplied records. The ready `bdynets_od_pairs` form is the direct map input used by the Divvy example.
 
-Existing calls built with `traffic_input()` can continue using `traffic_map()`,
-including combined road and OD maps. `traffic_map_html()` remains the interactive
-road HTML entry point.
+Use `traffic_map_html()` to export an interactive road map.
 
 ## Original files and intermediate data
 
