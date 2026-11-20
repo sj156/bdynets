@@ -1,5 +1,7 @@
 # Validation record
 
+> **Historical record.** The tests and validation records below apply to the earlier research scripts. The scripts are available in the [archived revision](https://github.com/sj156/bdynets/tree/079e42ec58efe6c62cfab5a8b2d90cf5cb2bf58e/graphMoDE). See the [current study and convergence diagnostics](README.md#what-the-chains-explored) for the November results.
+
 2026-10-15 preparation validation:
 
 - Dependency closure: 180 functions/constants from 33 original modules. Original module bytes all match development source commit `e3fde164335fd921b97ea0e7cee863ac6ecfdde2`. Every extracted function body/formals and constant compared identical after loading.

@@ -413,11 +413,25 @@ pair_coefficient_matrix <- function(value, pairs, k) {
     out
 }
 
+.gls_pair_product <- function(X, pairs, value, k = ncol(X)) {
+    indices <- c(pairs$source, pairs$target)
+    integer_indices <- is.numeric(pairs$source) && is.numeric(pairs$target) &&
+        !is.complex(indices) && all(is.finite(indices) & indices == floor(indices) &
+            indices >= 1 & indices <= k)
+    sparse <- integer_indices && length(value) == nrow(pairs) &&
+        nrow(pairs) <= 0.1 * as.double(k)^2
+    if (!sparse || !all(is.finite(X)) || !all(is.finite(value)))
+        return(X %*% pair_coefficient_matrix(value, pairs, k))
+    product <- .gls_pair_product_cpp(X, as.integer(pairs$source),
+        as.integer(pairs$target), as.numeric(value), as.integer(k))
+    if (!is.null(rownames(X))) dimnames(product) <- list(rownames(X), NULL)
+    product
+}
+
 build_network_array <- function(X, pairs, L, r, k) {
     H <- array(0, c(nrow(X), k, r))
     for (j in seq_len(r)) {
-        coefficients <- pair_coefficient_matrix(L[, j], pairs, k)
-        H[, , j] <- X %*% coefficients
+        H[, , j] <- .gls_pair_product(X, pairs, L[, j], k)
     }
     H
 }
@@ -1049,19 +1063,6 @@ run_dss <- function(fit, X_train, time_covariate, season_covariate, X_all, time_
         sum(selected), P, val_loss[pick], 100 * relative_degradation[pick]))
     list(d = d, weighted_d = d, selected = selected, path = path, validation_loss = val_loss[pick], full_validation_loss = full_loss, 
         relative_validation_degradation = relative_degradation[pick], validation_draws = length(validation_draw_ids))
-}
-
-network_one_time <- function(x, pairs, L, beta, k, d = NULL) {
-    out <- numeric(k)
-    ids <- split(seq_len(nrow(pairs)), pairs$target)
-    for (a in seq_len(k)) {
-        ii <- ids[[as.character(a)]]
-        theta <- as.numeric(L[ii, , drop = FALSE] %*% beta)
-        if (!is.null(d)) 
-            theta <- theta * d[ii]
-        out[a] <- sum(theta * x[pairs$source[ii]])
-    }
-    out
 }
 
 factor_design_one_time <- function(x, pairs, L, k, d = NULL) {

@@ -1,5 +1,7 @@
 # Two-data, eight-method comparison
 
+> **Historical record.** The commands and comparison protocol below describe the earlier shared-innovation pilot. The scripts are available in the [archived revision](https://github.com/sj156/bdynets/tree/079e42ec58efe6c62cfab5a8b2d90cf5cb2bf58e/graphMoDE). See the [current study and convergence diagnostics](README.md#what-the-chains-explored) for the November results.
+
 The supplementary entry reuses the exact two registered core inputs. It adds EucMoDE, MoDE, PottsMoDE, STGNN and PNAR. It does not regenerate data, rerun existing Exp-W/SE-W/C draws, or extend beyond 4000. The six Bayesian models each use K=10, four chains and 2000 warmup iterations. Every failed validation cell stays in the selection table; no candidate fallback or scientific retry is permitted.
 
 The supplementary plan contains 138 scientific fits and six selection tasks:

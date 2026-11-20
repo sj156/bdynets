@@ -76,13 +76,14 @@ update_general_block <- function(ystar, X, Q, beta, omega, pairs, prior_var, mea
 }
 
 update_general_targets_with_reference <- function(ystar, X, Q, Y, beta, omega,
-    pairs, prior_var, means, current, discount, ref, pcn_step, cfg, ids = NULL) {
+    pairs, prior_var, means, current, discount, ref, pcn_step, cfg, ids = NULL,
+    H = NULL, offset = NULL) {
     k <- ncol(X); r <- ncol(beta)
     if (is.null(ids)) ids <- split(seq_len(nrow(pairs)), pairs$target)
     design <- .gls_target_design_cache(X, Q, beta, pairs, ids,
         static = cfg$static_network)
-    H <- build_network_array(X, pairs, current$L, r, k)
-    offset <- baseline_general(current$alpha, current$gamma, Q) +
+    if (is.null(H)) H <- build_network_array(X, pairs, current$L, r, k)
+    if (is.null(offset)) offset <- baseline_general(current$alpha, current$gamma, Q) +
         static_network(X, pairs, current$B)
     accepted <- proposed <- 0L
     for (targets in .gls_study_make_target_blocks(k, cfg$static_target_block_size)) {
@@ -107,11 +108,12 @@ update_general_targets_with_reference <- function(ystar, X, Q, Y, beta, omega,
             accepted <- accepted + 1L
         }
     }
-    c(current, list(reference = ref, accepted = accepted, proposed = proposed))
+    c(current, list(reference = ref, accepted = accepted, proposed = proposed,
+                    H = H, offset = offset))
 }
 
 fit_general_chain <- function(Y, X, Q, pairs, means, chain_id, signal, cfg = CFG,
-    draw_store = NULL) {
+    draw_store = NULL, affinity_features = NULL) {
     set.seed(method_seed("general MCMC", paste(signal, chain_id), cfg))
     start <- Sys.time()
     TT <- nrow(Y)
@@ -150,18 +152,29 @@ fit_general_chain <- function(Y, X, Q, pairs, means, chain_id, signal, cfg = CFG
     tau_prior_scale <- max(cfg$tau_prior_min_scale, cfg$tau_prior_multiplier * tau_initial)
     if (cfg$factor_evolution == "discount") tau_prior_scale <- cfg$discount_tau_scale
     # Keep the prior calculation above independent of this starting value.
-    tau_initial <- max(tau_initial, cfg$initial_tau)
+    fixed_tau <- cfg$fixed_tau
+    estimate_tau <- is.null(fixed_tau)
+    tau_initial <- if (estimate_tau) max(tau_initial, cfg$initial_tau) else fixed_tau
     discount <- if (cfg$factor_evolution == "discount") cfg$discount_grid[
         which.min(abs(cfg$discount_grid - weighted.mean(cfg$discount_grid, cfg$discount_prior)))] else NA_real_
-    initial_ref <- reference_path(Y, build_network_array(X, pairs, L, r, k),
-        baseline_general(alpha, gamma, Q) + static_network(X, pairs, B),
-        discount, cfg, keep_mean = TRUE)
+    H <- build_network_array(X, pairs, L, r, k)
+    offset <- baseline_general(alpha, gamma, Q) + static_network(X, pairs, B)
+    initial_ref <- reference_path(Y, H, offset, discount, cfg, keep_mean = TRUE)
     beta[,] <- initial_ref$mean_path
     attr(beta, "initial") <- rep(0, r)
+    ref <- initial_ref[c("W", "m", "C")]
     u <- rep(1, P)
     v <- tau_initial^2
     nu <- rinvgamma(P, 1, 1 + 1/u)
-    xi <- rinvgamma(1, 1, 1/tau_prior_scale^2 + 1/v)
+    if (estimate_tau) xi <- rinvgamma(1, 1, 1/tau_prior_scale^2 + 1/v)
+    learn_affinity <- !is.null(affinity_features)
+    affinity_sq <- pairs$affinity^2
+    if (learn_affinity) {
+        chi <- 1 / cfg$chi_rate
+        affinity_sq <- .gls_study_affinity_from_chi(affinity_features, chi)^2
+        chi_log_sd <- log(cfg$chi_proposal_sd)
+        chi_accepted <- 0L
+    }
     n_saved <- floor((cfg$n_iter - cfg$burn_mcmc)/cfg$thin)
     buffer <- .gls_draw_buffer(draw_store, chain_id, n_saved)
     S <- buffer$capacity
@@ -175,12 +188,16 @@ fit_general_chain <- function(Y, X, Q, pairs, means, chain_id, signal, cfg = CFG
     tau_save <- network_rms <- numeric(S)
     B_save <- matrix(NA_real_, S, P)
     discount_save <- reference_mean <- reference_variance <- initial_beta <- numeric(S)
-    draw_arrays <- function() list(
-        B = B_save, discount = discount_save, initial_beta = initial_beta,
-        reference_mean = reference_mean, reference_variance = reference_variance,
-        alpha = alpha_save, gamma = gamma_save, beta_path = beta_save,
-        final_beta = final_beta, L = L_save, amplitude = amplitude,
-        theta_average = theta_average, tau = tau_save, network_rms = network_rms)
+    if (learn_affinity) chi_save <- numeric(S)
+    draw_arrays <- function() {
+        draws <- list(B = B_save, discount = discount_save, initial_beta = initial_beta,
+            reference_mean = reference_mean, reference_variance = reference_variance,
+            alpha = alpha_save, gamma = gamma_save, beta_path = beta_save,
+            final_beta = final_beta, L = L_save, amplitude = amplitude,
+            theta_average = theta_average, tau = tau_save, network_rms = network_rms)
+        if (learn_affinity) draws$chi <- chi_save
+        draws
+    }
     covariance_accepted <- covariance_proposed <- 0L
     static_log_step <- log(cfg$static_pcn_initial_step)
     coefficient_trace <- data.frame(iteration = seq_len(cfg$n_iter), accepted = 0L,
@@ -188,58 +205,99 @@ fit_general_chain <- function(Y, X, Q, pairs, means, chain_id, signal, cfg = CFG
         warmup = seq_len(cfg$n_iter) <= cfg$burn_mcmc)
     si <- 0L
     last_saved_iteration <- 0L
-    move_sd <- log(cfg$scale_move_initial_sd)
+    if (estimate_tau) move_sd <- log(cfg$scale_move_initial_sd)
     accepted <- proposed <- 0L
+    scale_log_jump <- 0
+    interweave_steps <- cfg$interweave_steps
+    interweave_log_sd <- log(cfg$interweave_initial_sd)
+    interweave_accepted <- 0L
+    interweave_log_jump <- 0
     for (iter in seq_len(cfg$n_iter)) {
         iter_accepted <- iter_proposed <- 0L
         pcn_step <- exp(static_log_step)
-        H <- build_network_array(X, pairs, L, r, k)
-        base <- baseline_general(alpha, gamma, Q) + static_network(X, pairs, B)
-        discount_update <- update_discount(Y, H, base, beta, cfg)
+        # H, offset and ref follow the last accepted coefficient state.
+        discount_update <- update_discount(Y, H, offset, beta, cfg,
+            current_discount = discount, current_ref = ref)
         discount <- discount_update$discount; ref <- discount_update$ref
-        eta <- base + network_contribution(H, beta)
+        eta <- offset + network_contribution(H, beta)
         zeta <- as.numeric(eta) - log(as.numeric(RNB))
         omega <- matrix(BayesLogit::rpg(length(zeta), h = as.numeric(Y) + as.numeric(RNB), z = zeta), TT, k)
         omega <- pmax(omega, 1e-10)
         ystar <- log(RNB) + (Y - RNB)/(2 * omega)
-        prior_var <- v * u * pairs$affinity^2
+        prior_var <- v * u * affinity_sq
         if (any(!is.finite(prior_var) | prior_var <= 0)) stop("Non-finite shrinkage variance.")
         for (ss in seq_len(cfg$state_block_substeps)) {
-            H <- build_network_array(X, pairs, L, r, k)
-            offset <- baseline_general(alpha, gamma, Q) + static_network(X, pairs, B)
             beta <- ffbs_factor_identified(ystar - offset, H, omega, W = ref$W, backend = cfg$backend)
             block <- update_general_targets_with_reference(ystar, X, Q, Y, beta, omega,
                 pairs, prior_var, means, list(alpha = alpha, gamma = gamma, B = B, L = L),
-                discount, ref, pcn_step, cfg, ids)
+                discount, ref, pcn_step, cfg, ids, H = H, offset = offset)
             alpha <- block$alpha; gamma <- block$gamma; L <- block$L; B <- block$B
-            ref <- block$reference
+            ref <- block$reference; H <- block$H; offset <- block$offset
             iter_accepted <- iter_accepted + block$accepted
             iter_proposed <- iter_proposed + block$proposed
         }
         covariance_accepted <- covariance_accepted + iter_accepted
         covariance_proposed <- covariance_proposed + iter_proposed
+        iter_interweave_accepted <- 0L
+        if (interweave_steps > 0L) {
+            for (step in seq_len(interweave_steps)) {
+                iw <- interweave_general_loading_factor(Y, H, offset, beta, L,
+                    prior_var, discount, ref, exp(interweave_log_sd), cfg)
+                beta <- iw$beta; L <- iw$L; ref <- iw$reference; H <- iw$H
+                iter_interweave_accepted <- iter_interweave_accepted + iw$accepted
+                interweave_log_jump <- interweave_log_jump + iw$jump
+            }
+            interweave_accepted <- interweave_accepted + iter_interweave_accepted
+        }
         L2 <- B^2 + rowSums(L^2)/dynamic_scale(cfg)^2
         for (ss in seq_len(cfg$shrinkage_substeps)) {
-            u <- rinvgamma(P, (qdim + 1)/2, 1/nu + L2/(2 * v * pairs$affinity^2))
+            u <- rinvgamma(P, (qdim + 1)/2, 1/nu + L2/(2 * v * affinity_sq))
             nu <- rinvgamma(P, 1, 1 + 1/u)
-            v <- rinvgamma(1, (qdim * P + 1)/2, 1/xi + 0.5 * sum(L2/(u * pairs$affinity^2)))
+            if (estimate_tau) {
+                v <- rinvgamma(1, (qdim * P + 1)/2, 1/xi + 0.5 * sum(L2/(u * affinity_sq)))
+                xi <- rinvgamma(1, 1, 1/tau_prior_scale^2 + 1/v)
+            }
+        }
+        if (estimate_tau) {
+            move <- joint_horseshoe_scale_move(v, u, tau_prior_scale, exp(move_sd), cfg$scale_move_steps)
+            scale_log_jump <- scale_log_jump + abs(log(move$v) - log(v))/2
+            v <- move$v
+            u <- move$u
+            accepted <- accepted + move$accepted
+            proposed <- proposed + cfg$scale_move_steps
+            nu <- rinvgamma(P, 1, 1 + 1/u)
             xi <- rinvgamma(1, 1, 1/tau_prior_scale^2 + 1/v)
         }
-        move <- joint_horseshoe_scale_move(v, u, tau_prior_scale, exp(move_sd), cfg$scale_move_steps)
-        v <- move$v
-        u <- move$u
-        accepted <- accepted + move$accepted
-        proposed <- proposed + cfg$scale_move_steps
-        nu <- rinvgamma(P, 1, 1 + 1/u)
-        xi <- rinvgamma(1, 1, 1/tau_prior_scale^2 + 1/v)
+        if (learn_affinity) {
+            chi_move <- .gls_study_update_chi(chi, affinity_features, L2, u, v,
+                exp(chi_log_sd), cfg, qdim = qdim)
+            if (chi_move$accepted) {
+                chi <- chi_move$chi
+                affinity_sq <- .gls_study_affinity_from_chi(affinity_features, chi)^2
+            }
+            chi_accepted <- chi_accepted + chi_move$accepted
+        }
         if (iter <= cfg$burn_mcmc) {
+            if (learn_affinity) {
+                gain <- cfg$chi_adapt_rate/sqrt(iter)
+                chi_log_sd <- clamp(chi_log_sd + gain *
+                    (chi_move$accepted - cfg$chi_target_acceptance), log(0.002), log(0.5))
+            }
             static_gain <- cfg$static_pcn_adapt_rate/sqrt(iter)
             static_log_step <- clamp(static_log_step + static_gain *
                 (iter_accepted/max(iter_proposed, 1L) - cfg$static_pcn_target_acceptance),
                 log(cfg$static_pcn_min_step), log(cfg$static_pcn_max_step))
-            gain <- cfg$scale_move_adapt_rate/sqrt(iter)
-            move_sd <- clamp(move_sd + gain * (move$accepted/cfg$scale_move_steps - cfg$scale_move_target_acceptance), log(cfg$scale_move_min_sd),
-                log(cfg$scale_move_max_sd))
+            if (estimate_tau) {
+                gain <- cfg$scale_move_adapt_rate/sqrt(iter)
+                move_sd <- clamp(move_sd + gain * (move$accepted/cfg$scale_move_steps -
+                    cfg$scale_move_target_acceptance), log(cfg$scale_move_min_sd), log(cfg$scale_move_max_sd))
+            }
+            if (interweave_steps > 0L) {
+                gain <- cfg$interweave_adapt_rate/sqrt(iter)
+                interweave_log_sd <- clamp(interweave_log_sd + gain *
+                    (iter_interweave_accepted/interweave_steps - cfg$interweave_target_acceptance),
+                    log(cfg$interweave_min_sd), log(cfg$interweave_max_sd))
+            }
         }
         coefficient_trace[iter, c("accepted", "proposed", "acceptance", "pcn_step", "next_pcn_step")] <-
             list(iter_accepted, iter_proposed, iter_accepted/max(iter_proposed, 1L),
@@ -268,8 +326,10 @@ fit_general_chain <- function(Y, X, Q, pairs, means, chain_id, signal, cfg = CFG
             second_dynamic <- rowSums((L %*% (crossprod(beta)/TT)) * L)
             amplitude[si, ] <- sqrt(pmax(0, B^2 + 2*B*mean_dynamic + second_dynamic))
             theta_average[si, ] <- B + mean_dynamic
-            tau_save[si] <- sqrt(v)
-            network_rms[si] <- sqrt(mean((static_network(X, pairs, B) + network_contribution(build_network_array(X, pairs, L, r, k), beta))^2))
+            tau_save[si] <- if (estimate_tau) sqrt(v) else fixed_tau
+            if (learn_affinity) chi_save[si] <- chi
+            network_rms[si] <- sqrt(mean((offset - baseline_general(alpha, gamma, Q) +
+                network_contribution(H, beta))^2))
             if (write_draws) {
                 last_saved_iteration <- iter
                 if (si == S) {
@@ -291,13 +351,24 @@ fit_general_chain <- function(Y, X, Q, pairs, means, chain_id, signal, cfg = CFG
         coefficient_trace = coefficient_trace, static_pcn_final_step = exp(static_log_step),
         covariance_accepted = covariance_accepted, covariance_proposed = covariance_proposed,
         chain_id = chain_id, worker_pid = Sys.getpid(), r_nb_t = r_nb_t,
-        tau_initial = tau_initial, tau_prior_scale = tau_prior_scale, scale_move_acceptance = accepted/proposed, elapsed = as.numeric(difftime(Sys.time(),
-            start, units = "secs")))
+        tau_initial = tau_initial, tau_prior_scale = if (estimate_tau) tau_prior_scale else NA_real_,
+        scale_move_acceptance = if (estimate_tau) accepted/proposed else NA_real_,
+        scale_move_mean_abs_log_jump = if (estimate_tau) scale_log_jump/cfg$n_iter else NA_real_,
+        interweave_acceptance = if (interweave_steps > 0L)
+            interweave_accepted/(as.double(interweave_steps) * cfg$n_iter) else NA_real_,
+        interweave_mean_abs_log_jump = if (interweave_steps > 0L)
+            interweave_log_jump/(as.double(interweave_steps) * cfg$n_iter) else NA_real_,
+        elapsed = as.numeric(difftime(Sys.time(), start, units = "secs")))
+    if (learn_affinity) {
+        metadata$chi_acceptance <- chi_accepted/cfg$n_iter
+        metadata$chi_final_step <- exp(chi_log_sd)
+    }
     if (write_draws) return(c(metadata, list(draw_chunks = .gls_draw_chunks(buffer))))
     .gls_merge_chain_draws(draw_arrays(), metadata)
 }
 
-fit_general_chains_psock <- function(ids, workers, Y, X, Q, pairs, means, signal, cfg, draw_store) {
+fit_general_chains_psock <- function(ids, workers, Y, X, Q, pairs, means, signal, cfg,
+    draw_store, affinity_features) {
     cluster <- parallel::makePSOCKcluster(workers, rscript_args = "--vanilla", outfile = "")
     on.exit(try(parallel::stopCluster(cluster), silent = TRUE), add = TRUE)
 
@@ -313,28 +384,31 @@ fit_general_chains_psock <- function(ids, workers, Y, X, Q, pairs, means, signal
     environment(initialize) <- baseenv()
     parallel::clusterCall(cluster, initialize, unique(c(dirname(package_path), .libPaths())), package_path)
     # Use argument names distinct from both parLapply() and clusterApply().
-    worker <- function(chain_id, observations, lags, covariates, pairs, means, signal, cfg, draw_store) {
+    worker <- function(chain_id, observations, lags, covariates, pairs, means, signal, cfg,
+        draw_store, affinity_features) {
         fit_general_chain(observations, lags, covariates, pairs, means, chain_id, signal, cfg,
-            draw_store = draw_store)
+            draw_store = draw_store, affinity_features = affinity_features)
     }
     environment(worker) <- environment(fit_general_chain)
     parallel::parLapply(cluster, ids, worker,
         observations = Y, lags = X, covariates = Q, pairs = pairs, means = means,
-        signal = signal, cfg = cfg, draw_store = draw_store)
+        signal = signal, cfg = cfg, draw_store = draw_store, affinity_features = affinity_features)
 }
 
-fit_general_gls <- function(Y, X, Q, pairs, means, signal, cfg = CFG, draw_store = NULL) {
+fit_general_gls <- function(Y, X, Q, pairs, means, signal, cfg = CFG, draw_store = NULL,
+    affinity_features = NULL) {
     start <- Sys.time()
     ids <- seq_len(cfg$n_chains)
     worker <- function(ch) fit_general_chain(Y, X, Q, pairs, means, ch, signal, cfg,
-        draw_store = draw_store)
+        draw_store = draw_store, affinity_features = affinity_features)
     cores <- parallel::detectCores(logical = FALSE)
     if (is.na(cores) || cores < 1L) cores <- 1L
     workers <- if (isTRUE(cfg$parallel_chains)) min(length(ids), cores) else 1L
     chains <- if (workers == 1L) {
         lapply(ids, worker)
     } else if (.Platform$OS.type == "windows") {
-        fit_general_chains_psock(ids, workers, Y, X, Q, pairs, means, signal, cfg, draw_store)
+        fit_general_chains_psock(ids, workers, Y, X, Q, pairs, means, signal, cfg,
+            draw_store, affinity_features)
     } else {
         parallel::mclapply(ids, worker, mc.cores = workers)
     }
@@ -348,7 +422,7 @@ fit_general_gls <- function(Y, X, Q, pairs, means, signal, cfg = CFG, draw_store
 }
 
 .gls_combine_general_chains <- function(chains, pairs, cfg, elapsed) {
-    list(label = "GLS, all ordered pairs", B = do.call(rbind, lapply(chains, `[[`, "B")), discount = unlist(lapply(chains, `[[`, "discount")), initial_beta = unlist(lapply(chains, `[[`, "initial_beta")), reference_mean = unlist(lapply(chains, `[[`, "reference_mean")), reference_variance = unlist(lapply(chains, `[[`, "reference_variance")), covariance_acceptance = vapply(chains, `[[`, numeric(1), "covariance_acceptance"),
+    fit <- list(label = "GLS, all ordered pairs", B = do.call(rbind, lapply(chains, `[[`, "B")), discount = unlist(lapply(chains, `[[`, "discount")), initial_beta = unlist(lapply(chains, `[[`, "initial_beta")), reference_mean = unlist(lapply(chains, `[[`, "reference_mean")), reference_variance = unlist(lapply(chains, `[[`, "reference_variance")), covariance_acceptance = vapply(chains, `[[`, numeric(1), "covariance_acceptance"),
         coefficient_trace = do.call(rbind, lapply(chains, `[[`, "coefficient_trace")),
         static_pcn_final_step = vapply(chains, `[[`, numeric(1), "static_pcn_final_step"),
         covariance_accepted = vapply(chains, `[[`, integer(1), "covariance_accepted"),
@@ -359,6 +433,8 @@ fit_general_gls <- function(Y, X, Q, pairs, means, signal, cfg = CFG, draw_store
         `[[`, "beta_path")), L = bind_array3(lapply(chains, `[[`, "L")), amplitude = do.call(rbind, lapply(chains, `[[`,
         "amplitude")), theta_average = do.call(rbind, lapply(chains, `[[`, "theta_average")), tau = unlist(lapply(chains,
         `[[`, "tau")), network_rms = unlist(lapply(chains, `[[`, "network_rms")), r_nb_t = chains[[1L]]$r_nb_t, elapsed = elapsed)
+    if (!is.null(chains[[1L]]$chi)) fit$chi <- unlist(lapply(chains, `[[`, "chi"))
+    fit
 }
 
 predict_general_gls <- function(fit, X, Q, Y, rows, conditioning_rows = integer(0), d = NULL, label = fit$label, signal,
@@ -536,7 +612,9 @@ basic_convergence <- function(fit, signal, cfg = CFG) {
     add_matrix <- function(x, type, labels) for (j in seq_len(ncol(x))) add_vector(labels[j], type, x[, j])
     if (!is.null(fit$B)) add_matrix(fit$B, "static_propagation", paste0("B[", fit$pairs$pair, "]"))
     if (!is.null(fit$discount) && all(is.finite(fit$discount))) add_vector("discount", "discount", fit$discount)
-    add_vector("tau", "tau", fit$tau)
+    tau_is_fixed <- !is.null(fit$control$fixed_tau)
+    add_vector("tau", if (tau_is_fixed) "tau_fixed" else "tau", fit$tau)
+    if (!is.null(fit$chi)) add_vector("chi", "chi", fit$chi)
     add_vector("network_RMS", "network_RMS", fit$network_rms)
     add_matrix(fit$alpha, "alpha", paste0("alpha[e", seq_len(ncol(fit$alpha)), "]"))
     if (dim(fit$gamma)[3L]) {
@@ -548,9 +626,13 @@ basic_convergence <- function(fit, signal, cfg = CFG) {
     add_matrix(fit$theta_average, "mean_theta", paste0("mean_theta[", pair_names, "]"))
     out <- lapply(names(quantities), function(nm) {
         z <- quantities[[nm]]
-        mat <- do.call(cbind, lapply(split(z, fit$chain_id), identity))
-        rhat <- split_rhat(mat)
-        ess <- acf_ess(mat)
+        if (tau_is_fixed && nm == "tau") {
+            rhat <- ess <- NA_real_
+        } else {
+            mat <- do.call(cbind, lapply(split(z, fit$chain_id), identity))
+            rhat <- split_rhat(mat)
+            ess <- acf_ess(mat)
+        }
         data.frame(signal = signal, ParameterType = unname(types[nm]), Parameter = nm, SplitRhat = rhat, ESS = ess, PassRhat = is.finite(rhat) &&
             rhat <= cfg$mcmc_rhat_threshold, PassESS = is.finite(ess) && ess >= cfg$mcmc_ess_threshold)
     })

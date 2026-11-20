@@ -40,6 +40,8 @@ gls_all_pairs <- function(graph, control = gls_control()) {
 #'   [gls_control()] to fit three chains concurrently when at least three
 #'   physical cores are detected. Windows uses independent socket workers.
 #'   Unix uses forked workers. Each chain records its worker process ID.
+#'   With `affinity_model = "graph_laplace"`, the fit also retains the
+#'   candidate-aligned `affinity_features` and posterior `chi` draws.
 #' @export
 gls_fit_general <- function(
     Y, graph, covariates, train_rows = seq_len(nrow(Y)), pre_history = NULL,
@@ -49,6 +51,9 @@ gls_fit_general <- function(
   Y <- .validate_count_matrix(Y)
   graph <- .validate_gls_graph(graph)
   control <- .validate_gls_control(control)
+  if (identical(control$scale_move_method, "slice"))
+    stop("Use the archived pilot package to refit with the retired general GLS slice update.",
+      call. = FALSE)
   if (ncol(Y) != nrow(graph$edges)) {
     stop("The columns of Y must match graph$edges.", call. = FALSE)
   }
@@ -79,6 +84,17 @@ gls_fit_general <- function(
       !nrow(pairs)) {
     stop("pairs must be a nonempty all-pairs GLS dictionary.", call. = FALSE)
   }
+  affinity_features <- NULL
+  if (control$affinity_model == "graph_laplace") {
+    for (index in pairs[c("target", "source")]) {
+      if (!is.numeric(index) || any(!is.finite(index) | index != floor(index) |
+          index < 1L | index > ncol(Y)))
+        stop("Graph-Laplace affinity needs valid target and source indices.", call. = FALSE)
+    }
+    affinity_features <- .gls_study_make_graph_laplace_feature(
+      graph, pairs, control$graph_laplace_rho0)
+    attr(affinity_features, "edge_adjacency") <- NULL
+  }
   raw_lags <- make_lags(Y, pre_history, rep(0, ncol(Y)), rep(1, ncol(Y)), 1L)
   standardized <- standardize_lags_from_train(raw_lags, train_rows)
   X <- standardized$lags[, , 1L]
@@ -91,8 +107,9 @@ gls_fit_general <- function(
   fit <- fit_general_gls(
     Y[train_rows, , drop = FALSE], X[train_rows, , drop = FALSE],
     covariates[train_rows, , drop = FALSE], pairs, means, signal, control,
-    draw_store
+    draw_store = draw_store, affinity_features = affinity_features
   )
+  fit$affinity_features <- affinity_features
   fit$label <- label
   fit$Y <- Y
   fit$X <- X
@@ -172,7 +189,8 @@ summary.gls_general_fit <- function(object, ...) {
     posterior_inclusion_probability = colMeans(
       object$amplitude > object$control$delta_A
     ),
-    all_converged = all(diagnostics$Converged), diagnostics = diagnostics
+    all_converged = all(diagnostics$Converged[diagnostics$ParameterType != "tau_fixed"]),
+    diagnostics = diagnostics
   ), class = c("summary.gls_general_fit", "list"))
 }
 

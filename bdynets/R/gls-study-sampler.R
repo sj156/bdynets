@@ -222,20 +222,30 @@
          accepted = 0L, jump = 0)
 }
 
-.gls_study_log_chi_target_q <- function(q, Fg, S_pair, u_local, u_tau, cfg) {
-  chi <- exp(q); g <- .gls_study_affinity_from_chi(Fg, chi); r <- cfg$factor_dim
+.gls_study_log_chi_target_q <- function(q, Fg, S_pair, u_local, u_tau, cfg,
+                                       qdim = cfg$factor_dim + 1L) {
+  chi <- exp(q)
+  if (any(!is.finite(chi) | chi <= 0)) return(-Inf)
+  g <- .gls_study_affinity_from_chi(Fg, chi, reject_invalid = TRUE)
+  if (is.null(g)) return(-Inf)
+  g2 <- g^2
+  variance <- u_tau * u_local * g2
+  if (any(!is.finite(g2) | g2 <= 0 | !is.finite(variance) | variance <= 0))
+    return(-Inf)
   logprior <- sum((cfg$chi_shape - 1) * log(chi) - cfg$chi_rate * chi)
-  loading_prior <- -(r + 1) * sum(log(g)) -
-    0.5 / u_tau * sum(S_pair / (u_local * g^2))
-  logprior + loading_prior + sum(q)
+  loading_prior <- -qdim * sum(log(g)) -
+    0.5 / u_tau * sum(S_pair / (u_local * g2))
+  target <- logprior + loading_prior + sum(q)
+  if (is.finite(target)) target else -Inf
 }
 
-.gls_study_update_chi <- function(chi, Fg, S_pair, u_local, u_tau, proposal_sd, cfg) {
+.gls_study_update_chi <- function(chi, Fg, S_pair, u_local, u_tau, proposal_sd, cfg,
+                                  qdim = cfg$factor_dim + 1L) {
   if (!length(chi)) return(list(chi = chi, accepted = 0L, proposed = 0L))
   q <- log(chi); qp <- q + rnorm(length(q), 0, proposal_sd)
-  loga <- .gls_study_log_chi_target_q(qp, Fg, S_pair, u_local, u_tau, cfg) -
-    .gls_study_log_chi_target_q(q, Fg, S_pair, u_local, u_tau, cfg)
-  accept <- log(runif(1L)) < loga
+  loga <- .gls_study_log_chi_target_q(qp, Fg, S_pair, u_local, u_tau, cfg, qdim) -
+    .gls_study_log_chi_target_q(q, Fg, S_pair, u_local, u_tau, cfg, qdim)
+  accept <- isTRUE(log(runif(1L)) < loga)
   list(chi = if (accept) exp(qp) else chi,
        accepted = as.integer(accept), proposed = 1L)
 }

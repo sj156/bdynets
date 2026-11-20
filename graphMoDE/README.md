@@ -1,85 +1,76 @@
-# graphMoDE：当前可运行核心代码
+# graphMoDE simulation results
 
-本目录提供 Exp-direct W、SE-direct W（均学习带宽 h）和 C 的可复现核心试跑，以及自定义图与计数序列接口。短示例不是收敛证据，也不是论文结论。已加入同两份冻结数据上的五种补充方法入口，详见 [COMPARISON.md](COMPARISON.md)；补充 R 数值入口与 STGNN 导入测试已通过，完整八方法结果尚未完成。初轮 SE 边权下溢现采用经用户批准、有误差诊断的 double 数值近似；完整核心模拟与统计诊断尚未完成，详见 [KNOWN_ISSUES.md](KNOWN_ISSUES.md)。
+On November 14, 2026 (Shanghai time), all eight methods completed fresh fits on the two synthetic road networks D01 and D02. **SE-W had the highest partition agreement on both datasets. None of the 12 Bayesian fits passed the registered convergence checks.** The leading 48-step forecasts were close, and the method with the lowest forecast error differed between datasets.
 
-完整八方法的单命令入口及固定第三方依赖见 [COMPARISON.md](COMPARISON.md#one-command-full-entry)。
+## Partition recovery and 48-step forecasts
 
-## 快速开始
+Each dataset has 121 sites, 120 direct road edges and five generating groups. The five seasonal Poisson profiles differ in phase and have the same mean count of 25 over a 24-step cycle. All methods trained on times 1–168 and forecast the same 48 held-out times, 169–216. These are two independent realizations of one design.
 
-需要 R、Python 3（仅标准库），以及已安装的 R 包 `BayesLogit`、`posterior`、`digest`、`jsonlite`、`microbenchmark`。程序不会自动安装或升级依赖。Linux/macOS 均可用；macOS 在核心运行期间自动使用进程绑定的 `caffeinate`。
+ARI is the adjusted Rand index against the generating groups (higher is better). Groups is the number of groups in the representative partition. For each Bayesian fit, the Dahl representative is the sampled partition closest to the pooled pairwise co-membership frequencies across 8,000 retained draws. STGNN uses four fitted restart partitions. PNAR only predicts counts. RMSE is the root mean squared count error over all 121 sites and 48 horizons (lower is better).
 
-在仓库根目录运行：
+| Method | D01 ARI | D01 groups | D01 RMSE | D02 ARI | D02 groups | D02 RMSE |
+|:--|--:|--:|--:|--:|--:|--:|
+| Exp-W | 0.837 | 7 | 4.9864 | 0.865 | 7 | 5.0248 |
+| SE-W | 0.893 | 7 | 4.9867 | 0.890 | 7 | 5.0241 |
+| C | 0.863 | 7 | 4.9871 | 0.828 | 7 | 5.0271 |
+| EucMoDE | 0.587 | 3 | 4.9906 | 0.493 | 3 | 5.0348 |
+| MoDE | 0.542 | 3 | 4.9970 | 0.412 | 3 | 5.0390 |
+| PottsMoDE | 0.625 | 3 | 4.9859 | 0.877 | 7 | 5.0254 |
+| STGNN | 0.032 | 5 | 5.0572 | 0.075 | 3 | 5.0978 |
+| PNAR | — | — | 5.0403 | — | — | 5.0830 |
 
-```sh
-python3 graphMoDE/run.py test
-python3 graphMoDE/run.py example --output "$HOME/graphmode-small-example"
-```
+**Partition recovery.** SE-W attained ARIs of 0.893 and 0.890, although its representative partition contained seven groups on each dataset. Binary connectivity (C) scored higher than Exp-W on D01 (0.863 versus 0.837) and lower on D02 (0.828 versus 0.865). PottsMoDE recovered three groups on D01 and seven on D02, with ARIs of 0.625 and 0.877.
 
-第二条命令实际生成 12 点、48 个训练时刻的合成数据，对三个方法各执行 8 步并保存输入与状态。使用新的、不存在的输出目录。它只验证输入与采样入口，不估计精度。
+**Forecast accuracy.** PottsMoDE had the lowest RMSE on D01 (4.9859), and SE-W had the lowest on D02 (5.0241). Exp-W ranked second on both, trailing by about 0.0005 and 0.0007 counts in RMSE, respectively. STGNN and PNAR had larger forecast errors than all six Bayesian methods on both panels. The test period measures point-forecast error. Predictive interval coverage was not evaluated.
 
-核心试跑的一条命令：
+## What the chains explored
 
-```sh
-python3 graphMoDE/run.py core --output "$HOME/graphmode-core-pilot"
-```
+All 48 final Bayesian chains completed 4,000 sweeps each, including 2,000 warmup sweeps. The four chains for each fit started with 1, 3, 7 and 10 occupied groups. **Every chain kept its own starting group count for all 4,000 sweeps.** Individual sites could move between occupied groups. The pooled mean of 5.25 occupied groups is exactly (1 + 3 + 7 + 10) / 4. Its proximity to the five generating groups tells us nothing about recovery of the group count.
 
-该命令执行已冻结的 2 份数据 × 3 方法 × 4 链；耗时可能为数小时。最多 6 个 R 工作进程，每个进程设置单数值线程。运行前确认机器没有其他大计算任务，并至少留出 42 GiB 磁盘空间（输出上限 30 GiB，保留 12 GiB）。数据、日志与链写入外部目录；请勿提交它们。
+The table gives rank-normalized split R̂ and bulk and tail effective sample sizes (ESS) for the mean baseline discount across occupied experts in each draw. ΔPSM is the largest pairwise root mean squared difference between the chains’ posterior similarity matrices, over distinct site pairs. These matrices record how often each pair of sites shares a group, so the diagnostic is invariant to class labels. The registered limits were R̂ < 1.01, both ESS values ≥ 400, and ΔPSM ≤ 0.10.
 
-另有 `smoke --output NEW_DIRECTORY`：使用与正式试跑不同的种子，对全部 24 条链各运行 4 步，只检查完整入口，不执行收敛诊断。
+| Dataset | Bayesian method | R̂ | Bulk ESS | Tail ESS | ΔPSM |
+|:--|:--|--:|--:|--:|--:|
+| D01 | Exp-W | 1.821 | 5.97 | 25.74 | 0.916 |
+| D01 | SE-W | 1.949 | 5.64 | 22.40 | 0.915 |
+| D01 | C | 1.882 | 5.69 | 10.62 | 0.921 |
+| D01 | EucMoDE | 2.746 | 4.68 | 18.97 | 0.912 |
+| D01 | MoDE | 2.930 | 4.58 | 11.65 | 0.885 |
+| D01 | PottsMoDE | 1.951 | 5.50 | 25.17 | 0.913 |
+| D02 | Exp-W | 2.171 | 5.14 | 11.31 | 0.915 |
+| D02 | SE-W | 1.431 | 8.33 | 30.95 | 0.913 |
+| D02 | C | 2.063 | 5.34 | 18.28 | 0.922 |
+| D02 | EucMoDE | 1.846 | 5.96 | 30.84 | 0.904 |
+| D02 | MoDE | 2.054 | 5.47 | 20.30 | 0.872 |
+| D02 | PottsMoDE | 1.852 | 5.87 | 15.70 | 0.919 |
 
-## 冻结的核心试跑
+ΔPSM ranged from 0.872 to 0.922. The chains therefore disagreed substantially about which sites belonged together as well as about how many groups were occupied. The ARIs and forecast errors describe these runs. With this dependence on initialization and only two datasets, the comparison does not establish a general ranking of the methods.
 
-- Figure 2 连续双螺旋道路，121 点、120 条物理直接边；五区域大小 `(30,20,21,20,30)`。区域内间距生成式不变，边界因子为 `(3,4,3,2)`。
-- 静态季节 Poisson DGP，振幅 `.05`，周期 24，每个相位完整周期的强度均值严格为 25。五相位随机映射区域；训练 168，测试 48。两份数据独立生成，三个方法配对使用同一份数据。
-- 真值 5 组，拟合 `K=10`。四链初始占用数为 `1/3/7/10`，初始化仅用训练输入与独立种子；不向拟合传入真实标签，不强制最终占用 5。
-- W 使用全物理边的 `exp(-d/h)` 或 `exp(-(d/h)^2)`，每次 h 提议都把正边权归一为均值 1。`h=d_ref*eta`，`eta~Gamma(shape=4,rate=4)`，`d_ref` 为固定物理边长中位数。不使用 NN 删除边、低秩近似、权重裁剪或固定 h 的 W。
-- κ、q、类特异指导强度 a 均继续学习。两个 W 的 κ 对数先验中心共用固定的 Exp-reference（`h=d_ref`），不会随 h 重新校准；C 保留按自身 0/1 邻接的边上相关中位数 .5 校准，本轮道路对应 κ₀=2.0000。保留原 `q~Gamma(2,rate=20000)`、κ 对数标准差 1 和既有采样核、提议尺度、4 次 gate scan、42 时刻 expert block、contrast ESS 与 factor cache。
-- 每链先运行总 4000 步，前 2000 为预热，不适应或重调。控制器在 4000 步诊断后停止，**不自动启动 8000 步**。诊断可建议延长，但须另有明确决定；若决定延长，所有六个拟合从原状态及 RNG 继续到总 8000 步，仍仅丢弃原前 2000 步。原轨迹、诊断与 receipt 保留。
-- rank/folded Rhat ≤1.01、bulk/tail ESS ≥400，所有链对 PSM RMS ≤.05。诊断含占用数、排序组比例、排序指导强度、节点均值、似然、log q、log κ，以及 W 的 log h。与旧标准一致，同值离散常数标记为不可提供混合信息；不同链常数或连续常数不能通过。
-- 总 8000 步仍不达标则停止，不扩批、不换种子、不删除失败、不调整先验。诊断门槛与哪个方法胜出无关。完整 Exp-W、SE-W、C、EucMoDE、MoDE、PottsMoDE、STGNN、PNAR 的五份新数据批量需另作决定。
+## Models, fitting and validation
 
-种子及全部配置在生成任何模拟数据前写入 `registration.rds/json`、`seeds.csv`、`jobs.csv`。正式种子范围 `2031101501–2031101564`；入口 smoke 为 `2031102501–2031102564`。已有五份登记及退休种子账本检查无冲突。
+- **Exp-W, SE-W, C and EucMoDE** used independent class-score Gaussian processes with a softmax gate, smoothness 3 and covariance multiplier 1. Exp-W and SE-W learned the bandwidth of the raw weights exp(−d/h) and exp(−(d/h)²) on the same direct edges. C used binary adjacency. EucMoDE used a dense planar Matérn covariance. All four range priors were calibrated from geometry alone.
+- **MoDE and PottsMoDE** shared the same dynamic Poisson experts as the four GP methods. MoDE used a global symmetric Dirichlet prior with concentration 0.1 per class. PottsMoDE used raw exponential edge weights at fixed bandwidth 1. Training-prefix forecasts selected interaction strength 4 on both datasets from {0.25, 1, 4}.
+- **All six Bayesian methods** had fitted capacity K = 10, independent Beta(49, 1) baseline discounts, Poisson adjustment c = log(2), initial mean (log(25), 0, 0) and initial covariance diag(1, 0.5, 0.5). The Metropolis-corrected Pólya–Gamma state proposals used ρ = 1 and 24-time-point blocks. Each retained draw contributed four simulated future histories, updating the guide with simulated counts and averaging conditional one-step means at each horizon.
+- **STGNN and PNAR** used the fixed exponential reference graph and their respective author implementations. Selection used 48-step forecasts from training origins 96 and 120. PNAR selected lag 24 on both panels. STGNN selected five slots and 25 epochs on D01, three slots and 150 epochs on D02, and pooling-loss weight 1 on both. The generating labels and final test counts were reserved for evaluation.
 
-## 自定义实例接口与维度
+All 168 registered tasks completed, including training-prefix validation, final fits and integration checks. The 48 Bayesian chains are included in that total. The following files contain the reported values at full precision and the source and input identifiers.
 
-```r
-source("graphMoDE/R/api.R")
-gm <- graphmode_load("graphMoDE")
-x <- gm$graphmode_input(Y, adjacency, edge_lengths, Fmat, Ffuture, ids)
-fit <- gm$graphmode_make_fit(x, "Exp-W") # 或 "SE-W", "C"
-```
+- [Comparison metrics](studies/section41-eight-20261113/results/comparison.csv) and [run manifest](studies/section41-eight-20261113/results/run-manifest.json)
+- [Chain summaries](studies/section41-eight-20261113/results/chains.csv), [scalar diagnostics](studies/section41-eight-20261113/results/diagnostics.csv) and [pairwise PSM differences](studies/section41-eight-20261113/results/pairs.csv)
+- [Status of all 168 tasks](studies/section41-eight-20261113/results/task-status.csv)
 
-| 输入 | 维度与约定 |
-|---|---|
-| `Y` | `n × T`，行是节点，列是训练时间；有限非负整数，不接受转置或缺失值 |
-| `adjacency` | `n × n`，对称 0/1 物理邻接，零对角；所有给定物理边保留 |
-| `edge_lengths` | `n × n`，对称；邻接边上严格正，非边与对角为 0；表示直接物理边长度，不填最短路全距离 |
-| `Fmat` | `T × p`，与 Y 列严格对齐；默认示例为截距、sin、cos 三列 |
-| `Ffuture` | `H × p`，未来设计；列顺序与 Fmat 相同 |
-| `ids` | 长度 n，唯一节点 ID；所有矩阵共用同一节点行序 |
+## Package functions and study scripts
 
-当前公开构造器固定 `K=10`，要求 `n≥10`，默认随机游走动态 `G=I_p`、`W=qI_p`。默认 `m0=(log(max(.1,mean(Y))),0,...)`，`C0=diag(1,.5,...)`；可向 `graphmode_make_fit` 显式传入 `m0` 与 `C0`，特别是设计的第一列不是截距时。无须提供真实分组或坐标。图可以是任意给定物理图；本次核心试跑特指连续道路。自定义实例不得被当作已验证的新统计设计。
+| Package source | Role in this study |
+|:--|:--|
+| [gmde-discount.R](../bdynets/R/gmde-discount.R) | `gmde_discount_guide()` replays the Poisson discount guide. `gmde_transition_log_density()` evaluates Gaussian state transitions. |
+| [gmde-dynamic.R](../bdynets/R/gmde-dynamic.R) | `gmde_dynamic_fit()` fits one Bayesian chain using the selected allocation model. |
+| [gmde-dynamic-comparison.R](../bdynets/R/gmde-dynamic-comparison.R) | `gmde_dynamic_predict()` averages forecasts over simulated future histories. This file also contains the Euclidean and Potts helpers. |
+| [gmde-dynamic-diagnostics.R](../bdynets/R/gmde-dynamic-diagnostics.R) | `gmde_dynamic_diagnostics()` summarizes the retained chains and compares their posterior similarity matrices. |
+| [gmde-pnar-benchmark.R](../bdynets/R/gmde-pnar-benchmark.R) | Internal helpers fit the external PNAR model and compute recursive count forecasts. |
 
-完整初始化及调用演示见 [`examples/small.R`](examples/small.R)。生产链应有四个分散初值及足够诊断；该短脚本不能替代它们。本轮诊断入口针对 121 点、168 时刻的冻结道路设计；自定义 n/T 的用户可使用采样 API，但需另建与输入匹配的监控节点及诊断报告。
+The package calls the [discount kernels](../bdynets/src/gmde-discount.cpp) and [dynamic-model kernels](../bdynets/src/gmde-dynamic.cpp) in C++. The [study driver](scripts/run-section41-eight.py) orchestrates [input preparation](scripts/prepare-section41-eight.R), [registered fits](scripts/run-section41-eight.R) and [summaries](scripts/summarize-section41-eight.R). Reproducing the run requires the archived synthetic inputs, matching registrations and pinned external benchmark dependencies. Input hashes and the selected tuning values are in the run manifest above.
 
-## 结果与审计
+## Earlier implementation and frozen input provenance
 
-带宽计算保留全部逻辑物理边及其有限归一化 log 权重。只有 `exp(log_weight)` 实际为零且 log 权重不高于 double 最小正 subnormal 的一半所对应的边界时，数值矩阵允许舍入为零；没有另设较大的截断阈值，不做 NN 删边，不改变 h 先验。权重仍按所有物理边的正权均值归一化。
-
-对这类候选，`core_34_underflow_audit.R` 记录下溢边、完整 log 权重、解析扰动量级和常规残差。固定检查为：解析下溢对 gate log-likelihood 的贡献 ≤`1e-12`；独立 Cholesky 逆及主平方根路径的 gate 目标差 ≤`1e-8`；谱残差与正交残差 ≤`256*n*.Machine$double.eps`，协方差重建相对残差 ≤`1024*n*.Machine$double.eps`。后两项是按矩阵规模留余量的工程诊断，前两项约束 log-target 误差；均不修改 Rhat/ESS/PSM 标准。这是受控浮点近似，**不是严格 interval-MH 认证**。检查失败抛出异常、保存故障，不自动拒绝 MH 提议或截断先验。
-
-数值审计默认以 `NUMERICAL_AUDIT` JSON 行写入链日志；API 使用者也可设置 `gm$graphmode_h_numerical_sink <- function(record) ...` 保存单独审计文件，sink 不得调用随机数。主控制器保留失败链记录，正常同伴继续完成，不再因单链失败而终止它们。
-
-资源或控制器异常有不同处理：可用空间低于 12 GiB、输出超过 30 GiB、达到 72 小时时限，或控制器失去正常监督时，停止派发并以 SIGSTOP 暂停所属写入进程，不再等待长链写完。记录 `emergency-TARGET.json`、`suspended-TARGET.json`、PID 和最近已接受的 checkpoint。暂停保留进程内存；只有带有效 SHA256 receipt 的文件才是已落盘 checkpoint，不能把部分文件当作成功保存。恢复需要检查资源及明确决定，不自动 SIGCONT。采样和最终诊断阶段均受资源保护。正常的单链数值失败不会触发同伴暂停。
-
-`progress.json` 仅表示运行进度；`completion.json` 或 `failure.json` 才是控制器终态。每条链每 100 步保存全部状态（含预热）、RNG、数值诊断与 SHA256；各阶段独立日志、进程退出码、receipt 均保留。意外中断不会自动重试；8000 步继续只接受本轮完整 4000 步 receipt，不能接入旧实验 checkpoint。
-
-`summary-4000/` 与必要时的 `summary-8000/` 保存每拟合标量诊断、PSM、代表划分、占用数、边界误并与内部误切、预测矩阵、RMSE、W-minus-C 配对差异和诊断决定。真值与测试数据放在 `evaluation-only.rds`，worker 只读 `blind.rds`。ARI/RMSE 是有诊断状态的试跑描述；未过精度门槛时不能据此给出方法优劣结论。
-
-计时沿用已安装 microbenchmark 的单调时钟封装；启动时降低纳秒精度的提示会保留在日志中。非有限或回退的读数会报错，不裁剪成零、不修改统计状态。
-
-## 源码整理与删除范围
-
-`R/core_01` 至 `core_33` 最初从本地冻结源提取；`SOURCE_MAP.csv` 记录提取时的源模块、哈希和符号。当前版本只在 `core_32` 的权重、谱、平方根和目标函数中增加受控数值近似与审计入口，新增 `core_34`；正常范围回归保持逐位一致，MH、先验及其余采样核未改。部分内部函数名仍含 c8/c9，用于保持核与状态校验一致，并不代表再次运行旧实验。`R/api.R` 提供本轮配置和通用输入，`R/execution.R` 提供分阶段执行。
-
-从当前 `graphMoDE/` 删除历史快照目录、旧文稿/图示、旧调试数据、OSM 北京派生示例、重复旧入口和不再使用的说明；它们仍可从普通 Git 历史恢复。保留当前必要数学核、许可证、合成示例、测试和此说明。不包含北京原始数据、论文、PNARM 源码、密钥、个人绝对路径或大链文件。其他仓库项目不受影响。
+D01 and D02 were originally generated with the earlier road simulator. The November study reads the archived inputs and verifies their hashes before fitting. The earlier shared-innovation sampler, example, and run instructions are available together at the revision immediately before cleanup. [Input checksums](preparation/2026-11-13/data-verification.json) · [Original data generator](https://github.com/sj156/bdynets/blob/079e42ec58efe6c62cfab5a8b2d90cf5cb2bf58e/graphMoDE/R/api.R) · [Earlier code and instructions](https://github.com/sj156/bdynets/tree/079e42ec58efe6c62cfab5a8b2d90cf5cb2bf58e/graphMoDE#earlier-examples-and-custom-inputs)

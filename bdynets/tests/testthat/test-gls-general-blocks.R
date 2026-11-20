@@ -149,3 +149,40 @@ test_that("matrix products preserve repeated ordered-pair contributions", {
   expect_equal(bdynets:::build_network_array(X, pairs, L, 1L, 2L)[, , 1], expected)
   expect_equal(as.numeric(bdynets:::factor_design_one_time(X[1, ], pairs, L, 2L)), expected[1, ])
 })
+
+test_that("general GLS supports loading-factor rescaling and fixed global shrinkage", {
+  set.seed(592)
+  graph <- gls_grid(2L)
+  Y <- matrix(rpois(18L * nrow(graph$edges), 3), nrow = 18L)
+  Q <- cbind(sin(seq_len(nrow(Y)) / 3), cos(seq_len(nrow(Y)) / 3))
+  cfg <- gls_control("smoke", n_iter = 8L, burn_mcmc = 4L, n_chains = 1L,
+    state_block_substeps = 1L, shrinkage_substeps = 1L, scale_move_steps = 1L)
+  fit <- function(control) gls_fit_general(Y, graph, Q, control = control)$chains[[1L]]
+
+  baseline <- fit(cfg)
+  expect_true(is.na(baseline$interweave_acceptance))
+  rescale <- cfg
+  rescale$interweave_steps <- 1L
+  with_rescale <- fit(rescale)
+  expect_true(is.finite(with_rescale$interweave_acceptance))
+  expect_true(all(is.finite(with_rescale$initial_beta)))
+
+  for (value in list(0, -0.2, Inf, NA_real_, c(0.1, 0.2), "0.2"))
+    expect_error(gls_control(fixed_tau = value), "fixed_tau")
+  fixed <- cfg
+  fixed$fixed_tau <- 0.2
+  fixed_fit <- gls_fit_general(Y, graph, Q, control = fixed)
+  with_fixed <- fixed_fit$chains[[1L]]
+  expect_identical(with_fixed$tau, rep(0.2, 4L))
+  expect_true(is.finite(with_fixed$network_rms[1L]))
+  expect_true(is.na(with_fixed$scale_move_acceptance))
+  expect_true(is.na(with_fixed$scale_move_mean_abs_log_jump))
+  expect_true(is.na(with_fixed$tau_prior_scale))
+  diagnostics <- gls_diagnostics(fixed_fit, control = cfg)
+  tau <- diagnostics[diagnostics$ParameterType == "tau_fixed", ]
+  expect_equal(nrow(tau), 1L)
+  expect_true(is.na(tau$SplitRhat))
+  expect_true(is.na(tau$ESS))
+  expect_false(tau$Converged)
+  expect_error(gls_fit(Y, graph, control = fixed), "gls_fit_general")
+})

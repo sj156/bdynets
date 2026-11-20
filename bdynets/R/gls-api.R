@@ -27,6 +27,21 @@
 #' `initialization = "baseline"` starts at training means with nonzero loadings;
 #' `"full_glm"` uses unrestricted-GLM baseline/static starting values.
 #' `initial_tau` is a starting value, not the global-scale prior.
+#' In [gls_fit_general()], set `fixed_tau` to a positive value to hold
+#' the global shrinkage scale constant while sampling the local scales.
+#' The default, `NULL`, estimates the global scale.
+#' For general fits, `affinity_model = "graph_laplace"` learns the strength
+#' of a standardized Graph-Laplace correlation score over the supplied
+#' candidate pairs. `graph_laplace_rho0` sets the edge-graph correlation
+#' construction. The positive strength `chi` has a Gamma prior with
+#' `chi_shape` and `chi_rate`, and its log-scale proposal starts at
+#' `chi_proposal_sd` with `chi_adapt_rate` and `chi_target_acceptance`
+#' controlling warmup adaptation. The default `affinity_model = "fixed"`
+#' uses the candidate table's fixed weights.
+#' `interweave_steps` enables joint loading and factor rescaling, with a
+#' proposal standard deviation adapted during warmup from
+#' `interweave_initial_sd`. The default is a random-walk scale move and
+#' zero rescaling steps.
 #' General fits record per-iteration counts and step sizes in
 #' `coefficient_trace`, and stop on a failed startup movement/stability check.
 #' `backend = "cpp"` (default) uses shared Rcpp rank-one FFBS for the main and
@@ -156,7 +171,21 @@ gls_control <- function(profile = c("default", "quick", "smoke"), ...) {
     startup_check_iteration = switch(profile, smoke = 5L, quick = 40L, 100L),
     startup_min_static_acceptance = 0.005,
     startup_min_static_accepts = 1L,
-    startup_beta_abs_limit = 100
+    startup_beta_abs_limit = 100,
+    fixed_tau = NULL,
+    affinity_model = "fixed",
+    graph_laplace_rho0 = 0.90,
+    chi_shape = 1,
+    chi_rate = 1,
+    chi_proposal_sd = 0.08,
+    chi_adapt_rate = 0.10,
+    chi_target_acceptance = 0.30,
+    interweave_steps = 0L,
+    interweave_initial_sd = 0.02,
+    interweave_target_acceptance = 0.30,
+    interweave_adapt_rate = 0.10,
+    interweave_min_sd = 5e-4,
+    interweave_max_sd = 0.20
   )
 }
 
@@ -185,6 +214,38 @@ gls_control <- function(profile = c("default", "quick", "smoke"), ...) {
       cfg$static_pcn_target_acceptance >= 1 || !scalar(cfg$static_pcn_adapt_rate) ||
       cfg$static_pcn_adapt_rate < 0)
     stop("Invalid static pCN adaptation controls.", call. = FALSE)
+  fixed_tau <- cfg$fixed_tau
+  if (!is.null(fixed_tau) && (!scalar(fixed_tau) || fixed_tau <= 0 ||
+      !is.finite(fixed_tau^2) || fixed_tau^2 <= 0))
+    stop("fixed_tau must be NULL or a positive scalar with a finite, positive square.",
+      call. = FALSE)
+  if (!is.character(cfg$affinity_model) || length(cfg$affinity_model) != 1L ||
+      !cfg$affinity_model %in% c("fixed", "graph_laplace"))
+    stop("affinity_model must be 'fixed' or 'graph_laplace'.", call. = FALSE)
+  for (name in c("chi_shape", "chi_rate", "chi_proposal_sd")) {
+    if (!scalar(cfg[[name]]) || cfg[[name]] <= 0)
+      stop(name, " must be positive and finite.", call. = FALSE)
+  }
+  if (!scalar(cfg$graph_laplace_rho0) || cfg$graph_laplace_rho0 < 0 ||
+      cfg$graph_laplace_rho0 > 1)
+    stop("graph_laplace_rho0 must be in [0, 1].", call. = FALSE)
+  if (!scalar(cfg$chi_adapt_rate) || cfg$chi_adapt_rate < 0 ||
+      !scalar(cfg$chi_target_acceptance) || cfg$chi_target_acceptance <= 0 ||
+      cfg$chi_target_acceptance >= 1)
+    stop("Invalid chi adaptation controls.", call. = FALSE)
+  if (!scalar(cfg$interweave_steps) || cfg$interweave_steps < 0 ||
+      cfg$interweave_steps > .Machine$integer.max ||
+      cfg$interweave_steps != floor(cfg$interweave_steps))
+    stop("interweave_steps must be a nonnegative integer.", call. = FALSE)
+  cfg$interweave_steps <- as.integer(cfg$interweave_steps)
+  interweave_sds <- c("interweave_min_sd", "interweave_initial_sd", "interweave_max_sd")
+  if (!all(vapply(cfg[interweave_sds], function(x) scalar(x) && x > 0, logical(1L))) ||
+      cfg$interweave_min_sd > cfg$interweave_initial_sd ||
+      cfg$interweave_initial_sd > cfg$interweave_max_sd ||
+      !scalar(cfg$interweave_target_acceptance) ||
+      cfg$interweave_target_acceptance <= 0 || cfg$interweave_target_acceptance >= 1 ||
+      !scalar(cfg$interweave_adapt_rate) || cfg$interweave_adapt_rate < 0)
+    stop("Invalid loading-factor rescaling controls.", call. = FALSE)
   if (!is.character(cfg$initialization) || length(cfg$initialization) != 1L ||
       !cfg$initialization %in% c("baseline", "full_glm"))
     stop("initialization must be 'baseline' or 'full_glm'.", call. = FALSE)
@@ -404,6 +465,10 @@ gls_fit <- function(
   Y <- .validate_count_matrix(Y)
   graph <- .validate_gls_graph(graph)
   control <- .validate_gls_control(control)
+  if (!is.null(control$fixed_tau))
+    stop("Use gls_fit_general() for fixed_tau.", call. = FALSE)
+  if (control$affinity_model != "fixed")
+    stop("Use gls_fit_general() for learned Graph-Laplace affinity.", call. = FALSE)
   if (ncol(Y) != nrow(graph$edges)) {
     stop("The columns of Y must match graph$edges.", call. = FALSE)
   }

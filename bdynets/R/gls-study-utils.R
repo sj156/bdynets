@@ -18,15 +18,6 @@
   z
 }
 
-.gls_study_transform_counts <- function(y, center, scale) {
-  sweep(sweep(log1p(y), 2L, center, "-"), 2L, scale, "/")
-}
-
-.gls_study_make_lag1 <- function(Y, pre_y, center, scale) {
-  hist <- rbind(pre_y, Y); .gls_study_transform_counts(hist[seq_len(nrow(Y)), , drop = FALSE],
-                                             center, scale)
-}
-
 .gls_study_standardize_from_train <- function(X, train) {
   center <- colMeans(X[train, , drop = FALSE]); scale <- apply(X[train, , drop = FALSE], 2, sd)
   scale[!is.finite(scale) | scale < 1e-8] <- 1

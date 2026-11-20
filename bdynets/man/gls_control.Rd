@@ -43,6 +43,21 @@ Simulation 1's separate reference update or numerical limits.
 \code{initialization = "baseline"} starts at training means with nonzero loadings;
 \code{"full_glm"} uses unrestricted-GLM baseline/static starting values.
 \code{initial_tau} is a starting value, not the global-scale prior.
+In \code{\link[=gls_fit_general]{gls_fit_general()}}, set \code{fixed_tau} to a positive value to hold
+the global shrinkage scale constant while sampling the local scales.
+The default, \code{NULL}, estimates the global scale.
+For general fits, \code{affinity_model = "graph_laplace"} learns the strength
+of a standardized Graph-Laplace correlation score over the supplied
+candidate pairs. \code{graph_laplace_rho0} sets the edge-graph correlation
+construction. The positive strength \code{chi} has a Gamma prior with
+\code{chi_shape} and \code{chi_rate}, and its log-scale proposal starts at
+\code{chi_proposal_sd} with \code{chi_adapt_rate} and \code{chi_target_acceptance}
+controlling warmup adaptation. The default \code{affinity_model = "fixed"}
+uses the candidate table's fixed weights.
+\code{interweave_steps} enables joint loading and factor rescaling, with a
+proposal standard deviation adapted during warmup from
+\code{interweave_initial_sd}. The default is a random-walk scale move and
+zero rescaling steps.
 General fits record per-iteration counts and step sizes in
 \code{coefficient_trace}, and stop on a failed startup movement/stability check.
 \code{backend = "cpp"} (default) uses shared Rcpp rank-one FFBS for the main and

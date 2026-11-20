@@ -62,4 +62,6 @@ Set \code{n_chains = 3L} and \code{parallel_chains = TRUE} in
 \code{\link[=gls_control]{gls_control()}} to fit three chains concurrently when
 at least three physical cores are detected. Windows uses independent socket
 workers. Unix uses forked workers. Each chain records its worker process ID.
+With \code{affinity_model = "graph_laplace"}, the fit also retains the
+candidate-aligned \code{affinity_features} and posterior \code{chi} draws.
 }

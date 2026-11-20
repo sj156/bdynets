@@ -1,6 +1,8 @@
 // GLS adapters for the shared, model-independent bdynets C++ header.
 // [[Rcpp::plugins(cpp17)]]
 #include <Rcpp.h>
+#include <algorithm>
+#include <numeric>
 #include "../inst/include/bdynets/scalar_state_space.h"
 
 namespace {
@@ -50,4 +52,42 @@ Rcpp::NumericMatrix gls_ffbs_rank1_cpp(Rcpp::NumericMatrix response,
     std::copy(out.state.begin(),out.state.end(),draw.begin());
     draw.attr("initial")=Rcpp::NumericVector::create(out.initial);
     return draw;
+}
+
+// [[Rcpp::export(name = ".gls_pair_product_cpp", rng = false)]]
+Rcpp::NumericMatrix gls_pair_product_cpp(const Rcpp::NumericMatrix& X,
+    const Rcpp::IntegerVector& source, const Rcpp::IntegerVector& target,
+    const Rcpp::NumericVector& value, int k) {
+    const int nt = X.nrow();
+    const R_xlen_t count = source.size();
+    if (k < 1 || X.ncol() != k || target.size() != count || value.size() != count)
+        Rcpp::stop("Pair coefficients must match the sources, targets, and columns of X.");
+
+    std::vector<R_xlen_t> order(count);
+    std::iota(order.begin(), order.end(), R_xlen_t{0});
+    for (R_xlen_t i = 0; i < count; ++i) {
+        if (source[i] < 1 || source[i] > k || target[i] < 1 || target[i] > k)
+            Rcpp::stop("Pair source and target indices must be within the columns of X.");
+    }
+    // Match the dense coefficient matrix's source order and combine repeated
+    // entries before multiplication. Stable sorting preserves their sum order.
+    std::stable_sort(order.begin(), order.end(), [&](R_xlen_t a, R_xlen_t b) {
+        if (target[a] != target[b]) return target[a] < target[b];
+        return source[a] < source[b];
+    });
+
+    Rcpp::NumericMatrix product(nt, k);
+    for (R_xlen_t i = 0; i < count;) {
+        const R_xlen_t row = order[i++];
+        const int from = source[row] - 1;
+        const int to = target[row] - 1;
+        double coefficient = value[row];
+        while (i < count && source[order[i]] - 1 == from && target[order[i]] - 1 == to)
+            coefficient += value[order[i++]];
+        const double* input = X.begin() + static_cast<R_xlen_t>(nt) * from;
+        double* output = product.begin() + static_cast<R_xlen_t>(nt) * to;
+        for (int t = 0; t < nt; ++t) output[t] += input[t] * coefficient;
+        if (i % 512 == 0) Rcpp::checkUserInterrupt();
+    }
+    return product;
 }
