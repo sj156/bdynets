@@ -1,0 +1,251 @@
+---
+title: "City-traffic-M Road Volume with bdynets"
+output:
+  html_document:
+    self_contained: true
+    md_extensions: "-tex_math_dollars"
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    mathjax: null
+params:
+  plot_time: "08:00"
+  basemap: true
+  export: false
+  export_dir: "output"
+---
+
+<style>
+body{font-size:16px;line-height:1.72;color:#25364a}.main-container{max-width:1040px}h1,h2,h3{color:#17324d}pre{font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}img{max-width:100%;height:auto}
+</style>
+
+```{r knitr-options, include=FALSE}
+plain_output <- knitr::knit_hooks$get("output")
+knitr::knit_hooks$set(output = function(x, options) {
+  plain_output(gsub("[ \\t]+\\n", "\n", x, perl = TRUE), options)
+})
+
+figure_dir <- tempfile("metropolis-report-figures-")
+dir.create(figure_dir)
+knitr::opts_chunk$set(
+  echo = TRUE, message = FALSE, warning = FALSE, cache = FALSE,
+  fig.path = file.path(figure_dir, "figure-"), dev = "png",
+  fig.retina = 1, dpi = 180, out.width = "100%"
+)
+```
+
+City Traffic Benchmarks v4 estimates five-minute road volume in Yekaterinburg from vehicle GPS observations. This example prepares road volume for 720 roads from the original-format Parquet records for 18 October 2024. The example prepares all 96 quarter-hours and traces one road from the source observations to a static map. The default map shows 08:00.
+
+## Set up the example
+
+Start a fresh interactive R session in this example directory and run the visible R blocks in order. The setup loads the installed `bdynets` package and the example's preparation functions. The Parquet step calls Python 3 with NumPy, pandas and PyArrow installed.
+
+`prepare.R` converts this case’s source records. The Parquet reader is `read_parquet.py`.
+The local `scripts/prepare-input.R` aligns the road and time tables and writes the prepared RDS files.
+`scripts/street-context.R` reads the local background, and
+`scripts/report-export.R` saves the prepared data and static maps when export is requested.
+
+```{r example-setup}
+library(bdynets)
+source("scripts/prepare-input.R")
+source("prepare.R")
+source("scripts/report-export.R")
+source("scripts/street-context.R")
+
+if (!exists("params", inherits = FALSE)) {
+  params <- rmarkdown::yaml_front_matter("metropolis-traffic-report.Rmd")$params
+}
+```
+
+The [prepared input guide](../../bdynets/inst/INPUT-FORMAT.md) describes the final drawing object. For other source data, choose the fields, time intervals and conversion rules that fit that data.
+
+## Read the supplied data
+
+Start with the two files in `data/raw/`. The [static Parquet](data/raw/city-traffic-M-raw-static-features.parquet)
+contains the source road attributes and coordinates. The [volume Parquet](data/raw/city-traffic-M-raw-volume.parquet)
+contains all 288 five-minute timestamps from 18 October 2024 and retains
+the original volume columns. The source clock has no declared timezone.
+The [supplied-file manifest](data/raw/source-manifest.csv) describes these
+inputs. The [upstream register](data/original-sources.csv) records provenance,
+including the upstream volume file before the daily sample was made.
+
+The supplied [road list](data/selected-roads.csv) is the fixed 720-road
+selection carried over from the original Yekaterinburg case. It contains
+one `road_id` per row. Each ID gives a zero-based row in the static file and
+the suffix of its `node_<id>` column in the volume file.
+
+In the call below, `day = "2024-10-18"` is the date expected in the supplied
+file. The reader checks that the full set of 288 timestamps matches it.
+
+`read_metropolis_raw()` reads the chosen road columns and their matching static rows from the bundled Parquets through `read_parquet.py`. The actual dimensions and the records for the first road at 08:00 through 08:10 appear below. The nine source attributes shown here are the fields used by the conversion.
+
+```{r read-original}
+raw_directory <- "data/raw"
+selection_file <- "data/selected-roads.csv"
+print(head(read.csv(selection_file, colClasses = "character"), 3L))
+day_source <- read_metropolis_raw(
+  base = ".",
+  raw_dir = raw_directory,
+  selection_file = selection_file,
+  day = "2024-10-18"
+)
+
+print(data.frame(
+  file = vapply(day_source$source_files, function(file) file$file, ""),
+  rows = vapply(day_source$source_files, function(file) file$rows, 0),
+  columns = vapply(day_source$source_files, function(file) file$columns, 0)
+), row.names = FALSE)
+
+example_road <- day_source$ids[1L]
+worked_times <- as.POSIXct(c("2024-10-18 08:00", "2024-10-18 08:05",
+  "2024-10-18 08:10"), format = "%Y-%m-%d %H:%M", tz = "UTC")
+native_slots <- match(as.numeric(worked_times), day_source$times)
+print(data.frame(static_row0 = example_road, day_source$static[1L, ]), row.names = FALSE)
+print(data.frame(
+  timestamp = format(worked_times, "%Y-%m-%d %H:%M", tz = "UTC"),
+  source_column = paste0("node_", example_road),
+  volume = day_source$volume[1L, native_slots]
+), row.names = FALSE, digits = 12)
+```
+
+## Prepare the drawing input
+
+### Inspect the native observations
+
+`read_metropolis_raw()` passes the Parquet directory, road-ID CSV and date to
+`read_parquet.py`. The Python reader uses every timestamp in the supplied volume file
+and matches each road ID to its static row and volume column. It averages each set of
+three five-minute readings into an unrounded quarter-hour volume, then takes
+the mean across roads and rounds that mean to two decimals. The reader hands
+these results and the original five-minute values to R as temporary JSON.
+R reads that file into `day_source` and removes the temporary file.
+
+The list contains the 720 road IDs and their static fields, the source times
+in seconds, and a volume matrix with one row per road and one column per
+original five-minute timestamp. The next step saves this list as `source.rds`.
+
+```{r native-shape}
+print(data.frame(
+  roads = nrow(day_source$volume),
+  original_timestamps = ncol(day_source$volume)
+), row.names = FALSE)
+```
+
+### Prepare the road tables and save `input.rds`
+
+Preparation takes the mean of three five-minute volume observations per quarter-hour. Each selected road needs a complete day of observations, including recorded zeros. The road ID links each volume to its geometry, and `time` gives the start of each quarter-hour.
+
+| Table | How it is built |
+| --- | --- |
+| `roads` | Start and end coordinates form the directed line in longitude and latitude. Road attributes come from the matching static row. The speed-limit field is a road attribute. |
+| `flow` | Quarter-hour volume is rounded to two decimals. |
+| `trends` | The quarter-hour mean across roads uses unrounded road volumes. The final mean is rounded to two decimals. |
+
+The conversion retains the source volume scale. `metropolis_input()` uses the computed quarter-hour volumes and preserves the counts of native observations.
+
+```{r prepare-input}
+day_directory <- tempfile("metropolis-full-day-")
+dir.create(day_directory)
+prepared_dir <- file.path(day_directory, "prepared-data")
+prepared_file <- write_metropolis_prepared(day_source, prepared_dir, raw_directory, selection_file)
+day_input <- readRDS(prepared_file)
+flow_frames <- file.path(prepared_dir, "flow-frames.rds")
+day_view <- readRDS(flow_frames)
+
+cat("Saved", basename(prepared_file), "\n")
+print(data.frame(
+  roads = nrow(day_input$roads),
+  frames = length(day_input$times),
+  interval_minutes = unique(day_input$interval_seconds) / 60,
+  flow_records = nrow(day_input$flow),
+  trend_records = nrow(day_input$trends),
+  unit = day_input$unit
+), row.names = FALSE)
+print(day_input$roads[1L, c("road_id", "length", "geometry")])
+print(head(day_input$flow, 2L), row.names = FALSE)
+print(head(day_input$trends, 2L), row.names = FALSE)
+```
+
+### From the road table to the exact drawing input
+
+The preparation writer takes every frame start in `input.rds` in order and every
+entry in `roads$road_id` in road-table order. Each observation is placed at
+`values[match(time, times), match(road_id, roads$road_id)]`. The matrix starts
+with `NA` cells, so missing road–time observations stay missing and observed
+zeros remain zero. The resulting object also carries the ordered road
+geometries, frame widths, units and any prepared events. Preparation saves
+that object as `flow-frames.rds`. This is the standard drawing input.
+`input.rds` is the earlier table export for inspecting or reusing the conversion.
+
+The worked road, 21263, has source volumes of 70, 72, and 65 in the three
+five-minute observations starting at 08:00. Their mean of 69.00 appears in
+the prepared flow table and in the road's 08:00 matrix cell.
+
+```{r aligned-drawing-input}
+example_time <- as.numeric(worked_times[1L])
+time_row <- match(example_time, day_view$times)
+road_column <- match(example_road, day_view$roads$road_id)
+source_row <- match(example_road, day_source$ids)
+observation <- subset(day_input$flow, road_id == example_road & time == example_time)
+
+data.frame(
+  road_id = observation$road_id, time = observation$time,
+  time_row = time_row, road_column = road_column,
+  mean_of_source_observations = mean(day_source$volume[source_row, native_slots]),
+  value_in_input_table = observation$flow,
+  value_in_drawing_matrix = day_view$values[time_row, road_column]
+)
+data.frame(frame_rows = nrow(day_view$values),
+  road_columns = ncol(day_view$values), unit = day_view$unit)
+```
+
+## Draw the selected frame
+
+The prepared input contains all 96 quarter-hours. Its numeric time keys preserve the source wall clock, and each frame begins at a quarter-hour. The map call selects one frame by its start time and draws the full prepared road extent. Its seven `log1p` colour classes are based on the complete series.
+
+### Load the offline background
+
+Load the supplied OpenStreetMap background for the Yekaterinburg road extent. The GeoJSON was prepared from OpenFreeMap vector tiles. Its roads, water and place names provide context for the measured road layer.
+
+```{r load-streets}
+street_paths <- "data/basemap-cache/yekaterinburg.geojson.gz"
+basemap <- if (isTRUE(params$basemap)) read_case_streets(street_paths)
+```
+
+```{r draw-flow-map, fig.width=9, fig.height=9.6, out.width="100%", fig.cap="City-traffic-M road volume at the selected frame start."}
+plot_time <- params$plot_time
+plotted <- traffic_flow_map(
+  flow_frames, time_label = plot_time, basemap = basemap,
+  full_extent = TRUE, padding = 0.04
+)
+```
+
+## Results
+
+The curve summarises the same road values that the map draws, including recorded zeros. These road values are already rounded to two decimals. The separate `trends` table in `input.rds` rounds each mean after averaging the unrounded road values, so the two series can differ slightly. The dashed line marks the frame shown on the map.
+
+```{r road-trend, fig.height=4.4, fig.width=8, out.width="100%"}
+trend <- traffic_trend(day_view)
+plot(trend, metric = "mean", index = plotted$index,
+     ylab = "Mean road volume (source units)")
+```
+
+## Export the results
+
+Preparation saves its working files in a temporary directory. The draw calls
+use the current R graphics device. When running the blocks with `Rscript` and
+no device open, R can create `Rplots.pdf` in the working directory. To regenerate the report HTML and keep the selected map and complete drawing data, run this command from the example directory:
+
+```sh
+Rscript run.R 08:00 --offline --export
+```
+
+Replace `08:00` with another prepared frame start to draw that frame. The default destination is a new `output/` directory. To use a different new directory, add `--output-dir NEW_DIRECTORY`.
+
+The command saves the selected map at `output/maps/metropolis-flow.png`. `output/prepared-data/flow-frames.rds` contains all prepared frames and can be passed to the same plotting function to draw another frame. The directory also contains `source.rds` and `input.rds`, which record intermediate preparation steps.
+
+```{r export-results, include=FALSE}
+if (params$export) {
+  export_static_report(params$export_dir, prepared_dir, c("metropolis-flow.png" = "draw-flow-map"))
+}
+```

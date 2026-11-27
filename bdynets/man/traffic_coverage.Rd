@@ -1,18 +1,18 @@
 \name{traffic_coverage}
 \alias{traffic_coverage}
 \title{Summarize whole-period primary traffic coverage}
-\description{Count roads, frames, primary road-flow observations and reported
+\description{Count roads, frames, primary Flow or Speed observations and reported
 event starts over the full supplied period, optionally within one named region.}
 \usage{
 traffic_coverage(x, region = NULL)
 }
 \arguments{
-\item{x}{A \code{trafficmap_data} object from \code{\link{traffic_data}}.}
+\item{x}{A prepared \code{trafficmap_data} road series, such as the result of \code{read_traffic()} on a drawing RDS.}
 \item{region}{One exact supplied geographic region label, or \code{NULL} for
 all records. Unassigned records belong to the all-record scope.}
 }
 \details{
-Coverage uses every supplied frame and the selected roads' primary source-flow
+Coverage uses every supplied frame and the selected roads' primary measurement
 matrix. It is independent of the displayed frame, map viewport, measurement
 mode and layer visibility. Zero is observed; absent road-time pairs and explicit
 missing values count as missing. Event starts are counted across the entire
@@ -26,8 +26,3 @@ rate, unique-event-category count or aggregation of additional metrics.
 \code{road_time_cells}, \code{observed}, \code{missing}, \code{zero} and
 \code{event_starts}. The cell count is roads times frames; observed plus
 missing equals the cell count.}
-\examples{
-events <- data.frame(time = 0, lon = -87.63, lat = 41.88)
-x <- traffic_data(events = events, interval_seconds = 3600)
-traffic_coverage(x)
-}

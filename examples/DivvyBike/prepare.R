@@ -3,15 +3,26 @@ divvy_fields <- c(ride='ride_id',departure='started_at',origin='start_station_id
   origin_name='start_station_name',destination_name='end_station_name',
   origin_lat='start_lat',origin_lon='start_lng',destination_lat='end_lat',destination_lon='end_lng')
 
-read_divvy_source <- function(source_file,day='2026-01-01',fields=divvy_fields) {
-  if(length(day)!=1L||is.na(day)||!grepl('^[0-9]{4}-[0-9]{2}-[0-9]{2}$',day)||is.na(as.Date(day)))stop('Declare one source departure date.')
-  raw<-as.data.frame(data.table::fread(source_file,colClasses='character',na.strings='',strip.white=FALSE,showProgress=FALSE))
+read_divvy_csv <- function(source_file,fields=divvy_fields) {
+  raw<-as.data.frame(data.table::fread(file=source_file,colClasses='character',na.strings='',strip.white=FALSE,showProgress=FALSE))
   if(!all(unname(fields)%in%names(raw)))stop('The original trip columns do not match the declared roles.')
-  clock<-raw[[fields['departure']]]
-  if(anyNA(clock)||any(!grepl('^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{1,6})?$',clock)))stop('Original departures need complete source dates and clocks.')
-  day_rows<-raw[substr(clock,1,10)==day,,drop=FALSE];rownames(day_rows)<-NULL
-  if(!nrow(day_rows))stop('The original file contains no departures on the selected date.')
-  day_rows
+  raw
+}
+
+divvy_date <- function(day) {
+  if(length(day)!=1L||is.na(day)||!grepl('^[0-9]{4}-[0-9]{2}-[0-9]{2}$',day))
+    stop('A departure date in YYYY-MM-DD format is required.')
+  date<-as.Date(as.character(day),format='%Y-%m-%d')
+  if(is.na(date))stop('A valid departure date is required.')
+  date
+}
+
+divvy_departure_clocks <- function(records,fields) {
+  clocks<-as.character(records[[fields['departure']]])
+  pattern<-'^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{1,6})?$'
+  if(anyNA(clocks)||any(!grepl(pattern,clocks)))
+    stop('Departure timestamps need complete local dates and clocks, with optional fractional seconds.')
+  clocks
 }
 
 # Source-name cleaning affects only trailing ASCII spaces in the two mapped name fields.
@@ -26,30 +37,6 @@ clean_divvy_station_names <- function(records,fields=divvy_fields) {
   records
 }
 
-extract_divvy_day <- function(source_file,output_file,day='2026-01-01',fields=divvy_fields) {
-  if(!is.character(output_file)||length(output_file)!=1L||is.na(output_file)||!nzchar(trimws(output_file)))stop('Declare one new daily CSV path.')
-  if(!file.exists(source_file)||dir.exists(source_file))stop('The original trip CSV is missing.')
-  occupied<-function(path)file.exists(path)||dir.exists(path)||(!is.na(Sys.readlink(path))&&nzchar(Sys.readlink(path)))
-  if(occupied(output_file))stop('The daily CSV destination already exists or is a source alias.')
-  parent<-normalizePath(dirname(output_file),mustWork=TRUE)
-  target<-file.path(parent,basename(output_file))
-  if(identical(target,normalizePath(source_file,mustWork=TRUE)))stop('The daily CSV cannot replace its source.')
-  lock<-paste0(target,'.extraction-lock')
-  if(!dir.create(lock,showWarnings=FALSE))stop('Another extraction is using this daily CSV path.')
-  on.exit(unlink(lock,recursive=TRUE),add=TRUE)
-  if(occupied(target))stop('The daily CSV destination already exists.')
-  identity<-unname(tools::md5sum(source_file))
-  records<-clean_divvy_station_names(read_divvy_source(source_file,day,fields),fields)
-  stage<-tempfile('day-extract-',tmpdir=parent,fileext='.csv');on.exit(unlink(stage),add=TRUE)
-  write.csv(records,stage,row.names=FALSE,na='',fileEncoding='UTF-8')
-  restored<-as.data.frame(data.table::fread(stage,colClasses='character',na.strings='',strip.white=FALSE,showProgress=FALSE))
-  if(!identical(records,restored))stop('The daily original-column CSV readback differs.')
-  if(!identical(identity,unname(tools::md5sum(source_file))))stop('The original trip file changed during extraction.')
-  if(occupied(target))stop('The daily CSV destination already exists.')
-  if(!file.rename(stage,target))stop('Cannot publish the daily original-column CSV.')
-  invisible(target)
-}
-
 ambiguous_divvy_clock <- function(time,timezone) {
   labels <- format(time,'%Y-%m-%d %H:%M:%S',tz=timezone)
   for(delta in c(-7200,-3600,-1800,1800,3600,7200))
@@ -57,19 +44,20 @@ ambiguous_divvy_clock <- function(time,timezone) {
   FALSE
 }
 
-ride_input <- function(records,day='2026-01-01',timezone='America/Chicago',bin_seconds=NULL,fields=divvy_fields) {
-  if(length(day)!=1L||is.na(day)||!grepl('^[0-9]{4}-[0-9]{2}-[0-9]{2}$',day)||is.na(as.Date(day)))stop('A departure date in YYYY-MM-DD format is required.')
+prepare_divvy_day <- function(records,day='2026-01-01',timezone='America/Chicago',bin_seconds=NULL,fields=divvy_fields) {
+  divvy_date(day)
   if(length(timezone)!=1L||!timezone%in%OlsonNames())stop('An explicit IANA source timezone is required.')
   if(!setequal(names(fields),names(divvy_fields))||anyNA(fields)||anyDuplicated(fields)||
      any(!fields%in%names(records)))stop('Map each required trip role to one distinct source field.')
   records<-as.data.frame(records)
-  clocks<-as.character(records[[fields['departure']]])
-  if(anyNA(clocks)||any(!grepl('^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?$',clocks)))
-    stop('Departure timestamps need complete local dates and clocks, with optional fractional seconds.')
-  records<-records[substr(clocks,1,10)==day,,drop=FALSE]
+  clocks<-divvy_departure_clocks(records,fields)
+  if(any(substr(clocks,1,10)!=day))stop('Trip records must all depart on the example day.')
   source_rows<-nrow(records)
-  if(!source_rows)stop('The source contains no departure on the selected date.')
-  records<-unique(records)
+  if(!source_rows)stop('The source contains no departure on the example day.')
+  name_fields<-unname(fields[c('origin_name','destination_name')])
+  records[name_fields]<-lapply(records[name_fields],as.character)
+  cleaned<-clean_divvy_station_names(records,fields)
+  records<-unique(cleaned)
   duplicates<-source_rows-nrow(records)
   records<-records[unname(fields[names(divvy_fields)])];names(records)<-names(divvy_fields)
   records[]<-lapply(records,as.character)
@@ -85,16 +73,17 @@ ride_input <- function(records,day='2026-01-01',timezone='America/Chicago',bin_s
     if(any(!is.na(text)&nzchar(text)&is.na(value)))stop('An endpoint coordinate contains nonnumeric text.')
     value
   }
-  endpoint<-function(side)data.frame(node_id=records[[side]],name=trimws(records[[paste0(side,'_name')]]),
+  endpoint<-function(side)data.frame(node_id=records[[side]],name=records[[paste0(side,'_name')]],
     latitude=coordinate(records[[paste0(side,'_lat')]]),longitude=coordinate(records[[paste0(side,'_lon')]]))
   endpoints<-rbind(endpoint('origin'),endpoint('destination'))
   endpoints<-endpoints[!is.na(endpoints$node_id)&nzchar(endpoints$node_id),,drop=FALSE]
-  located<-endpoints[is.finite(endpoints$latitude)&abs(endpoints$latitude)<=85.0511&
+  latitude_limit <- getFromNamespace(".tm_mercator_limit", "bdynets")
+  located<-endpoints[is.finite(endpoints$latitude)&abs(endpoints$latitude)<=latitude_limit&
     is.finite(endpoints$longitude)&abs(endpoints$longitude)<=180,,drop=FALSE]
   ids<-sort(unique(located$node_id))
   station_name<-function(id) {
     text<-endpoints$name[endpoints$node_id==id]
-    text<-text[!is.na(text)&nzchar(text)]
+    text<-text[!is.na(text)&nzchar(trimws(text))]
     if(!length(text))return(NA_character_)
     frequency<-table(text);names(frequency)[order(-frequency,names(frequency))][1]
   }
@@ -126,16 +115,24 @@ ride_input <- function(records,day='2026-01-01',timezone='America/Chicago',bin_s
   od$origin_node_idx<-nodes$node_idx[match(od$origin_id,nodes$node_id)]
   od$destination_node_idx<-nodes$node_idx[match(od$destination_id,nodes$node_id)]
   od<-od[order(od$time,od$origin_id,od$destination_id),,drop=FALSE];rownames(od)<-NULL
-  if(sum(od$flow)!=sum(keep)||source_rows!=duplicates+sum(!keep)+sum(keep))stop('Source departures and retained OD totals do not reconcile.')
+  retained<-sum(keep)
+  exclusions<-list(missing_origin_only=sum(!origin_ok&destination_ok),
+    missing_destination_only=sum(origin_ok&!destination_ok),missing_both=sum(!origin_ok&!destination_ok),
+    unmatched_coordinates=sum(origin_ok&destination_ok&!mapped))
+  if(sum(od$flow)!=retained||source_rows!=duplicates+retained+sum(unlist(exclusions)))
+    stop('Source departures and retained OD totals do not reconcile.')
   input<-list(nodes=nodes,flows=od,unit='trips',timezone=timezone,
     time_kind=if(is.null(bin_seconds))'instant' else 'interval_start',
-    provenance=list(source_columns=fields,departure_date=day,timezone=timezone,
-      source_departures=source_rows,duplicate_rows=duplicates,missing_origin_only=sum(!origin_ok&destination_ok),
-      missing_destination_only=sum(origin_ok&!destination_ok),missing_both=sum(!origin_ok&!destination_ok),
-      unmatched_coordinates=sum(origin_ok&destination_ok&!mapped),retained_trips=sum(keep),
-      geometry='Per-station median of valid paired source endpoint coordinates on the selected departure day.'))
+    provenance=c(list(source_columns=fields,departure_date=day,timezone=timezone,
+      source_departures=source_rows,duplicate_rows=duplicates),exclusions,
+      list(retained_trips=retained,
+        geometry='Per-station median of valid paired source endpoint coordinates on the selected departure day.')))
   if(!is.null(bin_seconds))input$interval_seconds<-bin_seconds
-  input
+  list(cleaned=cleaned,input=input)
+}
+
+ride_input <- function(records,day='2026-01-01',timezone='America/Chicago',bin_seconds=NULL,fields=divvy_fields) {
+  prepare_divvy_day(records,day,timezone,bin_seconds,fields)$input
 }
 
 # Spatial grouping retains the full day, with grouped endpoints and departure times.
@@ -145,7 +142,7 @@ spatial_od_input <- function(input,radius_m=1500) {
     stop('input must be a prepared OD list with nodes, flows and metadata.')
   if(length(radius_m)!=1L||!is.finite(radius_m)||radius_m<=0)
     stop('radius_m must be one positive number in metres.')
-  aggregation<-bdynets::aggregate_od_data(
+  aggregation<-aggregate_od_data(
     nodes=input$nodes,flows=input$flows,radius_m=radius_m,
     node_columns=c(id='node_id',longitude='longitude',latitude='latitude',name='display_name',weight=NA_character_),
     flow_columns=c(origin='origin_id',destination='destination_id',count='flow',time='time'),
@@ -159,36 +156,27 @@ spatial_od_input <- function(input,radius_m=1500) {
   result
 }
 
-prepare_example <- function(base='.',output_dir=file.path(base,'prepared'),source_file=file.path(base,'data','trips-2026-01-01.csv'),
+prepare_example <- function(base='.',output_dir=file.path(base,'prepared'),source_file=file.path(base,'data','raw','202601-divvy-tripdata.csv'),
                             day='2026-01-01',timezone='America/Chicago',bin_seconds=NULL,fields=divvy_fields) {
-  input<-NULL
-  build<-function() {
-    raw<-read_divvy_source(source_file,day,fields)
-    input<<-ride_input(raw,day,timezone,bin_seconds,fields);input
-  }
+  raw<-read_divvy_csv(source_file,fields)
+  write_divvy_station_input(ride_input(raw,day,timezone,bin_seconds,fields),output_dir,source_file)
+}
+
+write_divvy_station_input <- function(input,output_dir,source_file) {
   meanings<-c(display_name='Most frequent nonblank station name; alphabetical tie break.',node_idx='Zero-based row in this station register.',
     representative_station_id='The original station ID; one source station per node.',n_raw_stations='One source station per node.',
     member_weight='One station per node, for the existing OD interface.',coordinate_available='Valid paired station coordinates are available.')
   dictionary<-rbind(data.frame(table='nodes',field=names(meanings),meaning=unname(meanings)),
     data.frame(table='flows',field=c('origin_node_idx','destination_node_idx'),
       meaning=c('Generated zero-based departure index joining nodes.node_idx.','Generated zero-based arrival index joining nodes.node_idx.')))
-  checks<-function() {
-    result<-data.frame(check=c('Retained departure total','Retained endpoint references','Excluded source departures'),
-    observed=c(sum(input$flows$flow),sum(input$flows$origin_id%in%input$nodes$node_id & input$flows$destination_id%in%input$nodes$node_id),
-      input$provenance$source_departures-input$provenance$duplicate_rows-input$provenance$retained_trips),
-    expected=c(input$provenance$retained_trips,nrow(input$flows),with(input$provenance,missing_origin_only+missing_destination_only+missing_both+unmatched_coordinates)),
-    passed=TRUE,detail=c('Each retained original departure contributes one trip.','Both endpoints join the supplied node register.','Exclusion reasons partition the nonretained source rows.'))
-    result$passed<-result$observed==result$expected;result
-  }
-  bdynets::write_traffic_input(build(),output_dir,source_files=source_file,dictionary=dictionary,validation=checks())
+  write_traffic_input(input,output_dir,source_files=source_file,dictionary=dictionary)
 }
 
 prepare_spatial_example <- function(base='.',output_dir=file.path(base,'prepared-spatial-1500m'),
-                                    station_file=file.path(base,'data','input.rds'),radius_m=1500) {
+                                    station_file,radius_m=1500) {
   if(!file.exists(station_file)||dir.exists(station_file))stop('The prepared station OD input is missing.')
   station_input<-readRDS(station_file)
   spatial_input<-spatial_od_input(station_input,radius_m)
-  membership<-spatial_input$provenance$spatial_aggregation$membership
   dictionary<-data.frame(table=c(rep('nodes',4),rep('flows',3)),
     field=c('raw_node_count','member_weight','endpoint_activity','display_name','origin_id','destination_id','flow'),
     meaning=c('Number of source stations assigned to this representative.',
@@ -197,32 +185,19 @@ prepare_spatial_example <- function(base='.',output_dir=file.path(base,'prepared
       'Name of the representative source station.',
       'Prepared representative origin ID.','Prepared representative destination ID.',
       'Trip count for this time and prepared directed pair.'),stringsAsFactors=FALSE)
-  checks<-data.frame(
-    check=c('Retained trip total','Complete station membership','Representative radius bound'),
-    observed=c(sum(spatial_input$flows$flow),nrow(membership),
-      spatial_input$provenance$spatial_aggregation$max_assignment_distance_m),
-    expected=c(sum(station_input$flows$flow),nrow(station_input$nodes),as.numeric(radius_m)),
-    passed=c(sum(spatial_input$flows$flow)==sum(station_input$flows$flow),
-      nrow(membership)==nrow(station_input$nodes)&&!anyDuplicated(membership$raw_node_id),
-      spatial_input$provenance$spatial_aggregation$max_assignment_distance_m<=radius_m+1e-7),
-    detail=c('Spatial preparation conserves every retained trip.',
-      'Every station is assigned to exactly one representative.',
-      'Every station is within the declared radius of its representative.'),stringsAsFactors=FALSE)
-  bdynets::write_traffic_input(spatial_input,output_dir,source_files=station_file,
-    dictionary=dictionary,validation=checks)
+  write_traffic_input(spatial_input,output_dir,source_files=station_file,dictionary=dictionary)
 }
 
 # Divvy windows use local clock bounds on one declared departure day.
 divvy_window_times <- function(day, start_clock, end_clock, timezone) {
-  if(length(day)!=1L || is.na(day) || !grepl('^[0-9]{4}-[0-9]{2}-[0-9]{2}$',day) ||
-     is.na(as.Date(day,format='%Y-%m-%d')))stop('Supply one departure day in YYYY-MM-DD format.')
+  date <- divvy_date(day)
   if(length(timezone)!=1L || !timezone%in%OlsonNames())stop('Supply a valid IANA timezone.')
   clock_pattern <- '^([01][0-9]|2[0-3]):[0-5][0-9]$'
   if(length(start_clock)!=1L || length(end_clock)!=1L || anyNA(c(start_clock,end_clock)) ||
      !grepl(clock_pattern,start_clock) || !(grepl(clock_pattern,end_clock) || end_clock=='24:00'))
     stop('Use HH:MM for the window clocks. 24:00 is allowed as the end.')
   from <- paste(day,start_clock)
-  to <- if(end_clock=='24:00')paste(as.Date(day)+1L,'00:00') else paste(day,end_clock)
+  to <- if(end_clock=='24:00')paste(date+1L,'00:00') else paste(day,end_clock)
   times <- as.POSIXct(c(from,to),format='%Y-%m-%d %H:%M',tz=timezone)
   if(anyNA(times) || !identical(format(times,'%Y-%m-%d %H:%M',tz=timezone),c(from,to)) ||
      times[1]>=times[2])stop('The display window must have valid local times and end after it starts.')
@@ -231,66 +206,79 @@ divvy_window_times <- function(day, start_clock, end_clock, timezone) {
 }
 
 # Build the final input for the map from departures that have already been grouped.
-divvy_window_input <- function(spatial_input, start_time, end_time) {
-  timezone <- spatial_input$timezone
+divvy_window_input <- function(spatial_input, start_time, end_time, allow_empty = FALSE) {
+  input <- .od_selection_input(spatial_input, timezone = spatial_input$timezone)
+  .divvy_window_pairs(input, start_time, end_time, allow_empty)
+}
+
+.divvy_window_pairs <- function(input, start_time, end_time, allow_empty, time = NULL) {
   if(!inherits(start_time,'POSIXct') || !inherits(end_time,'POSIXct') ||
      length(start_time)!=1L || length(end_time)!=1L ||
      any(!is.finite(c(as.numeric(start_time),as.numeric(end_time)))) || start_time>=end_time)
     stop('Supply two ordered POSIXct bounds for the OD window.')
-  attr(start_time,'tzone') <- attr(end_time,'tzone') <- timezone
-  selection <- bdynets::traffic_od_select(spatial_input,start_time=start_time,
-    end_time=end_time,timezone=timezone)
-  pairs <- bdynets::traffic_od_pairs(selection,include_loops=TRUE)
-  pairs$time_window <- NULL
-  pairs$start_time <- start_time
-  pairs$end_time <- end_time
-  pairs$timezone <- timezone
-  pairs$unit <- spatial_input$unit
-  pairs$display_radius_m <- spatial_input$provenance$display_radius_m
-  pairs$provenance <- spatial_input$provenance
+  selection <- .od_select_window(input, start_time, end_time, NULL, allow_empty, time)
+  pairs <- traffic_od_pairs(selection, include_loops = TRUE, allow_empty = allow_empty)
+  pairs$display_radius_m <- input$provenance$display_radius_m
   pairs
 }
 
-prepare_window_pairs <- function(spatial_file,start_time,end_time,timezone,output_file) {
-  if(!file.exists(spatial_file)||dir.exists(spatial_file))stop('The prepared spatial OD input is missing.')
-  if(file.exists(output_file)||isTRUE(nzchar(Sys.readlink(output_file),keepNA=TRUE)))
-    stop('Choose a new OD window output file.')
-  spatial_input <- readRDS(spatial_file)
-  if(!identical(timezone,spatial_input$timezone))stop('The OD window must use the prepared data timezone.')
-  pairs <- divvy_window_input(spatial_input,start_time,end_time)
-  saveRDS(pairs,output_file,compress='xz')
-  output_file
+# Partition the local departure day into half-open windows.
+divvy_report_windows <- function(day, timezone, window_minutes = 180L) {
+  if (!is.numeric(window_minutes) || length(window_minutes) != 1L ||
+      !is.finite(window_minutes) || window_minutes < 1L ||
+      window_minutes != floor(window_minutes)) {
+    stop("Supply a positive whole number of minutes for each window.")
+  }
+  day_bounds <- divvy_window_times(day, "00:00", "24:00", timezone)
+  edges <- seq(day_bounds$start_time, day_bounds$end_time, by = window_minutes * 60)
+  if (tail(edges, 1L) < day_bounds$end_time) edges <- c(edges, day_bounds$end_time)
+  data.frame(start_time = head(edges, -1L), end_time = tail(edges, -1L))
+}
+
+# Keep one draw-ready object per requested interval, including intervals with no departures.
+divvy_frame_inputs <- function(spatial_input, windows) {
+  if (!is.data.frame(windows) || !nrow(windows) ||
+      !all(c("start_time", "end_time") %in% names(windows))) {
+    stop("Supply a nonempty table of start_time and end_time values.")
+  }
+  input <- .od_selection_input(spatial_input, timezone = spatial_input$timezone)
+  time <- .od_selection_times(input)
+  lapply(seq_len(nrow(windows)), function(i) {
+    .divvy_window_pairs(
+      input, windows$start_time[i], windows$end_time[i], allow_empty = TRUE, time = time
+    )
+  })
 }
 
 prepare_all_example <- function(base='.',output_dir=file.path(base,'prepared'),
-                                source_file=file.path(base,'data','trips-2026-01-01.csv'),
+                                source_file=file.path(base,'data','raw','202601-divvy-tripdata.csv'),
                                 day='2026-01-01',timezone='America/Chicago',radius_m=1500,fields=divvy_fields,
-                                start_clock='00:00',end_clock='03:00') {
-  window <- divvy_window_times(day,start_clock,end_clock,timezone)
-  if(file.exists(output_dir)||isTRUE(nzchar(Sys.readlink(output_dir),keepNA=TRUE)))
-    stop('Choose a new Divvy output directory.')
-  parent <- dirname(output_dir)
-  dir.create(parent,recursive=TRUE,showWarnings=FALSE)
-  if(!dir.exists(parent))stop('Cannot create the Divvy output parent directory.')
-  lock <- paste0(output_dir,'.preparation-lock')
-  if(!dir.create(lock,showWarnings=FALSE))stop('Another preparation is using the Divvy output path.')
-  on.exit(unlink(lock,recursive=TRUE),add=TRUE)
-  if(file.exists(output_dir)||isTRUE(nzchar(Sys.readlink(output_dir),keepNA=TRUE)))
-    stop('Choose a new Divvy output directory.')
+                                start_clock=NULL,end_clock=NULL) {
+  if (xor(is.null(start_clock), is.null(end_clock))) stop('Supply both --start and --end.')
+  window <- if (!is.null(start_clock)) divvy_window_times(day,start_clock,end_clock,timezone)
+  target <- .prep_destination(output_dir, source_file)
+  parent <- dirname(target)
+  dir.create(parent, recursive = TRUE, showWarnings = FALSE)
+  if (!dir.exists(parent)) stop('Cannot create the Divvy output parent directory.')
+  lock <- paste0(target,'.preparation-lock')
+  if (!dir.create(lock, showWarnings = FALSE)) stop('Another preparation is using the Divvy output path.')
+  on.exit(unlink(lock, recursive = TRUE, expand = FALSE), add = TRUE)
+  .prep_destination(target, source_file)
   stage <- tempfile('divvy-preparation-',tmpdir=parent)
   if(!dir.create(stage))stop('Cannot stage the Divvy outputs.')
-  on.exit(unlink(stage,recursive=TRUE),add=TRUE)
+  on.exit(unlink(stage,recursive=TRUE,expand=FALSE),add=TRUE)
   spatial_dir <- paste0('spatial-',format(radius_m,trim=TRUE),'m')
-  window_name <- paste0('window-',gsub(':','',start_clock),'-',gsub(':','',end_clock),'.rds')
   station_path <- prepare_example(base,file.path(stage,'station'),source_file,day,timezone,NULL,fields)
   spatial_path <- prepare_spatial_example(base,file.path(stage,spatial_dir),station_path,radius_m)
-  prepare_window_pairs(spatial_path,window$start_time,window$end_time,timezone,
-    file.path(stage,spatial_dir,window_name))
-  if(file.exists(output_dir)||isTRUE(nzchar(Sys.readlink(output_dir),keepNA=TRUE))||
-     !file.rename(stage,output_dir))stop('Cannot publish the new Divvy output directory.')
-  c(station=file.path(output_dir,'station','input.rds'),
-    spatial=file.path(output_dir,spatial_dir,'input.rds'),
-    window=file.path(output_dir,spatial_dir,window_name))
+  windows <- if (is.null(window)) divvy_report_windows(day, timezone) else as.data.frame(window)
+  frames <- divvy_frame_inputs(readRDS(spatial_path), windows)
+  frame_file <- file.path(spatial_dir, 'od-frames.rds')
+  saveRDS(frames, file.path(stage, frame_file), compress='xz')
+  .prep_destination(target, source_file)
+  if (!file.rename(stage, target)) stop('Cannot publish the new Divvy output directory.')
+  c(station = file.path(target, 'station', 'input.rds'),
+    spatial = file.path(target, spatial_dir, 'input.rds'),
+    frames = file.path(target, frame_file))
 }
 
 if(sys.nframe()==0L) {
@@ -298,9 +286,8 @@ if(sys.nframe()==0L) {
   if(length(script)!=1L)stop('Rscript entrypoint is required.')
   if(!file.exists(script))script<-gsub('~+~',' ',script,fixed=TRUE)
   base<-dirname(normalizePath(script,mustWork=TRUE))
-  source(file.path(base,'..','..','bdynets','inst','preparation-session.R'))
-  usage <- paste('Usage: Rscript prepare.R [--day YYYY-MM-DD] [--start HH:MM] [--end HH:MM]',
-    '[NEW_DIRECTORY | --raw TRIP_CSV NEW_DIRECTORY]')
+  usage <- paste('Usage: Rscript prepare.R [--day YYYY-MM-DD] [--start HH:MM --end HH:MM]',
+    '[NEW_DIRECTORY | --raw ONE_DAY_TRIP_CSV NEW_DIRECTORY]')
   args <- commandArgs(TRUE)
   flags <- c('--day'='day','--start'='start_clock','--end'='end_clock')
   indices <- which(args%in%names(flags))
@@ -313,7 +300,7 @@ if(sys.nframe()==0L) {
     config$source_file<-args[2]
     config$output_dir<-args[3]
   } else if(length(args))stop(usage)
-  preparation_session(base)
+  source(file.path(base, 'scripts', 'prepare-input.R'))
   result <- do.call(prepare_all_example,c(list(base=base),config))
   cat('Prepared',paste(names(result),result,sep='=',collapse='\n'),"\n")
 }

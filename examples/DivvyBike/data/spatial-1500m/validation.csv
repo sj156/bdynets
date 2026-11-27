@@ -1,6 +1,0 @@
-"check","observed","expected","passed","detail"
-"nodes rows",62,,TRUE,"Rows retained in the prepared table."
-"flows rows",1230,,TRUE,"Rows retained in the prepared table."
-"Retained trip total",1230,1230,TRUE,"Spatial preparation conserves every retained trip."
-"Complete station membership",512,512,TRUE,"Every station is assigned to exactly one representative."
-"Representative radius bound",1469.41939973949,1500,TRUE,"Every station is within the declared radius of its representative."

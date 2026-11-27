@@ -1,6 +1,7 @@
 # MOE observations are hourly all-lane entry rates sampled at each minute.
 beijing_fields <- c(pair='link_id_from_to',day='day_no',minute='timestamp_in_min',
                     rate='link_volume_in_veh_per_hour_for_all_lanes')
+beijing_day_minutes <- 0:1439
 
 beijing_network <- function(network) {
   if(!identical(network$type,'FeatureCollection')||any(network$features$geometry$type!='LineString'))
@@ -19,11 +20,11 @@ beijing_records <- function(records,roads,expected_minutes,fields=beijing_fields
      any(!fields%in%names(records)))stop('Map each required MOE role to one distinct source field.')
   records<-as.data.frame(records)[unname(fields[names(beijing_fields)])]
   names(records)<-names(beijing_fields)
-  records<-records[!is.na(records$day)&records$day==day,,drop=FALSE]
-  if(!nrow(records)||anyNA(records)||!is.numeric(records$minute)||!is.numeric(records$rate)||
+  if(!nrow(records)||anyNA(records[c('pair','day')])||!is.numeric(records$minute)||!is.numeric(records$rate)||
      any(!is.finite(records$minute))||any(records$minute!=trunc(records$minute))||
      any(!is.finite(records$rate)|records$rate<0)||any(!nzchar(as.character(records$pair))))
     stop('MOE rows need a directed pair, a whole source minute and a nonnegative finite hourly rate.')
+  if(any(records$day!=day))stop('The original-format CSV must contain only the example day.')
   if(!length(expected_minutes)||anyNA(expected_minutes)||any(diff(expected_minutes)!=1))
     stop('Declare the consecutive source-minute domain.')
   if(anyDuplicated(records[c('pair','minute')]))stop('Duplicate directed-pair and minute key.')
@@ -33,7 +34,7 @@ beijing_records <- function(records,roads,expected_minutes,fields=beijing_fields
     stop('Missing or unexpected directed-pair and minute record.')
   values<-matrix(NA_real_,length(pairs),length(expected_minutes))
   values[cbind(match(records$pair,pairs),column)]<-records$rate
-  if(anyNA(values)||any(!roads$edge_id%in%pairs))stop('Source minutes or directed geometry matches are incomplete.')
+  if(any(!roads$edge_id%in%pairs))stop('Source minutes or directed geometry matches are incomplete.')
   list(schema='beijing-native-minute-v1',road_pairs=pairs,minute=expected_minutes,
        minute_rates=values,roads=roads,day_no=day,source_field=unname(fields['rate']),source_columns=fields)
 }
@@ -57,6 +58,7 @@ beijing_input <- function(native,interval_minutes=5L) {
   roads$road_id<-as.character(roads$edge_index)
   flow<-data.frame(road_id=rep(roads$road_id,length(starts)),time=rep(starts,each=nrow(roads)),flow=as.vector(values))
   result <- list(crs='EPSG:4326',roads=roads,flow=flow,times=starts,
+    title = 'Beijing simulated entry flow', time_label_format = '%H:%M',
     interval_seconds=rep(interval_minutes*60,length(starts)),unit='vehicles/hour',
     provenance=list(source_fields=if(is.null(native$source_columns))beijing_fields else native$source_columns,day_no=native$day_no,source=native$source,
       source_pairs=length(native$road_pairs),display_roads=nrow(roads),
@@ -66,44 +68,62 @@ beijing_input <- function(native,interval_minutes=5L) {
   result
 }
 
-read_beijing_raw <- function(moe_file,geometry_file,fields=beijing_fields,day=10L,expected_minutes=0:1439) {
+beijing_read_network <- function(geometry_file) {
   lines<-readLines(geometry_file,warn=FALSE,encoding='UTF-8')
   hit<-grep('^[[:space:]]*const network[[:space:]]*=',lines,value=TRUE)
   if(length(hit)!=1L)stop('Geometry file must contain one network FeatureCollection.')
   literal<-sub(';[[:space:]]*$','',sub('^[[:space:]]*const network[[:space:]]*=[[:space:]]*','',hit))
-  roads<-beijing_network(jsonlite::fromJSON(literal))
+  beijing_network(jsonlite::fromJSON(literal))
+}
+
+# Restore the original CSV bytes for the report and command-line preparation.
+restore_beijing_csv <- function(archive_file, work_dir) {
+  csv_file <- file.path(work_dir, sub("[.]gz$", "", basename(archive_file)))
+  if (file.exists(csv_file)) stop("Choose an empty directory for the restored CSV.")
+  archive <- gzfile(archive_file, "rb")
+  on.exit(close(archive), add = TRUE)
+  output <- file(csv_file, "wb")
+  on.exit(close(output), add = TRUE)
+  repeat {
+    bytes <- readBin(archive, "raw", n = 1024L * 1024L)
+    if (!length(bytes)) break
+    writeBin(bytes, output)
+  }
+  csv_file
+}
+
+beijing_read_moe <- function(moe_file,fields=beijing_fields) {
   header<-names(read.csv(text=readLines(moe_file,n=1L),check.names=FALSE))
   at<-match(unname(fields),header)
   if(anyNA(at))stop('Required source columns are missing.')
-  raw<-data.table::fread(moe_file,skip=1L,header=FALSE,select=at,col.names=unname(fields),showProgress=FALSE)
-  raw<-raw[raw[[fields['day']]]==day & raw[[fields['minute']]]%in%expected_minutes,]
+  data.table::fread(moe_file,skip=1L,header=FALSE,select=at,col.names=unname(fields),showProgress=FALSE)
+}
+
+read_beijing_raw <- function(moe_file,geometry_file,fields=beijing_fields,day=10L,expected_minutes=beijing_day_minutes) {
+  raw<-beijing_read_moe(moe_file,fields)
+  roads<-beijing_read_network(geometry_file)
   native<-beijing_records(raw,roads,expected_minutes,fields,day)
   native$source<-c(basename(moe_file),basename(geometry_file))
   native
 }
-prepare_example <- function(base='.',output_dir=file.path(base,'prepared'),interval_minutes=5L,
-                            source_file=file.path(base,'data','source.rds'),moe_file=NULL,geometry_file=NULL) {
-  if(xor(is.null(moe_file),is.null(geometry_file)))stop('Supply both the MOE CSV and geometry HTML.')
-  sources<-if(is.null(moe_file))source_file else c(moe_file,geometry_file)
-  native<-NULL
-  build<-function() {
-    native<<-if(is.null(moe_file))readRDS(source_file) else read_beijing_raw(moe_file,geometry_file)
-    native$source<-basename(sources)
-    beijing_input(native,interval_minutes)
-  }
+write_beijing_prepared <- function(native, output_dir, sources, interval_minutes=5L) {
   meanings<-c(edge_index='Source GeoJSON display-road index.',edge_id='Directed source pair, from_node_id -> to_node_id.',
     from_node_id='Source upstream node ID.',to_node_id='Source downstream node ID.',length_km='Source link length in kilometres.',
     lanes='Source all-lane count.',speed_limit='Source speed-limit attribute, unchanged.',link_type_name='Source link-type description.')
   dictionary<-data.frame(table='roads',field=names(meanings),meaning=unname(meanings))
-  checks<-function() {
-    result<-data.frame(check=c('Native minute grid','Retained road-minute matches'),
-    observed=c(length(native$minute_rates),nrow(native$roads)*length(native$minute)),
-    expected=c(length(native$road_pairs)*length(native$minute),nrow(native$roads)*length(native$minute)),
-    passed=TRUE,detail=c('One observed rate per declared pair-minute; duplicate and gap checks precede conversion.',
-                        'Every display road joins to a source directed pair.'))
-    result$passed<-result$observed==result$expected;result
-  }
-  bdynets::write_traffic_input(build(),output_dir,source_files=sources,native=native,dictionary=dictionary,validation=checks())
+  write_traffic_input(beijing_input(native,interval_minutes),output_dir,
+    source_files=sources,native=native,dictionary=dictionary)
+}
+
+prepare_example <- function(base='.',output_dir=file.path(base,'prepared'),interval_minutes=5L) {
+  archive_file <- file.path(base, "data", "raw", "output_LinkTDMOE.csv.gz")
+  work_dir <- tempfile("beijing-csv-")
+  dir.create(work_dir)
+  on.exit(unlink(work_dir, recursive = TRUE), add = TRUE)
+  moe_file <- restore_beijing_csv(archive_file, work_dir)
+  geometry_file<-file.path(base,'data','raw','saturation_dynamic_leaflet_osm_osmgeom.html')
+  native<-read_beijing_raw(moe_file,geometry_file)
+  write_beijing_prepared(native,output_dir,c(moe_file,geometry_file),interval_minutes)
 }
 
 if(sys.nframe()==0L) {
@@ -111,9 +131,9 @@ if(sys.nframe()==0L) {
   if(length(script)!=1L)stop('Rscript entrypoint is required.')
   if(!file.exists(script))script<-gsub('~+~',' ',script,fixed=TRUE)
   base<-dirname(normalizePath(script,mustWork=TRUE))
-  source(file.path(base,'..','..','bdynets','inst','preparation-session.R'))
-  preparation_session(base)
+  source(file.path(base, 'scripts', 'prepare-input.R'))
   args<-commandArgs(TRUE)
-  if(!length(args))result<-prepare_example(base) else if(length(args)==1L)result<-prepare_example(base,output_dir=args[1]) else if(length(args)==4L&&args[1]=='--raw')result<-prepare_example(base,output_dir=args[4],moe_file=args[2],geometry_file=args[3]) else stop('Usage: Rscript prepare.R [NEW_DIRECTORY | --raw MOE_CSV GEOMETRY_HTML NEW_DIRECTORY]')
-  cat('Prepared',result,'\n')
+  if(length(args)>1L)stop('Usage: Rscript prepare.R [NEW_DIRECTORY]')
+  result<-if(length(args))prepare_example(base,output_dir=args[1]) else prepare_example(base)
+  cat('Drawing input',file.path(dirname(result),'flow-frames.rds'),'\n')
 }

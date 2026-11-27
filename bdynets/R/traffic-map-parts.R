@@ -1,6 +1,4 @@
-# Building blocks for the OD map, so data adaptation, time selection, OD pair
-# summarisation and layer drawing stay independent, while the canvas, extent,
-# basemap, text, annotations and file output are shared by every map.
+# Shared rendering helpers for prepared OD frames and street context.
 
 #' @noRd
 .tm_map_mapping <- function(mapping,required,allowed,label) {
@@ -25,269 +23,192 @@
   value
 }
 
-#' @noRd
-.od_label_window <- function(time_label,timezone) {
-  .tm_assert(is.character(time_label) && length(time_label) == 1L &&
-    !is.na(time_label) && grepl("^([01]?[0-9]|2[0-3]):00$", time_label),
-    "time_label must name a whole clock hour (HH:00); use start_time and end_time for other windows")
-  hour <- as.integer(sub(":00$", "", time_label))
-  next_hour <- (hour + 1L) %% 24L
-  list(hour_window = c(hour, next_hour),
-    label = sprintf("%02d:00-%02d:00 (%s)", hour, next_hour, timezone))
-}
-
-#' Select one time window from OD flows
-#'
-#' The first independent step of an OD map: adapt the node and flow tables,
-#' then keep the records inside one explicit window. Nothing about the canvas,
-#' basemap or styling is decided here.
-#'
-#' @param nodes Node table, CSV/RDS path, `traffic_od_data` or `od_aggregation`.
-#' @param flows Flow table or path; omit for OD objects.
-#' @param node_columns,flow_columns Column mappings for the two tables.
-#' @param start_time,end_time Half-open timestamp window; supply both or neither.
-#' @param hour_window Two clock hours such as `c(8, 9)`, pooled across dates.
-#' @param time_label Whole clock-hour shorthand such as `"08:00"`, pooled across dates.
-#' @param timezone IANA timezone used to parse timestamps.
-#' @return A `bdynets_od_selection`: standardised nodes, kept records, label.
-#' @export
-traffic_od_select <- function(nodes,flows=NULL,
-    node_columns=c(id="node_id",longitude="longitude",latitude="latitude",size="member_weight"),
-    flow_columns=c(origin="origin_id",destination="destination_id",count="flow",time="time"),
-    start_time=NULL,end_time=NULL,hour_window=NULL,time_label=NULL,timezone="UTC") {
-  if (inherits(nodes,"traffic_od_data")) {
-    .tm_assert(is.null(flows),"When nodes is a traffic_od_data object, omit flows")
-    if (missing(node_columns)) node_columns <- nodes$node_columns
-    if (missing(flow_columns)) flow_columns <- nodes$flow_columns
-    if (missing(timezone)) timezone <- nodes$timezone
-    flows <- nodes$flows; nodes <- nodes$nodes
-  } else if (inherits(nodes,"od_aggregation")) {
-    .tm_assert(is.null(flows),"When nodes is an od_aggregation object, omit flows")
-    flows <- nodes$flows; nodes <- nodes$nodes
-  } else if (is.list(nodes) && !is.data.frame(nodes) &&
-      all(c("nodes","flows") %in% names(nodes))) {
-    .tm_assert(is.null(flows),"When nodes is a named OD list, omit flows")
-    bundle <- nodes
-    if (missing(timezone) && is.character(bundle$timezone) &&
-        length(bundle$timezone) == 1L) timezone <- bundle$timezone
-    flows <- bundle$flows; nodes <- bundle$nodes
-  }
-  nodes <- .tm_read_table(nodes,"nodes"); flows <- .tm_read_table(flows,"flows")
-  node_columns <- .tm_map_mapping(node_columns,c("id","longitude","latitude"),
-    c("id","longitude","latitude","size"),"node_columns")
-  flow_columns <- .tm_map_mapping(flow_columns,c("origin","destination"),
-    c("origin","destination","count","time"),"flow_columns")
-  id_col <- .tm_map_mapped(node_columns,"id",nodes,TRUE)
-  lon_col <- .tm_map_mapped(node_columns,"longitude",nodes,TRUE)
-  lat_col <- .tm_map_mapped(node_columns,"latitude",nodes,TRUE)
-  size_col <- .tm_map_mapped(node_columns,"size",nodes)
-  node_data <- data.frame(node_id = as.character(nodes[[id_col]]),
-    longitude = as.numeric(.tm_numeric(nodes[[lon_col]], "Node longitude")),
-    latitude = as.numeric(.tm_numeric(nodes[[lat_col]], "Node latitude")),
-    size = if (is.null(size_col)) 1 else as.numeric(.tm_numeric(nodes[[size_col]], "Node size")),
-    stringsAsFactors = FALSE)
-  .tm_assert(!anyNA(node_data$node_id) && all(nzchar(node_data$node_id)) &&
-    !anyDuplicated(node_data$node_id),
-    "Node identifiers must be unique and nonmissing")
-  .tm_assert(all(is.finite(node_data$longitude)) &&
-    all(is.finite(node_data$latitude)) &&
-    all(abs(node_data$longitude) <= 180) &&
-    all(abs(node_data$latitude) <= 85.0511), "Node coordinates are invalid")
-  .tm_assert(all(is.finite(node_data$size)) && all(node_data$size >= 0),
-    "Mapped node sizes must be nonnegative and finite")
-
-  origin_col <- .tm_map_mapped(flow_columns,"origin",flows,TRUE)
-  destination_col <- .tm_map_mapped(flow_columns,"destination",flows,TRUE)
-  count_col <- .tm_map_mapped(flow_columns,"count",flows)
-  time_col <- .tm_map_mapped(flow_columns,"time",flows)
-  origin <- as.character(flows[[origin_col]])
-  destination <- as.character(flows[[destination_col]])
-  count <- if (is.null(count_col)) rep(1,nrow(flows)) else as.numeric(.tm_numeric(flows[[count_col]], "OD flow"))
-  .tm_assert(!anyNA(origin) && !anyNA(destination) &&
-    all(origin %in% node_data$node_id) && all(destination %in% node_data$node_id),
-    "Every OD endpoint must match one node identifier")
-  .tm_assert(all(is.finite(count)) && all(count >= 0),
-    "Flow values must be nonnegative and finite")
-  .tm_assert(!xor(is.null(start_time),is.null(end_time)),
-    "Supply both start_time and end_time, or neither")
-  .tm_assert(is.null(hour_window) || (is.null(start_time) && is.null(end_time)),
-    "hour_window cannot be combined with start_time or end_time")
-  .tm_assert(is.null(time_label) || (is.null(start_time) && is.null(end_time) && is.null(hour_window)),
-    "time_label cannot be combined with start_time, end_time or hour_window")
-  label_only <- NULL
-  if (!is.null(time_label)) {
-    spec <- .od_label_window(time_label,timezone)
-    hour_window <- spec$hour_window; label_only <- spec$label
-  }
-  keep <- rep(TRUE,nrow(flows)); window_label <- NULL
-  if (!is.null(start_time) || !is.null(hour_window)) {
-    .tm_assert(!is.null(time_col),"A mapped time column is required for time filtering")
-    time <- .od_parse_time(flows[[time_col]],timezone)
-    .tm_assert(!anyNA(time),"The mapped time column contains invalid timestamps")
-  }
-  if (!is.null(start_time)) {
-    start <- .od_parse_time(start_time,timezone)
-    end <- .od_parse_time(end_time,timezone)
-    .tm_assert(!is.na(start) && !is.na(end) && end > start,
-      "The mapped timestamps or requested time window are invalid")
-    keep <- time >= start & time < end
-    window_label <- paste(format(start,"%Y-%m-%d %H:%M"),"to",
-      format(end,"%Y-%m-%d %H:%M"),paste0("(",timezone,")"))
-  } else if (!is.null(hour_window)) {
-    .tm_assert(is.numeric(hour_window) && length(hour_window) == 2L &&
-      all(is.finite(hour_window)) && all(hour_window == floor(hour_window)) &&
-      all(hour_window >= 0) && all(hour_window <= 24) &&
-      hour_window[1] != hour_window[2],
-      "hour_window must contain two different integer clock hours from 0 to 24")
-    hour_start <- hour_window[1] %% 24
-    hour_end <- hour_window[2] %% 24
-    clock_hour <- as.integer(format(time,"%H",tz=timezone))
-    keep <- if (hour_start < hour_end) {
-      clock_hour >= hour_start & clock_hour < hour_end
-    } else {
-      clock_hour >= hour_start | clock_hour < hour_end
-    }
-    window_label <- if (is.null(label_only)) {
-      sprintf("all dates pooled over %02d:00-%02d:00 (%s)",hour_start,hour_end,timezone)
-    } else label_only
-  }
-  selected <- data.frame(origin_id = origin[keep],destination_id = destination[keep],
-    flow = count[keep],stringsAsFactors = FALSE)
-  if (!nrow(selected)) stop(structure(list(
-    message="No flows remain in the requested time window",call=NULL,
-    nodes=node_data,time_window=window_label),
-    class=c("traffic_od_empty_window","error","condition")))
-  structure(list(nodes = node_data,selected = selected,
-    time_window = window_label,timezone = timezone,
-    records = nrow(selected),flow = sum(selected$flow)),
-    class = "bdynets_od_selection")
-}
-
-#' Summarise selected OD records into directed pairs
-#'
-#' The second independent step: aggregate the kept records into one row per
-#' directed pair, separate within-node trips, and attach endpoint coordinates.
-#'
-#' @param selection A `bdynets_od_selection` from [traffic_od_select()].
-#' @param top_n Maximum nonloop pairs kept; `Inf` keeps all.
-#' @param include_loops Whether within-node flows may be the only result.
-#' @param active_nodes_only Whether to keep only endpoints of drawn pairs.
-#' @return A `bdynets_od_pairs`: routes, plotted nodes, totals and counters.
-#' @export
-traffic_od_pairs <- function(selection,top_n=Inf,include_loops=FALSE,active_nodes_only=TRUE) {
-  .tm_assert(inherits(selection,"bdynets_od_selection"),
-    "traffic_od_pairs() needs the object returned by traffic_od_select()")
-  node_data <- selection$nodes; selected <- selection$selected
-  totals <- stats::aggregate(flow ~ origin_id + destination_id,selected,sum)
-  totals <- totals[totals$flow > 0,,drop=FALSE]
-  loop_total <- sum(totals$flow[totals$origin_id == totals$destination_id])
-  routes <- totals[totals$origin_id != totals$destination_id,,drop=FALSE]
-  routes <- routes[order(-routes$flow,routes$origin_id,routes$destination_id),,drop=FALSE]
-  active_pairs <- nrow(routes)
-  .tm_assert(length(top_n) == 1L && !is.na(top_n) && top_n > 0,
-    "top_n must be positive or Inf")
-  if (is.finite(top_n)) routes <- utils::head(routes,as.integer(top_n))
-  if (!nrow(routes) && !isTRUE(include_loops)) stop(structure(list(
-    message="No nonloop OD flows remain for plotting",call=NULL,
-    nodes=node_data,time_window=selection$time_window,selected_records=nrow(selected),
-    selected_flow=sum(selected$flow),within_node_flow=loop_total,
-    nonloop_flow=sum(totals$flow)-loop_total),
-    class=c("traffic_od_no_routes","error","condition")))
-  origin_at <- match(routes$origin_id,node_data$node_id)
-  destination_at <- match(routes$destination_id,node_data$node_id)
-  routes$origin_longitude <- node_data$longitude[origin_at]
-  routes$origin_latitude <- node_data$latitude[origin_at]
-  routes$destination_longitude <- node_data$longitude[destination_at]
-  routes$destination_latitude <- node_data$latitude[destination_at]
-  plot_nodes <- node_data
-  if (isTRUE(active_nodes_only) && nrow(routes)) {
-    active_ids <- unique(c(routes$origin_id,routes$destination_id))
-    plot_nodes <- node_data[node_data$node_id %in% active_ids,,drop=FALSE]
-  }
-  .tm_assert(nrow(plot_nodes) > 0L,"No nodes remain for plotting")
-  structure(list(routes = routes,nodes = plot_nodes,all_nodes = node_data,
-    totals = totals,active_pairs = active_pairs,within_node_flow = loop_total,
-    selected_flow = sum(selected$flow),
-    time_window = selection$time_window),
-    class = "bdynets_od_pairs")
+.tm_od_plot_time <- function(value, timezone) {
+  if (is.numeric(value)) value <- as.POSIXct(value, origin = "1970-01-01", tz = "UTC")
+  .od_parse_time(value, timezone)
 }
 
 #' Derive the map extent from plotted nodes
 #'
-#' Shared by every map: either the caller's `bounds` or the node range expanded
-#' by `padding`.
+#' Uses the caller's `bounds` or the node range expanded by `padding`.
+#' Supply the output dimensions to plan background coverage for a static OD
+#' map using its series extent.
 #'
 #' @param nodes Standardised node table with longitude and latitude.
 #' @param bounds Optional `c(west,east,south,north)`.
 #' @param padding Fractional padding around the node range.
+#' @param width,height Optional OD map output dimensions in inches. Supply
+#'   both to include the canvas expansion at that aspect ratio.
 #' @return Named numeric vector `c(west,east,south,north)`.
 #' @export
-traffic_map_extent <- function(nodes,bounds=NULL,padding=0.045) {
+traffic_map_extent <- function(nodes,bounds=NULL,padding=0.045,width=NULL,height=NULL) {
   nodes <- .tm_read_table(nodes,"nodes")
   .tm_assert(all(c("longitude","latitude") %in% names(nodes)),
     "Extent nodes need longitude and latitude columns")
   .tm_assert(is.numeric(padding) && length(padding) == 1L &&
     is.finite(padding) && padding >= 0,"padding must be one nonnegative number")
   if (!is.null(bounds)) {
-    .tm_assert(is.numeric(bounds) && length(bounds) == 4L && all(is.finite(bounds)) &&
-      bounds[1] < bounds[2] && bounds[3] < bounds[4],
-      "bounds must be c(west,east,south,north)")
-    return(stats::setNames(as.numeric(bounds),c("west","east","south","north")))
+    .tm_validate_extent(bounds)
+    extent <- stats::setNames(as.numeric(bounds),c("west","east","south","north"))
+  } else {
+    extent <- .tm_extent_coordinates(cbind(.tm_numeric(nodes$longitude, "Node longitude"),
+      .tm_numeric(nodes$latitude, "Node latitude")), padding)
   }
-  longitude_range <- range(.tm_numeric(nodes$longitude,"Node longitude"))
-  latitude_range <- range(.tm_numeric(nodes$latitude,"Node latitude"))
-  longitude_span <- max(diff(longitude_range),1e-6)
-  latitude_span <- max(diff(latitude_range),1e-6)
-  stats::setNames(c(longitude_range[1] - padding * longitude_span,
-    longitude_range[2] + padding * longitude_span,
-    latitude_range[1] - padding * latitude_span,
-    latitude_range[2] + padding * latitude_span),c("west","east","south","north"))
+  if (is.null(width) && is.null(height)) return(extent)
+  .tm_background_viewport(.tm_project_extent(extent), width, height, .tm_od_map_margins)
+}
+
+#' Derive the background extents for prepared Flow or Speed frames
+#'
+#' Use the result to prepare background files before drawing. The extents
+#' include the visible canvas around the roads and events at the specified
+#' output size. Region columns can be character vectors or factors.
+#'
+#' @param x Prepared `trafficmap_data` drawing object or its RDS path.
+#' @param region Optional exact region to cover. Use `NULL` to cover all records.
+#' @param width,height Output dimensions in inches, as passed to the drawing function.
+#' @param padding,full_extent Road map layout options. Match the drawing call.
+#' @param split_regions With `region = NULL`, prepare one extent per region
+#'   plus one for any unassigned roads and events. Set to `FALSE` to prepare
+#'   one continuous background for a map that displays all records together.
+#' @return An unnamed list of numeric extents, each in west, east, south, north order.
+#' @export
+traffic_road_extents <- function(x, region = NULL, width = 11, height = 9,
+    padding = 0.08, full_extent = TRUE, split_regions = TRUE) {
+  .tm_check_padding(padding)
+  .tm_check_full_extent(full_extent)
+  .tm_assert(is.logical(split_regions) && length(split_regions) == 1L && !is.na(split_regions),
+    "split_regions must be TRUE or FALSE")
+  x <- read_traffic(x)
+  coverage <- function(data, area=NULL) {
+    limits <- .tm_road_plot_limits(data, area, full_extent, padding)
+    .tm_background_viewport(limits, width, height, .tm_road_map_margins)
+  }
+  if (!is.null(region) || !split_regions) return(list(coverage(x, region)))
+  regions <- .tm_regions(x)
+  if (!length(regions)) return(list(coverage(x)))
+  boxes <- lapply(regions, function(area) coverage(x, area))
+  unassigned <- function(records) {
+    labels <- .tm_region_labels(records[["region"]])
+    if (is.null(labels)) return(seq_len(NROW(records)))
+    which(is.na(labels) | !nzchar(labels))
+  }
+  roads <- unassigned(x$roads)
+  events <- unassigned(x$events)
+  if (length(roads) || length(events)) {
+    x$roads <- x$roads[roads, , drop=FALSE]
+    if (!is.null(x$events)) x$events <- x$events[events, , drop=FALSE]
+    boxes <- c(boxes, list(coverage(x)))
+  }
+  boxes
+}
+
+.tm_mercator_limit <- 85.0511287798066
+.tm_road_map_margins <- c(3, 1, 4, 1)
+.tm_od_map_margins <- c(4.5, 1.2, 5.1, 1.2)
+
+.tm_validate_extent <- function(bounds) {
+  .tm_assert(is.numeric(bounds) && length(bounds) == 4L && all(is.finite(bounds)) &&
+    diff(bounds[1:2]) > 0 && diff(bounds[1:2]) <= 360 && bounds[3] < bounds[4] &&
+    all(abs(bounds[3:4]) <= .tm_mercator_limit),
+    "Bounds must be c(west,east,south,north), with up to 360 degrees of longitude and latitudes within Web Mercator limits")
+}
+
+.tm_project_extent <- function(extent) {
+  corners <- .tm_project(matrix(extent[c(1L, 3L, 2L, 4L)], ncol = 2L, byrow = TRUE))
+  c(corners[, 1L], corners[, 2L])
+}
+
+# The same aspect expansion is used by the graphics device and background preparation.
+.tm_fit_map_viewport <- function(limits, plot_size) {
+  span <- c(diff(limits[1:2]), diff(limits[3:4]))
+  target <- plot_size * max(span / plot_size)
+  extra <- pmax(target - span, 0) / 2
+  limits + c(-extra[1L], extra[1L], -extra[2L], extra[2L])
+}
+
+.tm_background_viewport <- function(limits, width, height, margins) {
+  .tm_assert(is.numeric(width) && length(width) == 1L && is.finite(width) &&
+    is.numeric(height) && length(height) == 1L && is.finite(height),
+    "Supply finite map width and height in inches")
+  # On the standard static devices, one line of margin measures 0.2 inches.
+  plot_size <- c(width, height) - 0.2 * c(sum(margins[c(2L, 4L)]), sum(margins[c(1L, 3L)]))
+  .tm_assert(all(plot_size > 0), "Map width and height must leave room for the margins")
+  .tm_context_coverage(.tm_projected_extent(.tm_fit_map_viewport(limits, plot_size)))
+}
+
+.tm_context_coverage <- function(extent) {
+  if (diff(extent[1:2]) > 360) extent[1:2] <- mean(extent[1:2]) + c(-180, 180)
+  extent[3:4] <- c(max(-.tm_mercator_limit, extent[3L]), min(.tm_mercator_limit, extent[4L]))
+  extent
+}
+
+.tm_extent_coordinates <- function(coordinates, padding = 0.045, minimum_span = 1e-6) {
+  .tm_assert(nrow(coordinates) > 0L && all(is.finite(coordinates)) &&
+    all(abs(coordinates[, 1L]) <= 180) && all(abs(coordinates[, 2L]) <= .tm_mercator_limit),
+    "Supply finite longitude/latitude coordinates within Web Mercator limits")
+  lon <- coordinates[, 1L]
+  longitude_range <- range(.tm_longitude_near(lon, .tm_longitude_center(lon)))
+  latitude_range <- range(coordinates[, 2L])
+  margin <- function(x) {
+    span <- max(diff(x), minimum_span)
+    (span - diff(x)) / 2 + span * padding
+  }
+  longitude_margin <- min(margin(longitude_range), (360 - diff(longitude_range)) / 2)
+  latitude_margin <- margin(latitude_range)
+  stats::setNames(c(longitude_range + c(-1, 1) * longitude_margin,
+    max(-.tm_mercator_limit, latitude_range[1L] - latitude_margin),
+    min(.tm_mercator_limit, latitude_range[2L] + latitude_margin)),
+    c("west", "east", "south", "north"))
+}
+
+# Drawing options can locate an existing cache. Acquisition is a separate step.
+.tm_require_local_basemap <- function(offline, refresh) {
+  .tm_assert(!identical(offline, FALSE) && !isTRUE(refresh),
+    "Prepare or refresh street context first with traffic_basemap(), then supply the prepared basemap.")
 }
 
 #' Obtain the basemap for one extent
 #'
-#' Shared by every map. `basemap` says *how* context is obtained; the extent
-#' says *where*. Accepted forms: `NULL` (no context), `"auto"` (read the cache
-#' for this extent and fetch only when a device is going to draw), a list with
-#' `cache_dir`, `offline` and `refresh` fields, an already loaded
-#' FeatureCollection, a grouped line table, or an RDS/CSV path.
+#' Shared by every map. Supply `NULL` for no context, `"auto"` to look
+#' for local cached context, or give a prepared FeatureCollection, grouped
+#' line table, or table path. Use [traffic_basemap()] before drawing to
+#' acquire context for a new extent.
 #'
 #' @param basemap Basemap specification as described above.
 #' @param extent `c(west,east,south,north)`.
 #' @param basemap_columns Mappings for a grouped line table.
 #' @param cache_dir Cache directory used when context has to be obtained.
-#' @param offline Whether cached context must not be refreshed from Overpass.
-#' @param refresh Whether to ignore cached content.
-#' @param draws Whether a device will actually draw; `"auto"` returns `NULL`
-#'   when nothing is drawn, so dry runs never touch network or disk.
+#' @param offline,refresh Drawing uses local files. Call [traffic_basemap()] to acquire or refresh context.
+#' @param draws Whether a device will actually draw; `"auto"` skips cache
+#'   lookup when no device will draw.
 #' @return A trafficmap FeatureCollection or `NULL`.
 #' @export
 traffic_map_base <- function(basemap="auto",extent,
     basemap_columns=c(longitude="longitude",latitude="latitude",group="street_group",class="street_class"),
-    cache_dir=file.path("data","basemap-cache"),offline=FALSE,refresh=FALSE,draws=TRUE) {
-  .tm_assert(is.numeric(extent) && length(extent) == 4L && all(is.finite(extent)),
-    "extent must be c(west,east,south,north)")
+    cache_dir=file.path("data","basemap-cache"),offline=TRUE,refresh=FALSE,draws=TRUE) {
+  .tm_require_local_basemap(offline, refresh)
+  .tm_validate_extent(extent)
   extent <- as.numeric(extent)
   if (is.null(basemap)) return(NULL)
   if (is.list(basemap) && !is.data.frame(basemap) && is.null(names(basemap)) == FALSE &&
       any(c("cache_dir","offline","refresh","mode") %in% names(basemap)) &&
       is.null(basemap$type)) {
+    .tm_require_local_basemap(basemap$offline, basemap$refresh)
     cache_dir <- if (is.null(basemap$cache_dir)) cache_dir else basemap$cache_dir
-    offline <- if (is.null(basemap$offline)) offline else basemap$offline
-    refresh <- if (is.null(basemap$refresh)) refresh else basemap$refresh
     basemap <- if (is.null(basemap$mode)) "auto" else basemap$mode
   }
   if (identical(basemap,"auto")) {
     if (!isTRUE(draws) || !isTRUE(getOption("bdynets.basemap.auto",TRUE))) return(NULL)
-    return(traffic_basemap(bounds = extent,cache_dir = cache_dir,
-      offline = offline,refresh = refresh))
+    return(tryCatch(traffic_basemap(bounds = extent,cache_dir = cache_dir,offline = TRUE),
+      bdynets_basemap_cache_miss = function(e) NULL))
   }
-  if (is.list(basemap) && identical(basemap$type,"FeatureCollection"))
+  if (.tm_geojson_path(basemap) || (is.list(basemap) && identical(basemap$type,"FeatureCollection")))
     return(.tm_basemap(basemap))
   if (identical(basemap,"cache")) {
     .tm_assert(dir.exists(cache_dir),"cache_dir must be an existing directory")
     return(traffic_basemap(bounds = extent,cache_dir = cache_dir,
-      offline = TRUE,refresh = refresh))
+      offline = TRUE))
   }
   x <- .tm_read_table(basemap,"basemap")
   mapping <- .tm_map_mapping(basemap_columns,c("longitude","latitude","group"),
@@ -295,20 +216,23 @@ traffic_map_base <- function(basemap="auto",extent,
   lon_col <- .tm_map_mapped(mapping,"longitude",x,TRUE)
   lat_col <- .tm_map_mapped(mapping,"latitude",x,TRUE)
   group_col <- .tm_map_mapped(mapping,"group",x,TRUE)
+  if (identical(unname(mapping["class"]), "street_class") &&
+      !"street_class" %in% names(x)) mapping["class"] <- NA_character_
   class_col <- .tm_map_mapped(mapping,"class",x)
   line_data <- data.frame(longitude = as.numeric(.tm_numeric(x[[lon_col]], "Basemap longitude")),
     latitude = as.numeric(.tm_numeric(x[[lat_col]], "Basemap latitude")),group = as.character(x[[group_col]]),
-    class = if (is.null(class_col)) "" else as.character(x[[class_col]]),
+    class = if (is.null(class_col)) rep("", nrow(x)) else as.character(x[[class_col]]),
     stringsAsFactors = FALSE)
   .tm_assert(!anyNA(line_data$group) && all(nzchar(line_data$group)),
     "Basemap line groups must be nonmissing")
   .tm_assert(all(is.finite(line_data$longitude)) && all(is.finite(line_data$latitude)) &&
-    all(abs(line_data$longitude) <= 180) && all(abs(line_data$latitude) <= 85.0511),
+    all(abs(line_data$longitude) <= 180) && all(abs(line_data$latitude) <= .tm_mercator_limit),
     "Basemap coordinates are invalid")
   indices <- split(seq_len(nrow(line_data)),line_data$group)
   intersects <- vapply(indices,function(i) {
     q <- line_data[i,,drop=FALSE]
-    min(q$longitude) <= extent[2] && max(q$longitude) >= extent[1] &&
+    longitude <- .tm_longitude_near(q$longitude, mean(extent[1:2]))
+    min(longitude) <= extent[2] && max(longitude) >= extent[1] &&
       min(q$latitude) <= extent[4] && max(q$latitude) >= extent[3]
   },logical(1))
   indices <- indices[intersects]
@@ -335,11 +259,9 @@ traffic_map_base <- function(basemap="auto",extent,
 #' @return A `bdynets_map_canvas`: projected limits and plotting region.
 #' @export
 traffic_map_canvas <- function(extent,basemap=NULL,margins=c(3.6,1.2,5.1,1.2)) {
+  .tm_validate_extent(extent)
   extent <- as.numeric(extent)
-  projected_extent <- .tm_project(matrix(c(extent[1],extent[3],extent[2],extent[4]),
-    ncol = 2,byrow = TRUE))
-  limits <- c(projected_extent[1,1],projected_extent[2,1],
-    projected_extent[1,2],projected_extent[2,2])
+  limits <- .tm_project_extent(extent)
   usr <- .tm_map_canvas(limits,margins)
   .tm_static_context(basemap,usr)
   structure(list(extent = extent,limits = limits,usr = usr,par = graphics::par(no.readonly = TRUE)),
@@ -348,20 +270,20 @@ traffic_map_canvas <- function(extent,basemap=NULL,margins=c(3.6,1.2,5.1,1.2)) {
 
 #' Draw the OD layer and its legend
 #'
-#' @param pairs Result of [traffic_od_pairs()].
+#' @param pairs Prepared OD frame (bdynets_od_pairs).
 #' @param flow_style Named style list; see [traffic_od_map()].
 #' @param legend Whether to draw the legend strip.
 #' @return Invisibly, the layer style actually used.
 #' @export
 traffic_od_layer <- function(pairs,flow_style=list(),legend=TRUE) {
   .tm_assert(inherits(pairs,"bdynets_od_pairs"),
-    "traffic_od_layer() needs the object returned by traffic_od_pairs()")
+    "traffic_od_layer() needs a prepared OD frame")
+  routes <- .tm_od_drawable_routes(pairs$routes)
   flow_right <- if (is.null(flow_style$right)) TRUE else flow_style$right
-  layer_style <- .tm_od_layer_style(pairs$routes,pairs$nodes,
-    if (is.null(flow_style$breaks)) c(1,3,5,7) else flow_style$breaks,
-    if (is.null(flow_style$labels)) c("1","2-3","4-5","6-7",">= 8") else flow_style$labels,
-    if (is.null(flow_style$palette)) c("#69afe0","#a1c181","#e9c46a","#f4a261","#e76f51") else flow_style$palette,
-    flow_right,
+  scale <- .tm_od_count_scale(routes$flow, flow_style$breaks, flow_style$labels,
+    flow_style$palette, flow_right)
+  layer_style <- .tm_od_layer_style(routes,pairs$nodes,
+    scale$breaks, scale$labels, scale$palette, scale$right,
     if (is.null(flow_style$single_flow_dashed)) TRUE else flow_style$single_flow_dashed,
     if (is.null(flow_style$curvature)) 0.10 else flow_style$curvature,
     if (is.null(flow_style$arrow_length)) 0.065 else flow_style$arrow_length,
@@ -369,7 +291,7 @@ traffic_od_layer <- function(pairs,flow_style=list(),legend=TRUE) {
     if (is.null(flow_style$node_colour)) "#17324d" else flow_style$node_colour,
     if (is.null(flow_style$node_size)) 0.82 else flow_style$node_size,
     if (is.null(flow_style$scale_node_size)) FALSE else flow_style$scale_node_size)
-  .tm_draw_od_layer(pairs$routes,pairs$nodes,layer_style,"topleft",legend=isTRUE(legend))
+  .tm_draw_od_layer(routes,pairs$nodes,layer_style,"topleft",legend=isTRUE(legend))
   invisible(layer_style)
 }
 

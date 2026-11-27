@@ -1,57 +1,89 @@
 # Divvy individual station departures
 
-The source is the January 2026 trip archive, limited to departures on 2026-01-01. The included CSV retains all 13 source fields and 1,950 rows. The daily extraction removes only trailing ASCII spaces from the two station-name fields: 13 departure-name values and 11 arrival-name values change. IDs, clocks, coordinates and all other source fields are retained exactly. The station method uses median valid paired coordinates and the most frequent nonblank recorded name. It retains 1,230 departures across 512 stations, including 85 within-station rides. Data preparation publishes station-resolution departures, a separate 1500 m grouped day, and a final map-ready OD window.
+Open the [00:00–03:00 map](maps/divvy-od.png) of Chicago departures.
 
-`divvy_fields` maps the source roles. `ride_input()` checks IDs, source clocks, duplicates and endpoint references, then builds nodes and individual OD records. The field dictionary identifies generated node indices separately from raw trip fields. The package OD renderer supplies the directed-curve method. The report configures seven integer-count classes for its grouped map.
+Install the accompanying `bdynets` R package once. Run the commands and report blocks from this example directory. All case scripts and source samples are included here. `prepare.R` converts this case’s source data. `scripts/prepare-input.R` assembles the OD pairs and writes the station and group tables. `run.R` builds the report and handles exports.
 
-```sh
-Rscript prepare.R --day 2026-01-01 --start 00:00 --end 03:00 --raw original/202601-divvy-tripdata.csv rebuilt
-```
+The report uses `data/raw/202601-divvy-tripdata.csv`, the supplied file of 1,950 departures on 1 January 2026, for its worked ride. The file keeps its supplied name and column layout. The report follows one trip through the station-level OD input, the 1,500 m grouping and its arrow in the default 00:00–03:00 Chicago-time map. The prepared drawing input includes all eight three-hour windows. Run the displayed blocks in order from this example directory. [Divvy station departures report](divvy-od-report.html)
 
-The original monthly file is filtered to the same one-day departure window. `extract_divvy_day(source_file, output_file, day)` writes the original-column day CSV to a new file after `clean_divvy_station_names()` applies the stated name cleaning, then verifies exact readback. The report shows the original and cleaned names and checks every unchanged column against the selected source rows. The report executes it on the provided real archive excerpt, including one adjacent-date row. Missing origin, missing destination and missing both are separately counted. The three unused source attributes remain in the CSV. Departure timestamps keep their fractional seconds in the Chicago timezone. The delivered primary input remains at station resolution.
+## Clean the supplied day and build the station input
 
-## Original-format source lesson
+The report and standalone preparation read every row in the supplied one-day CSV. Both use `prepare_divvy_day()` to check that all departures are on the requested day, remove trailing ASCII spaces from the two station-name columns, and deduplicate exact rows after cleaning. The bundled day has 13 origin name changes and 11 destination name changes. The other source values are preserved, including fractional seconds in the departure clocks. The input file and its checksum are recorded in `data/raw/source-manifest.csv`.
 
-The report begins with `data/raw` source files and calls the same original-file reader used by the complete reconstruction command above. `data/raw/source-manifest.csv` identifies the original files, projected columns or selected rows, reference inputs and checksums. The report displays the imported native fields before constructing the OD input, writes the intermediate data to a new temporary destination, reads it back, and compares prepared source-record values with the supplied day. The complete source and prepared files remain unchanged.
+`divvy_fields` maps the source roles. Station conversion uses the median coordinates of valid endpoint pairs and the most frequent nonblank recorded name for each station. It retains 1,230 departures across 512 located stations, including 85 within-station rides, and records exclusions by missing endpoint. In the saved station RDS, each departure's `origin_id` and `destination_id` join `nodes$node_id`.
 
-## Fields and conversion in the report
+## Group the whole departure day
 
-The [report](divvy-od-report.html) presents the source fields, an editable configuration, real original-format rows, the intermediate representation, station and trip tables and a plain OD input list. It includes an invalid-input example and correction, prepared OD rows, source coverage and validation results, and prepared-data export with readback.
-
-The renamed-column demonstration identifies source roles explicitly. The source adapters in `prepare.R` produce the station (`nodes`) and trip (`flows`) tables used in preparation. The original-format archive excerpt contains the complete selected day and one adjacent-date record used to check filtering. The converted station and trip tables are compared with the one-day station-level `data/input.rds`; the grouped day then supplies the preparation step that produces the final OD window. OD endpoints join the station register by ID; this representation does not require a time-by-road matrix. Rendering keeps source data unchanged and writes reconstruction and export demonstrations to temporary directories.
-
-## Hourly and spatial derivatives
-
-The report's **Hourly station OD** section calls the existing `ride_input(..., bin_seconds=3600)`. The 1,230 retained departures become 1,157 local-hour OD records at the same 512 stations, with total trips and the 85 within-station trips unchanged. Counts use half-open hourly intervals in `America/Chicago`. Clock-hour pooling across dates is a separate operation; absent observations are not zero-filled.
-
-`prepare_spatial_example()` groups the retained departures within a 1500 m station-to-representative bound. Its 62 groups retain all 1,230 trips, including 435 within-group trips. Each group uses the observed coordinates of its representative. Grouped departures retain their source timestamps and record the membership of every station. The grouped-day reference is `data/spatial-1500m/input.rds`.
+`prepare_spatial_example()` groups the retained departures within a 1,500 m station-to-representative bound. Its 62 groups retain all 1,230 trips, including 435 within-group trips. Each group uses the observed coordinates of its representative. Grouped departures retain their source timestamps, and provenance records the membership of every station. The grouped day is written as `spatial-1500m/input.rds` inside the new preparation or report export directory.
 
 ## Prepare the input to the map
 
-`prepare.R` selects departures in the local half-open interval `[start, end)`, sums trips by directed origin and destination, attaches both endpoint coordinates, and separates within-group trips. The resulting `bdynets_od_pairs` contains the nodes and routes to draw, the grouped node register, the pair totals, and the actual start, end, timezone, unit, radius, and source provenance. The report formats the display window from those timestamps. For the delivered 00:00–03:00 window, 288 trips consist of 201 cross-group trips on 129 directed routes and 87 trips within groups.
+The report aggregates departures within each local half-open interval
+`[start, end)`. It sums trips by directed pair, attaches representative
+coordinates, and counts trips within a group separately. Each prepared
+frame stores its own local bounds and source provenance.
 
-In a fresh R session in this example directory, load the bundled package and draw the final RDS. Choose another window or set of routes during preparation.
-
-```r
-source("../../bdynets/inst/preparation-session.R")
-preparation_session(getwd())
-library(bdynets)
-map_input <- readRDS("data/spatial-1500m/window-0000-0300.rds")
-traffic_od_map(map_input, basemap = NULL)
-```
-
-The report builds this result from the bundled raw source excerpt and uses the read-back RDS for its map and PNG/PDF exports. Its exported `selected-window.rds` also contains the ready OD input, with the figure summary attached. The map uses seven count classes (1 through 6 and 7 or more). Curves represent direction between endpoints.
+The report applies the same aggregation to each three-hour window, retaining any empty intervals. Together the eight frames account for all 1,230 trips, including 435 within groups. The 00:00–03:00 frame shows 201 cross-group trips on 129 directed routes. It also contains 87 within-group trips. The OD function calculates colour classes from positive drawable counts across the complete input. Curves show direction between endpoints.
 
 ## Reports and prepared output
 
-`run.R` renders `divvy-od-report.html` from `divvy-od-report.Rmd`. VS Code **Run Code** on `run.R` invokes the same entry point as `Rscript run.R`. Each case installs the bundled package into a temporary library for that R session. Dependencies are R, the package imports, `rmarkdown`, `knitr` and Pandoc.
+`run.R` renders `divvy-od-report.html` from `divvy-od-report.Rmd`. VS Code **Run Code** on `run.R` invokes the same entry point as `Rscript run.R`. Dependencies are R, the package imports, `rmarkdown`, `knitr` and Pandoc.
 
-`Rscript run.R` uses the supplied matching cache in `data/basemap-cache`. `Rscript run.R --offline` omits background streets. A new map extent needs a matching OpenStreetMap cache acquired separately before rendering with the backdrop. The rendered report embeds its figures.
+```sh
+Rscript run.R
+Rscript run.R --no-basemap
+Rscript run.R 00:00 --export
+```
 
-`Rscript prepare.R prepared` reproduces the default. To choose another window on the bundled day, run `Rscript prepare.R --start 01:00 --end 02:00 prepared-hour`. For another day, use `--day` with `--raw` and a source file containing that day's departures. Both clocks use `HH:MM`; an end of `24:00` means midnight starting the next day. The output directory must be new.
+Run `Rscript prepare.R prepared-day` to prepare the stations, grouped day and all eight three-hour map inputs from the supplied original-format trip CSV without rendering the report. The ordered list is `prepared-day/spatial-1500m/od-frames.rds`. Supply both `--start` and `--end` to write a one-frame list at the same path, including when that window has no trips.
 
-The preparation command writes `station/input.rds`, `spatial-1500m/input.rds`, and `spatial-1500m/window-HHMM-HHMM.rds`. The day datasets include readable tables, dictionaries, validation, source identities and checksums. The prepared map RDS shares the spatial directory and carries its own time bounds and provenance. `data/input.rds` remains the supplied station-level reference.
+For another one-day CSV with the same Divvy source columns and Chicago local timestamp format, run `Rscript prepare.R --raw TRIP_CSV prepared-day`. Use `--day YYYY-MM-DD` to declare the date in that file. The reader expects every departure to be on that date.
 
-`Rscript tests/validation.R .` checks the original method, prepared and read-back values, exact window boundaries, alternate dates, endpoint coordinates, direct plotting input and source protection. See the [Flow and OD drawing input formats](../INPUT-FORMAT.md) and [source records](../DATA-SOURCES.md).
+Edit `plot_time` in `divvy-od-report.Rmd` to change the default from 00:00
+Chicago time. A clock argument overrides it for that run. Use the exact start
+of a prepared window, such as 03:00. The report and `prepare.R` share the
+default duration from `divvy_report_windows()`. To use a different duration
+in the report, pass `window_minutes` to that function in the preparation
+block and choose a start on the new grid.
 
-The optional complete-archive check is `Rscript tests/validation.R . original/202601-divvy-tripdata.csv`. It compares the monthly archive's selected rows with the teaching excerpt, extracts a new temporary day CSV, verifies the declared name changes and every other field, and checks the station/OD tables against `data/input.rds`. The monthly archive and supplied day files remain unchanged.
+The report draws one portrait map focused on the nodes in the selected
+window. Its trip-count scale uses all prepared windows. The locally
+bundled background covers all 62 station groups and contains streets, water
+and place labels. Use `--no-basemap` to omit it.
+[Chicago GeoJSON](data/basemap-cache/chicago.geojson.gz)
+
+The two preparation directories each contain `nodes.csv`, `flows.csv`, a
+field dictionary, metadata, a source inventory and checksums. The grouped
+`input.rds` records station-to-representative membership under
+`provenance$spatial_aggregation$membership`.
+
+With `--export`, `run.R` saves the complete ordered drawing input at
+`output/prepared-data/od-frames.rds`, the station and grouped data under
+`output/prepared-data/`, and copies the report’s map to `output/maps/divvy-od.png`. The export includes source inventories. The original trip CSV stays in `data/raw/`.
+Use `--output-dir` to select a new export directory.
+
+## Use the prepared drawing input
+
+This direct API call draws the 00:00–03:00 window from the complete input
+generated by `prepare.R`. It uses the standard drawing dimensions and the
+shared extent across all prepared windows. Pass `extent = "frame"` to focus
+the extent on the selected window while keeping the complete series’ colour
+scale. Use `Rscript run.R 00:00 --export` for the report’s portrait layout
+and labels.
+
+```r
+bdynets::traffic_od_map(
+  "prepared-day/spatial-1500m/od-frames.rds", time_label = "00:00",
+  basemap = "data/basemap-cache/chicago.geojson.gz",
+  output_file = "divvy-od.png", draw = FALSE
+)
+```
+
+The [prepared input guide](../../bdynets/inst/INPUT-FORMAT.md) describes the
+same drawing format for OD data from any source.
+
+In an interactive R session, run the visible report blocks in order to draw on the current graphics device. Preparation uses a temporary directory. To run from a terminal and retain the report, maps and prepared inputs, use `Rscript run.R --export`.
+
+## Prepare a background for another extent
+
+The [prepared input guide](../../bdynets/inst/INPUT-FORMAT.md#prepare-an-openstreetmap-background) shows how this example’s `scripts/acquire-osm.py` prepares and reuses OpenStreetMap context from your drawing data.

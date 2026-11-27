@@ -27,7 +27,7 @@ complete simulation smoke run, follow the [GLS launcher instructions](GLS-paper/
 | Fit GLS to observed network counts | `gls_fit_general()`, `gls_dss()`, `predict()` | [Prepared-data application and Divvy replication requirements](GLS-paper/README.md) |
 | Run Simulation 1 | `GLS-paper/run_simulation.R` generates the directed-grid data, fits GLS and runs the PNAR comparisons | [Study launcher](GLS-paper/README.md#directed-grid-simulation) · [Model and benchmark settings](bdynets/GLS.md) |
 | Fit graph-informed mixtures | `gmde_fit()` for static Gaussian panels, `gmde_dynamic_fit()` for dynamic counts | [Package example](bdynets/README.md#gaussianstatic-graphmode-example) · [Eight-method study and results](graphMoDE/README.md) |
-| Prepare and draw Flow and OD | `write_traffic_input()`, `traffic_flow_map()`, `traffic_od_map()` | [Data sources and examples](examples/DATA-SOURCES.md) · [Input format](bdynets/inst/INPUT-FORMAT.md) |
+| Draw prepared Flow, Speed and OD maps | `traffic_flow_map()`, `traffic_speed_map()`, `traffic_od_map()` | [Five examples](examples/README.md) · [Data sources](examples/DATA-SOURCES.md) · [Input format](bdynets/inst/INPUT-FORMAT.md) |
 | Reproduce the Poisson latent-position study | `lpr_*` functions and study scripts | [GP-LPR runs and figure reproduction](GP-LPR/README.md) |
 | Reuse scalar state-space kernels | `gaussian_ffbs()`, `poisson_discount_filter()`, installed C++ header | [R and C++ interfaces](bdynets/CPP-KERNELS.md) |
 

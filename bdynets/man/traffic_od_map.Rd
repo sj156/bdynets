@@ -1,7 +1,7 @@
-% Public interface in R/traffic-map.R
 \name{traffic_od_map}
 \alias{traffic_od_map}
-\title{Draw stations and directed origin-destination flows}
+\title{Draw one prepared directed OD frame}
+\description{Draw the supplied directed pairs, endpoints and optional prepared street and event layers. Rings mark directed pairs whose distinct nodes share a location.}
 \usage{
 traffic_od_map(
   nodes,
@@ -25,9 +25,9 @@ traffic_od_map(
   title = "Directed OD flows",
   subtitle = NULL,
   caption = "Curved arrows connect aggregate endpoints; they are not observed paths.",
-  flow_breaks = c(1, 3, 5, 7),
-  flow_labels = c("1", "2-3", "4-5", "6-7", ">= 8"),
-  flow_palette = c("#69afe0", "#a1c181", "#e9c46a", "#f4a261", "#e76f51"),
+  flow_breaks = NULL,
+  flow_labels = NULL,
+  flow_palette = NULL,
   flow_right = TRUE,
   single_flow_dashed = TRUE,
   flow_style = list(),
@@ -45,123 +45,58 @@ traffic_od_map(
   dpi = 220,
   draw = TRUE,
   events = NULL,
-  event_columns = NULL
+  event_columns = NULL,
+  index = NULL,
+  time_label = NULL,
+  extent = c("series", "frame")
 )
 }
 \arguments{
-\item{nodes}{Node table, CSV/CSV.GZ/RDS path, a named OD list containing
-\code{nodes} and \code{flows}, a \code{traffic_od_data} or
-\code{od_aggregation} object, or a prepared \code{bdynets_od_pairs} object
-from \code{traffic_od_pairs()}. A named OD list may also supply \code{timezone}
-and \code{title}; these are used when the corresponding arguments are omitted.}
-
-\item{flows}{Flow table or CSV/CSV.GZ/RDS path. Omit it when passing an OD object.}
-
-\item{basemap}{Defaults to \code{NULL} for a map without street context.
-Supply \code{"auto"} or a list of cache settings such as \code{cache_dir}
-and \code{offline} to obtain context while drawing. A GeoJSON
-FeatureCollection, grouped line table, or CSV/RDS path can supply existing
-context.}
-
-\item{node_columns}{Named canonical-key-to-source-column mappings for \code{id}, \code{longitude}, \code{latitude}, and optional \code{size}. Missing optional size in the default mapping is ignored. An explicit mapping must refer to existing columns or use \code{NA} for an omitted optional field.}
-
-\item{flow_columns}{Named canonical-key-to-source-column mappings for \code{origin}, \code{destination}, optional \code{count} and \code{time}. Counts must be nonnegative integer trips; omitted count means one trip per row. Missing optional columns in the default mapping are ignored. Explicit missing source columns fail. Use \code{NA} to omit an optional field. Canonical objects supply their stored mappings when these arguments are omitted.}
-
-\item{basemap_columns}{Mappings for line \code{longitude}, \code{latitude}, \code{group},
-and optional \code{class}.}
-
-\item{start_time, end_time}{Optional half-open timestamp window.}
-
-\item{hour_window}{Optional two-element clock-hour window such as \code{c(0,3)}.
-It pools the matching hours across every date and is mutually exclusive
-with \code{start_time} and \code{end_time}.}
-
-\item{timezone}{IANA timezone used to parse timestamps.}
-
-\item{top_n}{Maximum nonloop OD pairs drawn; use \code{Inf} for all.}
-
-\item{include_loops}{Whether within-node flows are retained in the summary.}
-
-\item{active_nodes_only}{Whether to draw only endpoints of displayed routes.}
-
-\item{bounds}{Optional \code{c(west,east,south,north)} longitude/latitude extent.}
-
-\item{padding}{Fractional padding when bounds are derived from nodes.}
-
+\item{nodes}{An ordered list of prepared \code{bdynets_od_pairs} windows, one
+prepared window, or an RDS path containing either form.}
+\item{index}{One-based index into the supplied windows, defaulting to the first.}
+\item{time_label}{Exact start of a prepared window. Use \code{"08:00"} for
+a start at second zero, or supply seconds and any fraction as in
+\code{"2026-01-01 08:00:30.125"}. Include the date and, for repeated local
+times, the UTC offset when needed. Use \code{index} for a pooled clock window
+without an absolute start or when more than one window matches. Supply at most
+one of \code{index} and \code{time_label}.}
+\item{flows, node_columns, flow_columns, start_time, end_time, hour_window,
+  timezone, top_n, include_loops, active_nodes_only, event_columns}{Preparation
+  arguments. Leave these at their defaults. If supplied, \code{timezone} must match the prepared frame.}
+\item{basemap, basemap_columns}{Prepared street context and its optional display-field mapping.
+For a local RDS cache, \code{"cache"} requires coverage of the rendered viewport
+and \code{"auto"} uses matching context when available.}
+\item{bounds, padding}{Explicit map extent or padding around the default extent.
+The series extent uses the study locations in \code{all_nodes} across the
+supplied windows, including when the input contains one window.}
+\item{extent}{With \code{"series"}, use the extent of the supplied series.
+With \code{"frame"}, focus on the selected frame's visible routes, nodes and
+events, including the curve bends. In this mode the margin is a fraction of the
+largest projected span. If there is nothing to draw, use the available study
+locations. Explicit \code{bounds} take precedence.}
 \item{title, subtitle, caption}{Map text.}
-
-\item{flow_breaks, flow_labels, flow_palette}{Fixed flow classes, labels and colours.}
-
-\item{flow_right}{Whether fixed class intervals are right closed.}
-
-\item{flow_style}{Uniquely named style list with optional \code{breaks},
-\code{labels}, \code{palette}, \code{right}, and OD-specific
-\code{single_flow_dashed} fields. Values here override the legacy direct fields.}
-
-\item{single_flow_dashed}{Whether flow-one routes use dashed lines.}
-
-\item{curvature}{Curve magnitude as a fraction of line length.}
-
-\item{arrow_length}{Arrowhead length in inches.}
-
-\item{node_fill, node_colour, node_size}{Station-symbol styling.}
-
-\item{scale_node_size}{Whether the mapped node-size column controls symbol size.}
-
-\item{north_arrow, scale_bar}{Whether to draw the shared map annotations.}
-
-\item{output_file}{Optional PNG or PDF output path.}
-
-\item{width, height}{Output dimensions in inches.}
-
-\item{dpi}{PNG resolution.}
-
-\item{draw}{Whether to also draw on the current graphics device.}
-
-\item{events}{Optional event data frame or CSV/CSV.GZ/RDS path with \code{time}, \code{lon} and \code{lat}, and optional unique \code{id}, \code{category}, \code{description}, \code{region} and \code{time_label}. Timestamps must be explicit ISO character timestamps or POSIXt instants, using \code{timezone} for unzoned character times. Event starts use the same half-open timestamp or clock-hour filter as OD flows.}
-
-\item{event_columns}{Optional named canonical-key-to-source-column mapping for the event fields. Omission uses canonical names; unknown keys or missing mapped source columns fail.}
+\item{flow_style}{Named appearance overrides: \code{breaks}, \code{labels},
+\code{palette}, \code{right} and \code{single_flow_dashed}.}
+\item{flow_breaks, flow_labels, flow_palette, flow_right, single_flow_dashed}{Route appearance arguments. Defaults are calculated from the input.}
+\item{curvature, arrow_length}{Arrow geometry.}
+\item{node_fill, node_colour, node_size, scale_node_size}{Node styling.}
+\item{north_arrow, scale_bar}{Whether to draw map annotations.}
+\item{output_file, width, height, dpi, draw}{Graphics output settings.}
+\item{events}{Prepared overlay with numeric \code{lon} and \code{lat} columns.}
 }
-\value{
-Invisibly, standardized nodes, plotted routes, summary and basemap. With events, \code{event_overlay} also records selected event rows, projected locations and the drawn viewport (NULL when no plot is drawn).
-}
-\description{
-Input column names are supplied through mappings, so unrelated columns are
-ignored and the function is not tied to Divvy data.  A grouped line table is
-converted to trafficmap's GeoJSON basemap format before it is drawn.
-}
-
 \details{
-Normalization occurs before the reference directed-OD drawing algorithm. Coordinates
-and sizes accept numeric text or factor labels, with malformed or nonfinite
-values rejected. Coordinates must already be WGS84 longitude/latitude degrees;
-no CRS or unit is guessed. Weighted OD values are unsupported.
-
-The default five trip-count classes are 1, 2--3, 4--5, 6--7 and at least 8, with
-colours \code{#69afe0}, \code{#a1c181}, \code{#e9c46a}, \code{#f4a261} and
-\code{#e76f51}. The reference curve construction, arrow placement, ordering,
-widths and singleton dashes are retained. Curves connect endpoints and are not
-observed road paths.
-
-\code{traffic_od_map} and \code{traffic_flow_map} share the static canvas,
-projection, basemap, output device, north arrow, scale bar and text helpers.
-Only their data selection and line renderers differ. There is no combined
-flow-and-OD static-map interface.
-
-When supplied a prepared \code{bdynets_od_pairs} object, the map uses its
-already selected routes and stations directly. Apply time windows
-(\code{start_time}, \code{end_time}, \code{hour_window}), route and station
-selection (\code{top_n}, \code{include_loops}, \code{active_nodes_only}), and
-column mappings (\code{node_columns}, \code{flow_columns}) during OD
-preparation. Leave these arguments at their implicit defaults when drawing
-prepared pairs. Passing a non-\code{NULL} time window or explicitly supplying
-a route, station, or mapping option produces an error. \code{timezone}
-remains available for parsing external events.
-
-Event overlays use red diamonds with white borders and exclamation marks.
-Events share the same panel and coordinate limits as the OD routes, with
-locations outside the viewport clipped. Event categories do not select
-alternative styles. Overlay composition leaves OD routes, counts and selection
-statistics unchanged. Omitted events retain the reference OD rendering.
+The renderer draws one prepared window. With an ordered list, it calculates up
+to seven logarithmic count classes from positive drawable pairs across all
+windows so the legend is comparable between separate plots. Override the
+boundaries with \code{flow_style = list(breaks = ...)}. The \code{extent}
+choice does not change these classes. A zero-trip window with
+records and a window with no records are labelled separately. PDF uses Quartz on macOS when available, or Cairo if available. Unicode text
+needs a suitable installed font. The fallback PDF device has limited Unicode
+support.
 }
-\seealso{\code{\link{traffic_flow_map}}, \code{\link{traffic_od_data}}, \code{\link{aggregate_od_data}}}
+\value{Invisibly, the selected index and label, plotted routes and nodes,
+display counts, basemap and output path. The named WGS84 \code{extent} is the
+requested plotting extent. The \code{viewport} includes any expansion required
+by aspect ratio, or is \code{NULL} when no device drew a map.}
+\seealso{\code{\link{traffic_flow_map}}, \code{\link{traffic_map_extent}}}

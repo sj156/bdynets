@@ -22,16 +22,20 @@ traffic_basemap(
 }
 \arguments{
 \item{x}{A trafficmap_data or od_aggregation object, coordinate matrix, or table
-with longitude/latitude or lon/lat. No dataset name is inspected.}
+with longitude/latitude or lon/lat. An existing basemap cache RDS path
+loads that verified acquisition directly and always works offline.}
 
-\item{bounds}{Optional west,east,south,north bounds, overriding x.}
+\item{bounds}{Optional west,east,south,north bounds, overriding x. Longitude
+may be continuous across the antimeridian (for example, 179 to 181).
+Automatic bounds cover all road vertices and event coordinates.}
 
 \item{region}{Optional exact traffic region; otherwise labelled regions are
 requested separately and combined, without querying the space between them.}
 
 \item{cache_dir}{Visible cache directory, relative to the caller by default.}
 
-\item{offline}{Read a matching cache without network access.}
+\item{offline}{Read a compatible cache without network access. An uncovered
+request raises a \code{bdynets_basemap_cache_miss} error.}
 
 \item{refresh}{Obtain a new response instead of reusing a cache.}
 
@@ -54,6 +58,9 @@ of dataset name, flow values and units.}
 Offline GeoJSON context with request bounds, source time and identity.
 }
 \description{
+This interface prepares Overpass road-only context. For the full OpenStreetMap
+background used by the examples, see \file{INPUT-FORMAT.md}.
+
 Acquire an OpenStreetMap background from input coordinates
 }
 \details{
@@ -64,5 +71,13 @@ and all highway values from 14. Link types follow their parent class.
 Declared input types extend the hierarchy; unknown observed-road types
 disable background filtering. This selection never filters input roads.
 Nested scopes already covered by an equally detailed scope are requested once.
+
+Prepare a regional cache by calling \code{traffic_basemap()} with explicit bounds.
+A subsequent request prefers an exact cache, then the smallest cached
+bounding box that contains the full request and has the same highway
+selection. The returned geometry and source bounds retain the acquisition
+extent. Provenance records the current \code{requested_bounds} when reusing a
+larger cache. Cache reuse leaves existing files intact.
+
 Reference: https://github.com/gravitystorm/openstreetmap-carto/blob/master/style/roads.mss
 }

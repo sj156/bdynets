@@ -1,0 +1,6 @@
+# Keep the contents and checksums of the supplied source samples across checkouts.
+/DivvyBike/data/raw/** -text whitespace=cr-at-eol
+/beijing/data/raw/** -text whitespace=cr-at-eol
+/metropolis/data/raw/** -text whitespace=cr-at-eol
+/pems-flow/data/raw/** -text whitespace=cr-at-eol
+/pems-speed/data/raw/** -text whitespace=cr-at-eol

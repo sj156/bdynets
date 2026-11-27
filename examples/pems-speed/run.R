@@ -1,0 +1,6 @@
+script <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))
+if (length(script) != 1L) stop("Rscript entrypoint is required.")
+if (!file.exists(script)) script <- gsub("~+~", " ", script, fixed = TRUE)
+base <- dirname(normalizePath(script, mustWork = TRUE))
+source(file.path(base, "scripts", "report-runner.R"))
+run_example_report(base, "pems-speed-report")

@@ -1,51 +1,68 @@
 # City-traffic-M source method
 
-The source is City Traffic Benchmarks v4, Yekaterinburg, 2024-10-18. The supplied 720-road register and fifteen-minute source method are retained. The historical selection used a 34 × 22 midpoint grid, the highest-volume road in each of 497 occupied cells and 223 remaining maximum-volume choices. The source date was the highest-total-volume complete day for this register. The conversion reads the supplied register and does not select new roads or dates.
+Open the [08:00 map](maps/metropolis-flow.png).
 
-`read_parquet.py` reads the native columns and full-history speed calibration. It uses the source map's pandas quarter means and interpolation, then NumPy summaries before per-road rounding. Those supplied summaries are retained alongside unrounded native observations. `metropolis_input()` constructs standard flow, speed/index measurements, trends and native masks from these source quantities. The complete day follows the source fill rule; a short excerpt without day-boundary context does not invent unsupported boundary observations.
+Install the accompanying `bdynets` R package once. Run the commands and report blocks from this example directory. All case scripts and source samples are included here. `prepare.R` converts this case’s source data. `scripts/prepare-input.R` aligns the road and time tables and writes the prepared RDS files. `run.R` builds the report and handles exports.
+
+The report converts original-format City Traffic Benchmarks v4 Parquet records for Yekaterinburg into a prepared Flow series of 96 frames. The visible R blocks run in order from a fresh session in this directory and trace road 21263 from five-minute observations to its 08:00 map value. [City-traffic-M report](metropolis-traffic-report.html)
+
+## Prepare the source and map input
+
+Use the two Parquets in `data/raw/`. The static file gives the original road attributes and coordinates. The supplied volume file keeps all source columns for the 288 timestamps on 18 October 2024. The reader checks the date and uses every timestamp. The supplied `data/selected-roads.csv` carries the fixed 720-road list from the original Yekaterinburg case. A `road_id` gives a zero-based static row and the suffix of the matching `node_<id>` column. [Supplied-file manifest](data/raw/source-manifest.csv)
+
+Preparation requires the static and volume Parquets and complete five-minute
+volume observations for the selected roads. It preserves observed zeros and
+produces quarter-hour means in source volume units. The `trends` table in
+`input.rds` averages the unrounded quarter-hour values across the selected
+roads, then rounds each mean to two decimals. The report’s chart averages the
+two-decimal road values used for the map. Run the following command in this
+example directory and choose a new output directory.
 
 ```sh
-Rscript prepare.R --raw original/city-traffic-benchmarks rebuilt
+Rscript prepare.R prepared
 ```
 
-Python 3, NumPy, pandas and PyArrow are required for both the Parquet teaching import and the complete original-file reconstruction. Normal rendering reads the included Parquet projections, so it does not require the large original archives. The raw reader checks both complete source clocks and the exact selected day. The lesson uses the existing two teaching IDs and declared six-slot excerpt with its original full-reference calibration; complete reconstruction keeps all 720 supplied IDs. The fifteen-minute preparation interval is fixed in this example; each frame combines three five-minute source slots. The physical volume unit and timezone remain unspecified. The derived index retains the source speed P90 and frame-volume P95 formula, without introducing a new threshold.
+Preparation uses Python 3 with NumPy, pandas and PyArrow. Preparation writes `source.rds`, the tables in `input.rds`, the aligned `flow-frames.rds`, readable tables and geometry, provenance, and checksums. The [upstream register](data/original-sources.csv) is a provenance record. Its volume-file size describes the upstream file. The supplied-file manifest describes what this example reads.
 
-`data/source.rds` preserves native five-minute values, unrounded calibration and source regional summaries. `data/input.rds` retains the original fifteen-minute road values and all original trend values exactly.
+## Render the report and map
 
-## Original-format source lesson
+Run these commands from this example directory. Rendering uses the installed `bdynets` package, its R dependencies, rmarkdown, knitr, Pandoc, and the Python libraries listed above.
 
-The report begins with `data/raw` source files and calls the same original-file reader used by the complete reconstruction command above. `data/raw/source-manifest.csv` identifies the original files, projected columns or selected rows, reference inputs and checksums. The report displays the imported native fields before standardization, writes the intermediate data to a new temporary destination, reads it back, and compares prepared source-record values with the supplied day. The complete source and prepared files remain unchanged.
+```sh
+Rscript run.R
+Rscript run.R --no-basemap
+Rscript run.R 17:00
+Rscript run.R 08:00 --export
+```
 
-## Fields and conversion in the report
+Edit `plot_time` in `metropolis-traffic-report.Rmd` to change the default from
+08:00. A clock argument overrides it for that run. Use an exact quarter-hour
+start on the source clock. The report uses the bundled OpenStreetMap
+background locally by default. Use `--no-basemap` to omit it.
 
-The [report](metropolis-traffic-report-demo.html) presents the source fields, an editable configuration, real original-format rows, the intermediate representation, road tables and their `traffic_data()` arguments. It includes an invalid-input example and correction, prepared road rows, source coverage and validation results, and prepared-data export with readback.
+`run.R` rebuilds `metropolis-traffic-report.html`. The report draws the selected
+time once using the full prepared road extent and a narrow margin. With
+`--export`, it saves `source.rds`, `input.rds` and `flow-frames.rds` under
+`output/prepared-data/` and copies the map to `output/maps/metropolis-flow.png`.
+Use `--output-dir` to select a new export directory.
 
-The renamed-column demonstration identifies source roles explicitly. The source adapters remain in `prepare.R`; the package consumes the resulting road tables. The original-format teaching excerpts explain individual calculations and are checked against the same one-day `data/input.rds` used for the maps and daily curves. The report also shows the prepared road-time rows arranged as a time-by-road matrix, preserving numeric values, zeros and missingness. Rendering keeps source data unchanged and writes reconstruction and export demonstrations to temporary directories.
+## Use the prepared drawing input
 
-## Reports and prepared output
-
-`run.R` renders `metropolis-traffic-report-demo.html` from `metropolis-traffic-report-demo.Rmd`. VS Code **Run Code** on `run.R` invokes the same entry point as `Rscript run.R`. Each case installs the bundled package into a temporary library for that R session. Dependencies are R, the package imports, `rmarkdown`, `knitr` and Pandoc.
-
-`Rscript run.R --offline` performs the source conversion checks and data plots without background streets. The default report uses verified OpenStreetMap files supplied in `data/basemap-cache`. For a new geographic range, obtain a matching cache before rendering the report with a basemap. The rendered report embeds its figures.
-
-`Rscript run.R` uses the 08:00 frame by default. `Rscript run.R 17:00` prepares a different existing frame for the map. The all-day trend uses the same prepared day in either case. `Rscript run.R 08:00 --export` also creates the source-method PNG/PDF figures and selected tables in fresh directories under `output`.
-
-From the bundle root, run `Rscript examples/metropolis/run.R --offline` to render without a street background.
-
-`data/map-frame-0800.rds` contains the default single-frame drawing input. From a fresh R session in this example directory, run:
+Draw the 08:00 frame from the full series produced by `prepare.R`.
 
 ```r
-source("../../bdynets/inst/preparation-session.R")
-preparation_session(getwd())
-library(bdynets)
-traffic_flow_map("data/map-frame-0800.rds", basemap = NULL)
+bdynets::traffic_flow_map(
+  "prepared/flow-frames.rds", time_label = "08:00",
+  basemap = "data/basemap-cache/yekaterinburg.geojson.gz",
+  output_file = "metropolis-flow.png", draw = FALSE, full_extent = TRUE
+)
 ```
 
+The [prepared input guide](../../bdynets/inst/INPUT-FORMAT.md) describes the
+same drawing format for your own data.
 
-The R snippet uses the example directory as its working directory. A report run with `--export` also writes the chosen frame to `output/figures/map-input.rds`, ready for the same call. The export includes `selected-frame.rds` as a verification snapshot. Use the colour and basemap options in the report to match its styling.
+In an interactive R session, run the visible report blocks in order to draw on the current graphics device. Preparation uses a temporary directory. To run from a terminal and retain the report, maps and prepared inputs, use `Rscript run.R --export`.
 
-`Rscript prepare.R prepared` exports the road-input RDS, readable tables, ordered geometry, dictionary, validation, metadata, actual source identities and checksums into a new directory. Existing destinations, source files and protected aliases are rejected. Source data and previous prepared objects are not replaced by the preparation function.
+## Prepare a background for another extent
 
-`data/input.rds` saves road-map arguments: roads, road-time values, declared timing and units, and applicable events, metrics and source records. The source clock is the supplied date and wall-clock encoding. Its timezone is unspecified. Frame labels are generated from the stored source times when rendering. The report reads this prepared day once and passes a separately prepared single-frame view to `traffic_flow_map()`. `data/data-dictionary.csv` describes all its fields; `validation.csv` records counts and checks. `source-files.csv` identifies its actual immediate preparation inputs; `original-sources.csv` identifies original archives separately. `metadata.json` records units, timing and source metadata. The reports show the raw fields, their conversion, actual prepared rows, concise component tables and verified CSV/RDS readback.
-
-`Rscript tests/validation.R .` checks the original case method and prepared values, relevant invalid inputs and source protection in temporary directories. The [example input guide](../INPUT-FORMAT.md) describes the prepared inputs and their plotting calls; [source records](../DATA-SOURCES.md) state archive access and known sharing conditions.
+The [prepared input guide](../../bdynets/inst/INPUT-FORMAT.md#prepare-an-openstreetmap-background) shows how this example’s `scripts/acquire-osm.py` prepares and reuses OpenStreetMap context from your drawing data.

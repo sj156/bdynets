@@ -1,0 +1,351 @@
+---
+title: "PeMS Freeway Speed and CHP Reported Starts"
+output:
+  html_document:
+    self_contained: true
+    md_extensions: "-tex_math_dollars"
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    mathjax: null
+params:
+  plot_time: "08:00"
+  basemap: true
+  export: false
+  export_dir: "output"
+---
+
+<style>
+body{font-size:16px;line-height:1.72;color:#25364a}.main-container{max-width:1040px}
+h1,h2,h3{color:#17324d}pre{font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}
+table{font-size:14px;display:block;overflow-x:auto}th,td{padding:7px 10px!important}
+img{max-width:100%;height:auto}.figure{margin:24px 0 36px}
+.caption{color:#42566b;margin:12px 0 0}
+</style>
+
+```{r presentation, include=FALSE}
+plain_output <- knitr::knit_hooks$get("output")
+knitr::knit_hooks$set(output = function(x, options) {
+  plain_output(gsub("[ \t]+\n", "\n", x, perl = TRUE), options)
+})
+figure_dir <- tempfile("report-figures-")
+dir.create(figure_dir)
+knitr::opts_chunk$set(fig.path = file.path(figure_dir, "figure-"), dev = "png",
+  fig.retina = 1, dpi = 180,
+  echo = TRUE, message = FALSE, warning = FALSE,
+                      out.width = "100%")
+```
+
+This example prepares hourly freeway speed in miles per hour for the Los Angeles and San Francisco Bay areas. The drawing input covers all 24 source hours of 16 June 2026. By default, the report shows the 08:00 hour for both regions. Diamonds mark when the California Highway Patrol (CHP) logged the start of an incident.
+
+## Set up the example
+
+In an interactive R session, set the working directory to the folder containing this report and run the visible R blocks in order. The blocks use the installed `bdynets` package, the supplied PeMS and CHP files, and a temporary directory for the prepared tables. The YAML parameters control the plotted hour, offline street context and export.
+
+`prepare.R` converts this case’s source records. The detector and event readers are in `scripts/read-source.R`.
+The local `scripts/prepare-input.R` aligns the road and time tables and writes the prepared RDS files.
+`scripts/street-context.R` reads the local background, and
+`scripts/report-export.R` saves the prepared data and static maps when export is requested.
+
+```{r start}
+library(bdynets)
+source("scripts/prepare-input.R", local = TRUE)
+source("prepare.R", local = TRUE)
+source("scripts/report-export.R", local = TRUE)
+source("scripts/street-context.R", local = TRUE)
+if (!exists("params", inherits = FALSE)) {
+  params <- rmarkdown::yaml_front_matter("pems-speed-report.Rmd")$params
+}
+data_dir <- "data"
+work <- tempfile("pems-speed-report-")
+dir.create(work)
+```
+
+The [prepared input guide](../../bdynets/inst/INPUT-FORMAT.md) describes the final drawing object. For other source data, choose the fields, time intervals and conversion rules that fit that data.
+
+## Read the supplied data
+
+The supplied files include Caltrans Station 5-Minute records from districts 04, 07, 08 and 12, dated D04 station metadata, and June CHP incident summaries and details. The bundled detector text preserves all 52 source columns in the selected rows for 16 June. The supplied CHP summaries contain starts on 16 June from the four districts,
+even though the source filename contains `month`. The detail file contains
+messages linked to those IDs, including messages posted after midnight. Preparation applies the two regional bounds to the supplied event coordinates.
+
+The project reference files define the study roads and identify the detector positions used by the published series. The June speed manifest identifies active LA positions. The speed HTML maps each position to a detector ID, and the earlier LA speed HTML identifies stations eligible for the legacy speed series. The [source manifest](data/raw/source-manifest.csv) records both names.
+Use the **Path in this example** column below to locate the files supplied
+with the example. **Upstream file** identifies the original source.
+
+```{r source-files}
+register_file <- file.path(data_dir, "case-register.rds")
+raw <- file.path(data_dir, "raw")
+files <- pems_files(file.path(raw, "caltrans"), file.path(raw, "reference"))
+source_manifest <- read.csv(file.path(raw, "source-manifest.csv"))
+source_manifest <- source_manifest[match(names(files), source_manifest$role), ]
+knitr::kable(data.frame(
+  role = source_manifest$role,
+  bundled_path = file.path(raw, source_manifest$file),
+  upstream_file = source_manifest$source_file
+), col.names = c("Role", "Path in this example", "Upstream file"), row.names = FALSE)
+```
+
+### Inspect the case register and station links
+
+The supplied [case register](data/case-register.rds) preserves the link selections and travel-order decisions for the 16 June 2026 case from the 21 November handover. This report reads those settings from the included RDS. The [input inventory](data/README.md) lists the other references. The register stores the LA links whose endpoint order and geometry need to be reversed together, the selected D04 directed endpoint pairs, the event coordinate bounds and category lookup, and the 24 hour starts.
+
+LA road geometry comes from the project volume HTML configuration. D04 road geometry connects the two endpoint coordinates from the dated Caltrans metadata, with the two detectors on the same freeway and direction. The D04 station-map CSV identifies the stations selected for the Bay Area. Match its `station_id` and the register’s endpoint IDs to `ID` in the station metadata.
+
+```{r case-register}
+selection <- pems_selection(register_file, files)
+register <- selection$register
+frame_times <- register$settings$times
+register$origin["projection"]
+data.frame(la_reversed_links = length(register$la_reverse_id),
+           bay_directed_links = nrow(register$d04_links),
+           event_type_mappings = nrow(register$event_categories),
+           hour_starts = length(frame_times))
+knitr::kable(register$scopes, row.names = FALSE, digits = 3L)
+knitr::kable(head(register$d04_links, 3L), row.names = FALSE)
+station_map <- read.csv(files[["station_map"]], colClasses = "character")
+bay_pair <- as.character(unlist(register$d04_links[1L, c("from_station", "to_station")]))
+station_ref <- selection$metadata[match(bay_pair, selection$metadata$ID),
+                                  c("ID", "Fwy", "Dir", "Latitude", "Longitude")]
+station_ref$segment_id <- station_map$segment_id[match(station_ref$ID, station_map$station_id)]
+knitr::kable(station_ref, row.names = FALSE)
+knitr::kable(head(selection$speed, 3L), row.names = FALSE)
+```
+
+The June key selects active zero-based positions from the speed manifest.
+`positionStations[position + 1]` in the speed HTML configuration supplies the
+detector IDs. The earlier speed HTML supplies the eligible detector IDs from
+its `stations` entries with a `speed_index`. The volume HTML supplies the
+shared LA link geometry. The selected positions and D04 station IDs determine
+which measurements enter the native matrices.
+
+### Read the source day and link the records
+
+The detector reader retains the freeway mainline records for this case. The detector fields used here are `V1` for the source clock, `V2` for the detector ID, `V3` for the district and `V12` for five-minute average speed in mph. Preparation checks that each daily timestamp belongs to one of the 288 five-minute slots on the case day. The numeric time keys encode the source clock, whose UTC offset is unspecified.
+
+CHP summary fields 1 and 4 give the incident ID and start time, fields 10 and
+11 give latitude and longitude, and field 12 gives the district. Preparation
+matches detail rows to summary IDs and counts the messages. For included LA
+starts it joins the supplied English `events.csv` by incident ID and checks its
+message count before using the English summary. Bay Area descriptions use the
+original summary fields. Coordinates put each start in one of three groups
+in the native table. Only starts marked `inside` enter the prepared event table;
+`outside` means valid coordinates outside the region, and `invalid` means bad
+coordinates.
+
+```{r native-source}
+observations <- pems_observations(files, frame_times)
+knitr::kable(data.frame(
+  district = sub("detector", "", names(observations$records)),
+  five_minute_rows = vapply(observations$records, nrow, integer(1L)),
+  stations = vapply(observations$records, function(x) length(unique(x$V2)), integer(1L))
+), row.names = FALSE)
+station_fields <- c("V1", "V2", "V3", "V12")
+knitr::kable(head(observations$records$detector04[station_fields], 4L), row.names = FALSE)
+knitr::kable(head(observations$incidents[c("V1", "V4", "V10", "V11", "V12")], 3L),
+             row.names = FALSE)
+
+native <- pems_native(selection, observations, files)
+data.frame(roads = nrow(native$roads), la_speed_positions = ncol(native$la$position_mph),
+           bay_five_minute_slots = ncol(native$d04$mph),
+           chp_starts = nrow(native$event_summaries),
+           chp_detail_rows = native$incident_details$records)
+knitr::kable(head(native$roads[c("road_id", "from_station", "to_station", "region")], 3L),
+             row.names = FALSE)
+```
+
+## Prepare the drawing input
+
+For D04, use finite positive speeds from the original `V12` field at their supplied precision. For LA, retain readings from 1 to 100 mph for eligible legacy detectors, convert to single precision, and round to the nearest integer with ties rounded to even. Where a detector appears at more than one active LA position, average the available readings within each five-minute slot.
+
+The speed values and their mph unit form the drawing input. The package applies fixed boundaries at 35, 40, 45, 50, 55 and 60 mph during drawing.
+
+For each road and five-minute slot, average the available endpoint speeds. A single available endpoint supplies the value, and the slot stays missing when both endpoints are missing. The hourly road speed is the mean of available five-minute road values across the twelve slots. The `valid_five_minute_slots` column records how many contributed, and an hour with no valid slot stays missing.
+
+```{r prepared-day}
+speed_details <- pems_speed_details(native)
+day_input <- speed_details$input
+prepared_dir <- file.path(work, "prepared-data")
+sources <- c(register_file, unname(files))
+input_path <- write_pems_speed(native, day_input, prepared_dir, sources)
+frames_path <- file.path(prepared_dir, "speed-frames.rds")
+saved_input <- readRDS(input_path)
+frames <- readRDS(frames_path)
+clock <- as.POSIXct(frames$times, origin = "1970-01-01", tz = "UTC")
+hours <- format(clock, "%H:%M", tz = "UTC")
+data.frame(roads = nrow(saved_input$roads), road_hours = nrow(saved_input$speed),
+           hour_frames = length(hours), first = hours[1L], last = tail(hours, 1L),
+           unit = saved_input$unit)
+with(saved_input$provenance, data.frame(
+  chp_starts = source_incidents, inside_bounds = included_incidents,
+  outside_bounds = outside_scope, invalid_coordinates = invalid_coordinates
+))
+```
+
+| File | Contents |
+| --- | --- |
+| `source.rds` | The native object tagged `pems-speed-source-v1`. It contains the selected five-minute LA position speeds, the D04 five-minute speed matrix, directed roads, and the incident table with its source clock and scope. |
+| `input.rds` | The road, speed and prepared event tables, the 24 hour starts and provenance. Event times are numeric source-clock keys. |
+| `speed-frames.rds` | The roads and observations aligned into a drawing matrix with times in rows and roads in columns. Pass this object to the plotting function. |
+
+The preparation directory also contains `roads.csv`, `road-vertices.csv`,
+`speed.csv` and `events.csv`. `data-dictionary.csv` describes their fields.
+`metadata.json` records the clock, units and provenance, `source-files.csv`
+identifies the inputs, and `checksums.csv` identifies the outputs.
+
+### Trace the 08:00 speed values in both regions
+
+The Bay Area example follows northbound US 101 road `D04:101:N:400001:404753`. The LA example follows road `0`. The first table for each road shows the original detector speeds at 08:00. The LA position table shows the retained readings after the legacy selection and rounding. The five-minute endpoint values then lead to the saved road-hour means and slot counts.
+
+```{r speed-trace}
+worked_index <- match("08:00", hours)
+speed <- speed_details
+slots <- speed$slots[worked_index, ]
+first_slot <- slots[1L]
+trace_ids <- c(register$d04_links$road_id[1L], "0")
+roads <- saved_input$roads[match(trace_ids, saved_input$roads$road_id), ]
+la_stations <- unlist(roads[2L, c("from_station", "to_station")], use.names = FALSE)
+source_mph <- function(rows, stations) {
+  select <- rows$V1 == observations$labels[first_slot] & rows$V2 %in% stations
+  rows[select, c("V1", "V2", "V12")]
+}
+knitr::kable(source_mph(observations$records$detector04, bay_pair), row.names = FALSE)
+la_records <- observations$records[c("detector07", "detector08", "detector12")]
+knitr::kable(do.call(rbind, lapply(la_records, source_mph, stations = la_stations)),
+             row.names = FALSE)
+la_columns <- which(selection$speed$station_id %in% la_stations)
+knitr::kable(data.frame(selection$speed[la_columns, ],
+                        retained_mph = native$la$position_mph[first_slot, la_columns]),
+             row.names = FALSE)
+
+road_columns <- match(trace_ids, saved_input$roads$road_id)
+trace_slots <- function(column) {
+  data.frame(road_id = saved_input$roads$road_id[column],
+             clock = substr(observations$labels[slots], 12L, 16L),
+             upstream_mph = speed$from[slots, column],
+             downstream_mph = speed$to[slots, column],
+             road_mph = speed$road_mph[slots, column])
+}
+knitr::kable(trace_slots(road_columns[1L]), row.names = FALSE, digits = 3L)
+knitr::kable(trace_slots(road_columns[2L]), row.names = FALSE, digits = 3L)
+knitr::kable(subset(saved_input$speed, road_id %in% trace_ids &
+                      time == frames$times[worked_index],
+                    select = c(road_id, speed, valid_five_minute_slots)),
+             row.names = FALSE, digits = 3L)
+```
+
+### Trace a CHP start to the map
+
+Incident `23633415` is marked `inside` in the Bay Area. The prepared
+event row carries the same ID, the numeric start-time key and the category
+from the case register.
+
+```{r chp-trace}
+knitr::kable(subset(native$event_summaries, id == "23633415",
+                    select = c(id, reported_time, district, lon, lat, scope, source_type)),
+             row.names = FALSE)
+knitr::kable(subset(saved_input$events, id == "23633415",
+                    select = c(id, time, region, category)),
+             row.names = FALSE)
+```
+
+### From the road table to the exact drawing input
+
+The preparation writer takes every frame start in `input.rds` in order and every
+entry in `roads$road_id` in road-table order. Each observation is placed at
+`values[match(time, times), match(road_id, roads$road_id)]`. The matrix starts
+with `NA` cells, so missing road–time observations stay missing and observed
+zeros remain zero. The resulting object also carries the ordered road
+geometries, frame widths, units and any prepared events. Preparation saves
+that object as `speed-frames.rds`. This is the standard drawing input.
+`input.rds` is the earlier table export for inspecting or reusing the conversion.
+
+```{r aligned-drawing-input}
+observation <- saved_input$speed[saved_input$speed$road_id == register$d04_links$road_id[1L] & saved_input$speed$time == frames$times[worked_index], ]
+row <- match(observation$time, frames$times)
+column <- match(observation$road_id, frames$roads$road_id)
+data.frame(road_id = observation$road_id, time = observation$time,
+  time_row = row, road_column = column,
+  value_in_input_table = observation$speed,
+  value_in_drawing_matrix = frames$values[row, column])
+data.frame(frame_rows = nrow(frames$values),
+  road_columns = ncol(frames$values), unit = frames$unit)
+```
+
+## Draw the selected hour
+
+The prepared input retains all 24 hourly starts from the case register. Select one source-clock hour below. Each region is drawn separately at the same hour and uses its full prepared extent. Road colours use the package’s fixed mph boundaries. Exactly 35 mph belongs to the class starting at 35. Grey links have missing speed. Diamonds mark CHP starts during the selected hour.
+
+The 08:00 tables in the preparation section illustrate the conversion with a fixed worked example. The map and the highlighted points on the trend curves follow the time selected for this report.
+
+### Load the offline background
+
+Load the two supplied OpenStreetMap backgrounds, one for Los Angeles and one for the Bay Area. The GeoJSON files were prepared from OpenFreeMap vector tiles. Their roads, water and place names provide context for the freeway measurements and CHP starts.
+
+```{r load-streets}
+street_paths <- c("data/basemap-cache/los-angeles.geojson.gz", "data/basemap-cache/bay-area.geojson.gz")
+basemap <- if (isTRUE(params$basemap)) read_case_streets(street_paths)
+```
+
+### Los Angeles Area
+
+```{r la-map, fig.width=11, fig.height=8.1, out.width="100%", fig.align="center", fig.cap="Los Angeles Area freeway speed and CHP starts in the selected hour."}
+plot_time <- params$plot_time
+regions <- c("Los Angeles Area", "San Francisco Bay Area")
+la_map <- traffic_speed_map(
+  frames_path, time_label = plot_time, region = regions[1L], basemap = basemap,
+  full_extent = TRUE, padding = 0.04
+)
+```
+
+### San Francisco Bay Area
+
+```{r bay-map, fig.width=7.1, fig.height=10.5, out.width="70%", fig.align="center", fig.cap="San Francisco Bay Area freeway speed and CHP starts in the selected hour."}
+bay_map <- traffic_speed_map(
+  frames_path, time_label = plot_time, region = regions[2L], basemap = basemap,
+  full_extent = TRUE, padding = 0.04
+)
+```
+
+## Results
+
+The curves show mean freeway hourly speed for the two regions over the full day. Each hourly mean uses the available road values in that region. The dashed lines mark the hour shown on both maps.
+
+### Los Angeles Area
+
+```{r la-trend, fig.height=4.4, fig.width=8, out.width="100%"}
+la_trend <- traffic_trend(frames, region = regions[1L])
+plot(la_trend, metric = "mean", index = la_map$index,
+     ylab = "Mean freeway speed (mph)")
+```
+
+### San Francisco Bay Area
+
+```{r bay-trend, fig.height=4.4, fig.width=8, out.width="100%"}
+bay_trend <- traffic_trend(frames, region = regions[2L])
+plot(bay_trend, metric = "mean", index = bay_map$index,
+     ylab = "Mean freeway speed (mph)")
+```
+
+## Export the results
+
+Preparation saves its working files in a temporary directory. The draw calls
+use the current R graphics device. When running the blocks with `Rscript` and
+no device open, R can create `Rplots.pdf` in the working directory. To regenerate the report HTML and keep the selected maps and complete drawing data, run this command from the example directory:
+
+```sh
+Rscript run.R 08:00 --offline --export
+```
+
+Replace `08:00` with another prepared frame start to draw that frame. The default destination is a new `output/` directory. To use a different new directory, add `--output-dir NEW_DIRECTORY`.
+
+The command saves the selected maps at `output/maps/pems-speed-los-angeles.png` and `output/maps/pems-speed-bay-area.png`. `output/prepared-data/speed-frames.rds` contains all prepared frames and can be passed to the same plotting function to draw another frame. The directory also contains `source.rds` and `input.rds`, which record intermediate preparation steps.
+
+```{r export-results, include=FALSE}
+if (params$export) {
+  export_static_report(params$export_dir, prepared_dir, c(
+    "pems-speed-los-angeles.png" = "la-map",
+    "pems-speed-bay-area.png" = "bay-map"
+  ))
+}
+```
