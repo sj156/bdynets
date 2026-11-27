@@ -384,11 +384,16 @@ one complete day of those records into 288 five-minute Flow frames.</p>
 <p>Run the visible R blocks in order in a fresh interactive R session
 from this example directory. The setup loads <code>bdynets</code> and
 the local helpers.</p>
-<p><code>prepare.R</code> converts this case’s source records. The local
-<code>scripts/prepare-input.R</code> aligns the road and time tables and
-writes the prepared RDS files. <code>scripts/street-context.R</code>
-reads the local background, and <code>scripts/report-export.R</code>
-saves the prepared data and static maps when export is requested.</p>
+<p><a href="prepare.R"><code>prepare.R</code></a> contains this case’s
+conversion functions.</p>
+<p>The expandable code blocks in the following steps show the
+definitions from the same scripts used by this report. The regular R
+blocks load those scripts, call the functions in order and show the
+resulting data. The local <code>scripts/prepare-input.R</code> aligns
+the road and time tables and writes the prepared RDS files.
+<code>scripts/street-context.R</code> reads the local background, and
+<code>scripts/report-export.R</code> saves the prepared data and static
+maps when export is requested.</p>
 <pre class="r"><code>library(bdynets)
 source(&quot;scripts/prepare-input.R&quot;, local = TRUE)
 source(&quot;prepare.R&quot;, local = TRUE)
@@ -408,15 +413,10 @@ data.</p>
 <div id="read-the-supplied-data" class="section level2" number="2">
 <h2><span class="header-section-number">2</span> Read the supplied
 data</h2>
-<p>Start with <a href="data/raw/output_LinkTDMOE.csv.gz">the supplied
-one-day gzip</a>. It contains <code>output_LinkTDMOE.csv</code> with the
-original header and all rows for simulation day 10, with source minutes
-0–1,439. At one row per directed pair per minute, 12,287 pairs × 1,440
-minutes produce 17,693,280 rows. All 22 original columns and the source
-row order are retained. The case distributes the day as
-<code>output_LinkTDMOE.csv.gz</code>. The next block expands it byte for
-byte into a temporary <code>output_LinkTDMOE.csv</code> (2,534,181,910
-bytes). This step changes only the compression. The source clock counts
+<p>Read the <a href="data/raw/output_LinkTDMOE.csv.gz">supplied
+simulation-day observations</a> for day 10. The sample has 17,693,280
+rows in the original order, covering 12,287 directed pairs and 1,440
+source minutes. It retains all 22 source columns. The clock counts
 minutes since simulation midnight.</p>
 <p>The supplied <a href="data/raw/saturation_dynamic_leaflet_osm_osmgeom.html">project
 geometry HTML</a> contains a GeoJSON FeatureCollection in the JavaScript
@@ -424,17 +424,8 @@ geometry HTML</a> contains a GeoJSON FeatureCollection in the JavaScript
 directed pair, index and longitude–latitude <code>LineString</code>. The
 <a href="data/raw/source-manifest.csv">source manifest</a> lists the two
 input files and their checksums.</p>
-<p><code>restore_beijing_csv()</code> in <code>prepare.R</code> reads
-the gzip stream as binary data and writes the unchanged bytes in chunks.
-Both the report and the command-line preparation use the same <a href="prepare.R">preparation function</a>.</p>
-<pre class="r"><code>archive_file &lt;- &quot;data/raw/output_LinkTDMOE.csv.gz&quot;
-moe_file &lt;- restore_beijing_csv(archive_file, work_dir)
-data.frame(file = basename(c(archive_file, moe_file)),
-  bytes = unname(file.size(c(archive_file, moe_file))))</code></pre>
-<pre><code>##                      file      bytes
-## 1 output_LinkTDMOE.csv.gz  109581723
-## 2    output_LinkTDMOE.csv 2534181910</code></pre>
-<pre class="r"><code>geometry_file &lt;- &quot;data/raw/saturation_dynamic_leaflet_osm_osmgeom.html&quot;
+<pre class="r"><code>moe_file &lt;- &quot;data/raw/output_LinkTDMOE.csv.gz&quot;
+geometry_file &lt;- &quot;data/raw/saturation_dynamic_leaflet_osm_osmgeom.html&quot;
 
 cat(readLines(moe_file, n = 2L), sep = &quot;\n&quot;)</code></pre>
 <pre><code>## from_node_id,to_node_id,link_id_from_to,day_no,timestamp_in_min,travel_time_in_min,delay_in_min,link_in_volume_number_of_veh,link_out_volume_number_of_veh,link_volume_in_veh_per_hour_per_lane,link_volume_in_veh_per_hour_for_all_lanes,density_in_veh_per_distance_per_lane,speed,queue_length_percentage,number_of_queued_vehicles,cumulative_arrival_count,cumulative_departure_count,total_energy,total_CO2,total_NOX,total_CO,total_HC
@@ -442,10 +433,45 @@ cat(readLines(moe_file, n = 2L), sep = &quot;\n&quot;)</code></pre>
 <p>For Flow, the reader keeps <code>link_id_from_to</code>,
 <code>day_no</code>, <code>timestamp_in_min</code> and
 <code>link_volume_in_veh_per_hour_for_all_lanes</code>. The trailing
-comma on a source row is preserved in the file. In R,
-<code>beijing_read_moe()</code> selects the columns by the original
-header. <code>beijing_read_network()</code> extracts the road properties
+comma on a source row is preserved in the file.
+<code>beijing_read_moe()</code> reads the supplied file and uses
+<code>beijing_moe_table()</code> to select columns by their original
+names. <code>beijing_read_network()</code> extracts the road properties
 and coordinates from the HTML.</p>
+<details>
+<summary>
+Code that reads the CSV fields and the road geometry
+</summary>
+<pre class="r"><code>beijing_fields &lt;- c(pair=&#39;link_id_from_to&#39;,day=&#39;day_no&#39;,minute=&#39;timestamp_in_min&#39;,
+                    rate=&#39;link_volume_in_veh_per_hour_for_all_lanes&#39;)
+
+beijing_network &lt;- function(network) {
+  if(!identical(network$type,&#39;FeatureCollection&#39;)||any(network$features$geometry$type!=&#39;LineString&#39;))
+    stop(&#39;The geometry source must contain directed LineString features.&#39;)
+  roads&lt;-network$features$properties
+  roads$road_id&lt;-as.character(roads$edge_index)
+  roads$geometry&lt;-network$features$geometry$coordinates
+  if(!nrow(roads)||anyNA(roads$road_id)||anyNA(roads$edge_id)||anyDuplicated(roads$road_id)||
+     anyDuplicated(roads$edge_id)||!identical(roads$edge_id,paste(roads$from_node_id,roads$to_node_id,sep=&#39;-&gt;&#39;)))
+    stop(&#39;Road IDs and directed endpoint pairs must be unique and agree.&#39;)
+  roads
+}
+
+beijing_read_network &lt;- function(geometry_file) {
+  lines&lt;-readLines(geometry_file,warn=FALSE,encoding=&#39;UTF-8&#39;)
+  hit&lt;-grep(&#39;^[[:space:]]*const network[[:space:]]*=&#39;,lines,value=TRUE)
+  if(length(hit)!=1L)stop(&#39;Geometry file must contain one network FeatureCollection.&#39;)
+  literal&lt;-sub(&#39;;[[:space:]]*$&#39;,&#39;&#39;,sub(&#39;^[[:space:]]*const network[[:space:]]*=[[:space:]]*&#39;,&#39;&#39;,hit))
+  beijing_network(jsonlite::fromJSON(literal))
+}
+
+beijing_moe_table &lt;- function(moe_file, fields) {
+  header&lt;-names(read.csv(text=readLines(moe_file,n=1L),check.names=FALSE))
+  at&lt;-match(unname(fields),header)
+  if(anyNA(at))stop(&#39;Required source columns are missing.&#39;)
+  data.table::fread(moe_file,skip=1L,header=FALSE,select=at,col.names=unname(fields),showProgress=FALSE)
+}</code></pre>
+</details>
 <pre class="r"><code>fields &lt;- beijing_fields
 minutes &lt;- beijing_day_minutes
 observations &lt;- beijing_read_moe(moe_file, fields)
@@ -581,6 +607,34 @@ roads with geometry enter the plotted table. The other 545 source pairs
 have no matching geometry and remain in the native snapshot. The small
 tables follow one road over ten minutes so the five-minute calculation
 can be read row by row.</p>
+<details>
+<summary>
+Code that indexes directed pairs and fills the native minute matrix
+</summary>
+<pre class="r"><code>beijing_records &lt;- function(records,roads,expected_minutes,fields=beijing_fields,day=10L) {
+  if(!setequal(names(fields),names(beijing_fields))||anyNA(fields)||anyDuplicated(fields)||
+     any(!fields%in%names(records)))stop(&#39;Map each required MOE role to one distinct source field.&#39;)
+  records&lt;-as.data.frame(records)[unname(fields[names(beijing_fields)])]
+  names(records)&lt;-names(beijing_fields)
+  if(!nrow(records)||anyNA(records[c(&#39;pair&#39;,&#39;day&#39;)])||!is.numeric(records$minute)||!is.numeric(records$rate)||
+     any(!is.finite(records$minute))||any(records$minute!=trunc(records$minute))||
+     any(!is.finite(records$rate)|records$rate&lt;0)||any(!nzchar(as.character(records$pair))))
+    stop(&#39;MOE rows need a directed pair, a whole source minute and a nonnegative finite hourly rate.&#39;)
+  if(any(records$day!=day))stop(&#39;The original-format CSV must contain only the example day.&#39;)
+  if(!length(expected_minutes)||anyNA(expected_minutes)||any(diff(expected_minutes)!=1))
+    stop(&#39;Declare the consecutive source-minute domain.&#39;)
+  if(anyDuplicated(records[c(&#39;pair&#39;,&#39;minute&#39;)]))stop(&#39;Duplicate directed-pair and minute key.&#39;)
+  pairs&lt;-unique(as.character(records$pair))
+  column&lt;-match(records$minute,expected_minutes)
+  if(anyNA(column)||nrow(records)!=length(pairs)*length(expected_minutes))
+    stop(&#39;Missing or unexpected directed-pair and minute record.&#39;)
+  values&lt;-matrix(NA_real_,length(pairs),length(expected_minutes))
+  values[cbind(match(records$pair,pairs),column)]&lt;-records$rate
+  if(any(!roads$edge_id%in%pairs))stop(&#39;Source minutes or directed geometry matches are incomplete.&#39;)
+  list(schema=&#39;beijing-native-minute-v1&#39;,road_pairs=pairs,minute=expected_minutes,
+       minute_rates=values,roads=roads,day_no=day,source_field=unname(fields[&#39;rate&#39;]),source_columns=fields)
+}</code></pre>
+</details>
 <pre class="r"><code>native &lt;- beijing_records(observations, roads, minutes, fields, day = 10L)
 native$source &lt;- basename(c(moe_file, geometry_file))
 
@@ -664,6 +718,123 @@ mapped road with every five-minute start from 00:00 through 23:55.
 (the native object), <code>input.rds</code> (the Flow preparation
 tables), and <code>flow-frames.rds</code> (the aligned data passed to
 the map).</p>
+<details>
+<summary>
+Code that averages five-minute road rates and builds the Flow tables
+</summary>
+<pre class="r"><code>beijing_input &lt;- function(native,interval_minutes=5L) {
+  if(!identical(native$schema,&#39;beijing-native-minute-v1&#39;))stop(&#39;Expected native MOE minute observations.&#39;)
+  minute&lt;-native$minute;rates&lt;-native$minute_rates;roads&lt;-native$roads
+  if(!length(minute)||anyNA(minute)||any(diff(minute)!=1)||ncol(rates)!=length(minute)||
+     nrow(rates)!=length(native$road_pairs)||anyDuplicated(native$road_pairs)||
+     any(!is.finite(rates)|rates&lt;0))stop(&#39;Native MOE IDs, values and minute grid do not agree.&#39;)
+  if(length(interval_minutes)!=1L||!is.finite(interval_minutes)||interval_minutes&lt;1||
+     interval_minutes!=trunc(interval_minutes)||length(minute)%%interval_minutes||minute[1]%%interval_minutes)
+    stop(&#39;The interval must contain complete aligned source minutes.&#39;)
+  road_row&lt;-match(roads$edge_id,native$road_pairs)
+  if(anyNA(road_row))stop(&#39;A directed geometry has no source MOE pair.&#39;)
+  first&lt;-seq.int(1L,length(minute),by=interval_minutes)
+  values&lt;-matrix(0,nrow(roads),length(first))
+  for(offset in seq_len(interval_minutes)-1L)values&lt;-values+rates[road_row,first+offset,drop=FALSE]
+  values&lt;-values/interval_minutes
+  starts&lt;-minute[first]*60
+  roads$road_id&lt;-as.character(roads$edge_index)
+  flow&lt;-data.frame(road_id=rep(roads$road_id,length(starts)),time=rep(starts,each=nrow(roads)),flow=as.vector(values))
+  result &lt;- list(crs=&#39;EPSG:4326&#39;,roads=roads,flow=flow,times=starts,
+    title = &#39;Beijing simulated entry flow&#39;, time_label_format = &#39;%H:%M&#39;,
+    interval_seconds=rep(interval_minutes*60,length(starts)),unit=&#39;vehicles/hour&#39;,
+    provenance=list(source_fields=if(is.null(native$source_columns))beijing_fields else native$source_columns,day_no=native$day_no,source=native$source,
+      source_pairs=length(native$road_pairs),display_roads=nrow(roads),
+      excluded_pairs=length(native$road_pairs)-nrow(roads),native_minutes=length(minute),
+      native_records=length(rates),retained_minute_records=nrow(roads)*length(minute),
+      operation=&#39;Arithmetic mean of the minute-sampled hourly entry rates; original example interval is five minutes.&#39;))
+  result
+}</code></pre>
+</details>
+<details>
+<summary>
+Code that passes the native object and road tables to the writer
+</summary>
+<pre class="r"><code>write_beijing_prepared &lt;- function(native, output_dir, sources, interval_minutes=5L) {
+  meanings&lt;-c(edge_index=&#39;Source GeoJSON display-road index.&#39;,edge_id=&#39;Directed source pair, from_node_id -&gt; to_node_id.&#39;,
+    from_node_id=&#39;Source upstream node ID.&#39;,to_node_id=&#39;Source downstream node ID.&#39;,length_km=&#39;Source link length in kilometres.&#39;,
+    lanes=&#39;Source all-lane count.&#39;,speed_limit=&#39;Source speed-limit attribute, unchanged.&#39;,link_type_name=&#39;Source link-type description.&#39;)
+  dictionary&lt;-data.frame(table=&#39;roads&#39;,field=names(meanings),meaning=unname(meanings))
+  write_traffic_input(beijing_input(native,interval_minutes),output_dir,
+    source_files=sources,native=native,dictionary=dictionary)
+}</code></pre>
+</details>
+<details>
+<summary>
+Code that aligns the drawing matrix and writes all three RDS files
+</summary>
+<pre class="r"><code>.prep_road_frames &lt;- function(input) {
+  if (!is.list(input) || is.null(names(input)) || anyDuplicated(names(input)))
+    stop(&#39;Supply a uniquely named list of prepared tables.&#39;, call. = FALSE)
+  if (any(c(&#39;nodes&#39;, &#39;flows&#39;, &#39;od&#39;, &#39;speed&#39;) %in% names(input)))
+    stop(&#39;Flow, Speed and OD inputs are separate formats.&#39;, call. = FALSE)
+  schema &lt;- input[[&#39;schema&#39;]]
+  if (!is.null(schema) &amp;&amp; !identical(schema, &#39;bdynets-flow-input-v1&#39;))
+    stop(&#39;Unsupported Flow input schema.&#39;, call. = FALSE)
+  roads &lt;- input[[&#39;roads&#39;]]
+  observations &lt;- input[[&#39;flow&#39;]]
+  if (!is.data.frame(roads) || !all(c(&#39;road_id&#39;, &#39;geometry&#39;) %in% names(roads)) ||
+      !is.data.frame(observations) || !all(c(&#39;road_id&#39;, &#39;time&#39;, &#39;flow&#39;) %in% names(observations)))
+    stop(&#39;Flow tables require roads(road_id, geometry) and flow(road_id, time, flow).&#39;, call. = FALSE)
+  if (!is.character(roads$road_id) || !is.character(observations$road_id))
+    stop(&#39;Road IDs must be character in both Flow tables.&#39;, call. = FALSE)
+  if (is.null(input[[&#39;unit&#39;]])) stop(&#39;Supply the Flow unit.&#39;, call. = FALSE)
+  input[[&#39;schema&#39;]] &lt;- NULL
+  if (any(!names(input) %in% names(formals(traffic_data))))
+    stop(&#39;Unknown Flow input fields.&#39;, call. = FALSE)
+  frames &lt;- do.call(traffic_data, input)
+  frames$input_type &lt;- &#39;flow&#39;
+  frames
+}
+
+write_traffic_input &lt;- function(input,output_dir,source_files=character(),native=NULL,dictionary=NULL) {
+  target&lt;-.prep_destination(output_dir,source_files)
+  parent&lt;-dirname(target);dir.create(parent,recursive=TRUE,showWarnings=FALSE)
+  lock&lt;-paste0(target,&#39;.preparation-lock&#39;)
+  if(!dir.create(lock,showWarnings=FALSE))stop(&#39;Another preparation is using this output directory.&#39;,call.=FALSE)
+  on.exit(unlink(lock,recursive=TRUE,expand=FALSE),add=TRUE)
+  .prep_destination(output_dir,source_files)
+  stage&lt;-tempfile(&#39;prepared-data-&#39;,tmpdir=parent)
+  if(!dir.create(stage))stop(&#39;Cannot create preparation staging directory.&#39;,call.=FALSE)
+  on.exit(unlink(stage,recursive=TRUE,expand=FALSE),add=TRUE)
+  info_before&lt;-file.info(source_files)[,c(&#39;size&#39;,&#39;mtime&#39;),drop=FALSE]
+  identities&lt;-.prep_sources(source_files)
+  object&lt;-input
+  object$provenance$preparation_sources &lt;- identities
+  road_frames &lt;- .prep_road_frames(object)
+  object$schema &lt;- &#39;bdynets-flow-input-v1&#39;
+  tables &lt;- .prep_tables(object)
+  dictionary &lt;- .prep_dictionary(tables, object, dictionary)
+  na_token&lt;-&#39;\\N&#39;
+  strings&lt;-unlist(lapply(tables,function(t)unlist(lapply(t,function(x)if(is.character(x))x else character()),use.names=FALSE)),use.names=FALSE)
+  while(na_token%in%strings)na_token&lt;-paste0(na_token,&#39;_&#39;)
+  saveRDS(object,file.path(stage,&#39;input.rds&#39;),compress=&#39;xz&#39;,version=3)
+  saveRDS(road_frames,file.path(stage,&#39;flow-frames.rds&#39;),compress=&#39;xz&#39;,version=3)
+  if(!is.null(native))saveRDS(native,file.path(stage,&#39;source.rds&#39;),compress=&#39;xz&#39;,version=3)
+  for(name in names(tables)) {
+    tab&lt;-as.data.frame(.prep_csv(tables[[name]]),stringsAsFactors=FALSE,optional=TRUE)
+    utils::write.csv(tab,file.path(stage,paste0(name,&#39;.csv&#39;)),row.names=FALSE,na=na_token,fileEncoding=&#39;UTF-8&#39;)
+  }
+  utils::write.csv(dictionary,file.path(stage,&#39;data-dictionary.csv&#39;),row.names=FALSE,na=&#39;&#39;)
+  utils::write.csv(identities,file.path(stage,&#39;source-files.csv&#39;),row.names=FALSE)
+  metadata&lt;-object[setdiff(names(object),names(tables))]
+  metadata$input_type &lt;- &#39;flow&#39;
+  metadata$csv&lt;-list(missing=na_token,timestamp=&#39;POSIXct times are Unix seconds; numeric times retain the declared source clock.&#39;,
+                     identifiers=&#39;Read identifier fields as character.&#39;,data=&#39;input.rds preserves original types, geometry, timezones and nested provenance.&#39;)
+  writeLines(jsonlite::toJSON(.tm_provenance_for_json(metadata),auto_unbox=TRUE,null=&#39;null&#39;,na=&#39;null&#39;,digits=NA,pretty=TRUE),file.path(stage,&#39;metadata.json&#39;),useBytes=TRUE)
+  files&lt;-sort(list.files(stage))
+  utils::write.csv(data.frame(file=files,md5=unname(tools::md5sum(file.path(stage,files)))),file.path(stage,&#39;checksums.csv&#39;),row.names=FALSE)
+  if(!identical(info_before,file.info(source_files)[,c(&#39;size&#39;,&#39;mtime&#39;),drop=FALSE]))stop(&#39;A source changed during preparation.&#39;,call.=FALSE)
+  .prep_destination(output_dir,source_files)
+  if(!file.rename(stage,target))stop(&#39;Cannot publish the completed preparation.&#39;,call.=FALSE)
+  invisible(file.path(target,&#39;input.rds&#39;))
+}</code></pre>
+</details>
 <pre class="r"><code>prepared_dir &lt;- file.path(work_dir, &quot;prepared-data&quot;)
 input_file &lt;- write_beijing_prepared(native, prepared_dir, c(moe_file, geometry_file))
 input &lt;- readRDS(input_file)

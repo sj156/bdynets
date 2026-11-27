@@ -30,6 +30,18 @@ knitr::opts_chunk$set(
   warning = FALSE,
   cache = FALSE
 )
+
+report_source <- function(file, names) {
+  expressions <- parse(file, keep.source = TRUE)
+  definitions <- vapply(expressions, function(expr) {
+    if (is.call(expr) && identical(expr[[1L]], as.name("<-")) &&
+        is.symbol(expr[[2L]])) as.character(expr[[2L]]) else ""
+  }, character(1))
+  refs <- attr(expressions, "srcref")
+  unlist(lapply(which(definitions %in% names), function(i) {
+    c(as.character(refs[[i]]), "")
+  }), use.names = FALSE)
+}
 ```
 
 Prepare the full day of directed origin–destination (OD) counts for Divvy bike departures on **1 January 2026**. Follow one ride from the supplied CSV to a five-trip arrow in the default **00:00–03:00** Chicago-time window.
@@ -38,7 +50,9 @@ Prepare the full day of directed origin–destination (OD) counts for Divvy bike
 
 Run the visible R blocks in order in an interactive R session from this example directory. The supplied CSV already contains the 1 January departures. The example interprets the departure clocks in `America/Chicago` and writes its prepared files in a new temporary directory.
 
-`prepare.R` converts this case’s source records.
+[`prepare.R`](prepare.R) contains this case’s conversion functions.
+
+The expandable code blocks in the following steps show the definitions from the same scripts used by this report. The regular R blocks load those scripts, call the functions in order and show the resulting data.
 The local `scripts/prepare-input.R` assembles the OD pairs and writes the station and group tables.
 `scripts/report-export.R` saves the prepared data and static maps when export is requested.
 
@@ -66,6 +80,14 @@ Start with the [supplied one-day CSV](data/raw/202601-divvy-tripdata.csv). It co
 
 Read the entire one-day CSV as text to preserve source IDs, timestamps and trailing spaces. The table shows the first row and the ride `5004926658EA27AE` traced through the rest of the report.
 
+<details>
+<summary>Code that reads the trip CSV and names the required fields</summary>
+
+```{r source-csv, eval=FALSE, code=report_source("prepare.R", c("divvy_fields", "read_divvy_csv"))}
+```
+
+</details>
+
 ```{r read-raw}
 raw_file <- "data/raw/202601-divvy-tripdata.csv"
 raw_trips <- read_divvy_csv(raw_file)
@@ -81,6 +103,14 @@ knitr::kable(raw_trips[preview_rows, preview_fields], row.names = FALSE,
 ### Clean the station names
 
 The report and standalone preparation both use `prepare_divvy_day()`. It checks that all departures are on 1 January 2026, removes trailing ASCII spaces from the two station-name columns, and removes exact duplicate rows from the cleaned data before conversion. The table compares the original fields with the cleaned fields. The worked ride’s two station names are already clean, so all 13 source values for that ride carry over unchanged.
+
+<details>
+<summary>Code that cleans the records and builds the station and departure tables</summary>
+
+```{r source-station, eval=FALSE, code=report_source("prepare.R", c("divvy_departure_clocks", "clean_divvy_station_names", "prepare_divvy_day"))}
+```
+
+</details>
 
 ```{r clean-names}
 prepared_day <- prepare_divvy_day(raw_trips, day = day, timezone = timezone)
@@ -98,6 +128,22 @@ knitr::kable(data.frame(
 ### Prepare the station-level OD input
 
 The same preparation call builds the station register (`nodes`) and the retained departures (`flows`). It pools the `start_lat`/`start_lng` and `end_lat`/`end_lng` pairs by `start_station_id` or `end_station_id`. Each station gets the separate medians of its valid paired latitudes and longitudes and its most frequent nonblank recorded name, with alphabetical ties. A ride enters `flows` when both station IDs join that located register. Saving the two tables and their metadata creates `station/input.rds`. It holds 1,230 retained departures across 512 stations, including rides that return to the same station.
+
+<details>
+<summary>Code that writes the station tables to station/input.rds</summary>
+
+```{r source-station-rds, eval=FALSE, code=report_source("prepare.R", c("write_divvy_station_input"))}
+```
+
+</details>
+
+<details>
+<summary>Code that writes each preparation object and its source inventory</summary>
+
+```{r source-od-writer, eval=FALSE, code=report_source("scripts/prepare-input.R", c("write_traffic_input"))}
+```
+
+</details>
 
 ```{r prepare-station}
 prepared_dir <- file.path(work_dir, "prepared-data")
@@ -147,6 +193,22 @@ The report sets `aggregation_radius_m = 1500` to draw a less crowded map. On thi
 
 `spatial-1500m/input.rds` records the grouped day and its `membership` table. The membership rows link the ride's endpoints to Columbus Dr & Randolph St (`CHI00345`) and State St & Chicago Ave (`CHI01772`). The grouped day sums trips that share a departure instant and an ordered pair of group IDs.
 
+<details>
+<summary>Code that reads the station RDS and writes the grouped input.rds</summary>
+
+```{r source-spatial-rds, eval=FALSE, code=report_source("prepare.R", c("spatial_od_input", "prepare_spatial_example"))}
+```
+
+</details>
+
+<details>
+<summary>Code that selects representatives, assigns members and sums directed departures</summary>
+
+```{r source-station-groups, eval=FALSE, code=report_source("scripts/prepare-input.R", c("aggregate_od_data", ".tm_aggregate_od_reference"))}
+```
+
+</details>
+
 ```{r prepare-spatial}
 aggregation_radius_m <- 1500
 spatial_dir <- file.path(prepared_dir, "spatial-1500m")
@@ -181,6 +243,22 @@ knitr::kable(grouped_departure, row.names = FALSE,
 The report and `prepare.R` use the same three-hour default in `divvy_report_windows()`. For this sample, the eight windows span midnight on 1 January to midnight on 2 January in `America/Chicago`. Each window includes its start and excludes its end. Pass `window_minutes` to `divvy_report_windows()` to use another duration. The final window ends at the next local midnight.
 
 `divvy_frame_inputs()` uses the same ordered-pair aggregation as `divvy_window_input()` and keeps a frame for every interval. Each `bdynets_od_pairs` object carries its start and end times, nodes, route counts and coordinates, within-group totals and provenance. Save the ordered list to `od-frames.rds` for reuse. The ordered list is the standard drawing input. The station and grouped `input.rds` files above remain tables for preparation. Each frame already contains the joined longitude and latitude of its directed endpoints, their counts, and its start and end times.
+
+<details>
+<summary>Code that makes the three-hour boundaries and prepares every window</summary>
+
+```{r source-frames, eval=FALSE, code=report_source("prepare.R", c("divvy_window_times", "divvy_report_windows", ".divvy_window_pairs", "divvy_frame_inputs"))}
+```
+
+</details>
+
+<details>
+<summary>Code that selects departures, sums directed pairs and attaches endpoint coordinates</summary>
+
+```{r source-pair-counts, eval=FALSE, code=report_source("scripts/prepare-input.R", c(".od_selection_input", ".od_selection_times", ".od_select_window", "traffic_od_pairs"))}
+```
+
+</details>
 
 ```{r prepare-map-input}
 windows <- divvy_report_windows(day, timezone)

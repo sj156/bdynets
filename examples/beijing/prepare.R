@@ -92,11 +92,21 @@ restore_beijing_csv <- function(archive_file, work_dir) {
   csv_file
 }
 
-beijing_read_moe <- function(moe_file,fields=beijing_fields) {
+beijing_moe_table <- function(moe_file, fields) {
   header<-names(read.csv(text=readLines(moe_file,n=1L),check.names=FALSE))
   at<-match(unname(fields),header)
   if(anyNA(at))stop('Required source columns are missing.')
   data.table::fread(moe_file,skip=1L,header=FALSE,select=at,col.names=unname(fields),showProgress=FALSE)
+}
+
+beijing_read_moe <- function(moe_file, fields = beijing_fields) {
+  if (grepl("[.]gz$", moe_file)) {
+    work_dir <- tempfile("beijing-csv-")
+    dir.create(work_dir)
+    on.exit(unlink(work_dir, recursive = TRUE), add = TRUE)
+    moe_file <- restore_beijing_csv(moe_file, work_dir)
+  }
+  beijing_moe_table(moe_file, fields)
 }
 
 read_beijing_raw <- function(moe_file,geometry_file,fields=beijing_fields,day=10L,expected_minutes=beijing_day_minutes) {
@@ -116,11 +126,7 @@ write_beijing_prepared <- function(native, output_dir, sources, interval_minutes
 }
 
 prepare_example <- function(base='.',output_dir=file.path(base,'prepared'),interval_minutes=5L) {
-  archive_file <- file.path(base, "data", "raw", "output_LinkTDMOE.csv.gz")
-  work_dir <- tempfile("beijing-csv-")
-  dir.create(work_dir)
-  on.exit(unlink(work_dir, recursive = TRUE), add = TRUE)
-  moe_file <- restore_beijing_csv(archive_file, work_dir)
+  moe_file <- file.path(base, "data", "raw", "output_LinkTDMOE.csv.gz")
   geometry_file<-file.path(base,'data','raw','saturation_dynamic_leaflet_osm_osmgeom.html')
   native<-read_beijing_raw(moe_file,geometry_file)
   write_beijing_prepared(native,output_dir,c(moe_file,geometry_file),interval_minutes)

@@ -4,21 +4,21 @@ Open the [08:00 map](maps/beijing-flow.png).
 
 Install the accompanying `bdynets` R package once. Run the commands and report blocks from this example directory. All case scripts and source samples are included here. `prepare.R` converts this case’s source data. `scripts/prepare-input.R` aligns the road and time tables and writes the prepared RDS files. `run.R` builds the report and handles exports.
 
-The [report](beijing-traffic-report.html) follows the project simulator's original CSV and network HTML through to a Flow map. The one-day original CSV is 2.53 GB because it keeps 12,287 directed pairs × 1,440 minutes and all 22 original fields. The bundled gzip is about 110 MB. The simulator records the all-lane entry rate for each directed road in vehicles/hour, once per minute. Its time column is elapsed time since simulation midnight.
+The [report](beijing-traffic-report.html) follows the project simulator's original CSV and network HTML through to a Flow map. The supplied day keeps 12,287 directed pairs × 1,440 minutes and all 22 original fields. The simulator records the all-lane entry rate for each directed road in vehicles/hour, once per minute. Its time column is elapsed time since simulation midnight.
 
 ## Start from the supplied day
 
 Run the [report's R blocks](beijing-traffic-report.Rmd) in order from a fresh session in this example directory. They use the installed `bdynets` package and the source conversion in `prepare.R`.
 
-1. Restore `data/raw/output_LinkTDMOE.csv.gz` into a temporary `output_LinkTDMOE.csv`. The report and `prepare.R` use the same lossless decompression step. Read all 17,693,280 rows in that CSV for simulation day 10 (00:00–23:59). Read the original road geometry separately from `data/raw/saturation_dynamic_leaflet_osm_osmgeom.html`.
+1. Read the 17,693,280 observations for simulation day 10 (00:00–23:59) from `data/raw/output_LinkTDMOE.csv.gz` and the directed road geometries from `data/raw/saturation_dynamic_leaflet_osm_osmgeom.html`.
 2. Join by directed node pair. Save the native minute matrix and geometries as `source.rds`. Average the rates over five-minute intervals and write the 11,742 mapped roads and 288 ordered starts to the preparation tables in `input.rds`.
 3. Align the observations by time and road ID in `flow-frames.rds`, the standard drawing input. Pass the full series to `traffic_flow_map()` and select the frame to draw. The report uses 08:00 by default.
 
-The [supplied-file manifest](data/raw/source-manifest.csv) records the files and the byte sizes and checksums of the bundled gzip and the restored CSV.
+The [supplied-file manifest](data/raw/source-manifest.csv) records the source files, their sizes and checksums.
 
 ## Prepare the drawing input
 
-From this example directory, run the same conversion on the bundled one-day gzip. It expands the CSV in a temporary folder and removes that copy when preparation finishes. Keep about 2.53 GB of temporary space available for the restored CSV, plus space for the result.
+From this example directory, run the conversion on the supplied day. Allow at least 3 GB of free temporary space.
 
 ```sh
 Rscript prepare.R prepared

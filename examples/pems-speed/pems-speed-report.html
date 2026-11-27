@@ -408,13 +408,17 @@ use the installed <code>bdynets</code> package, the supplied PeMS and
 CHP files, and a temporary directory for the prepared tables. The YAML
 parameters control the plotted hour, offline street context and
 export.</p>
-<p><code>prepare.R</code> converts this case’s source records. The
-detector and event readers are in <code>scripts/read-source.R</code>.
-The local <code>scripts/prepare-input.R</code> aligns the road and time
-tables and writes the prepared RDS files.
-<code>scripts/street-context.R</code> reads the local background, and
-<code>scripts/report-export.R</code> saves the prepared data and static
-maps when export is requested.</p>
+<p><a href="prepare.R"><code>prepare.R</code></a> contains this case’s
+conversion functions.</p>
+<p>The expandable code blocks in the following steps show the
+definitions from the same scripts used by this report. The regular R
+blocks load those scripts, call the functions in order and show the
+resulting data. The detector and event readers are in
+<code>scripts/read-source.R</code>. The local
+<code>scripts/prepare-input.R</code> aligns the road and time tables and
+writes the prepared RDS files. <code>scripts/street-context.R</code>
+reads the local background, and <code>scripts/report-export.R</code>
+saves the prepared data and static maps when export is requested.</p>
 <pre class="r"><code>library(bdynets)
 source(&quot;scripts/prepare-input.R&quot;, local = TRUE)
 source(&quot;prepare.R&quot;, local = TRUE)
@@ -547,18 +551,127 @@ knitr::kable(data.frame(
 register and station links</h3>
 <p>The supplied <a href="data/case-register.rds">case register</a>
 preserves the link selections and travel-order decisions for the 16 June
-2026 case from the 21 November handover. This report reads those
-settings from the included RDS. The <a href="data/README.md">input
-inventory</a> lists the other references. The register stores the LA
-links whose endpoint order and geometry need to be reversed together,
-the selected D04 directed endpoint pairs, the event coordinate bounds
-and category lookup, and the 24 hour starts.</p>
+2026 case from the 21 November handover. This register is a supplied
+case reference created before the report runs. The report reads the
+recorded choices from it. For another date or study area, choose the
+links, event scope and frame starts for that dataset during preparation.
+The <a href="data/README.md">input inventory</a> lists the other
+references. The register stores the LA links whose endpoint order and
+geometry need to be reversed together, the selected D04 directed
+endpoint pairs, the event coordinate bounds and category lookup, and the
+24 hour starts.</p>
 <p>LA road geometry comes from the project volume HTML configuration.
 D04 road geometry connects the two endpoint coordinates from the dated
 Caltrans metadata, with the two detectors on the same freeway and
 direction. The D04 station-map CSV identifies the stations selected for
 the Bay Area. Match its <code>station_id</code> and the register’s
 endpoint IDs to <code>ID</code> in the station metadata.</p>
+<details>
+<summary>
+Code that reads the register, maps positions to sensors and builds the
+directed roads
+</summary>
+<pre class="r"><code>pems_case_times &lt;- function(times) {
+  midnight &lt;- as.numeric(as.POSIXct(&quot;2026-06-16&quot;, tz = &quot;UTC&quot;))
+  if (!is.numeric(times) || !identical(as.numeric(times), midnight + (0:23) * 3600)) {
+    stop(&quot;The PeMS case requires all 24 consecutive source-hour starts on 2026-06-16.&quot;)
+  }
+}
+
+pems_map_config &lt;- function(file) {
+  literal &lt;- grep(&quot;^const config = &quot;, readLines(file, warn = FALSE), value = TRUE)
+  if (length(literal) != 1L) stop(&quot;Expected one source-map configuration in &quot;, basename(file))
+  jsonlite::fromJSON(sub(&quot;;[[:space:]]*$&quot;, &quot;&quot;, sub(&quot;^const config = &quot;, &quot;&quot;, literal)))
+}
+
+pems_positions &lt;- function(manifest, config, month_key) {
+  months &lt;- jsonlite::read_json(manifest, simplifyVector = FALSE)
+  month &lt;- Filter(function(x) identical(x$key, month_key), months)
+  if (length(month) != 1L) stop(&quot;Expected one manifest entry for &quot;, month_key)
+  positions &lt;- month[[1L]][[&quot;segmentPositions&quot;]]
+  stations &lt;- config[[&quot;positionStations&quot;]]
+  valid_position &lt;- function(index) {
+    is.numeric(index) &amp;&amp; length(index) == 1L &amp;&amp; is.finite(index) &amp;&amp; index == trunc(index) &amp;&amp;
+      index &gt;= 0 &amp;&amp; index &lt; length(stations)
+  }
+  if (!is.list(positions) || !is.null(names(positions)) || !length(positions) ||
+      !all(vapply(positions, valid_position, logical(1L)))) {
+    stop(&quot;Active positions and station mapping disagree.&quot;)
+  }
+  positions &lt;- unlist(positions, use.names = FALSE)
+  selected &lt;- stations[positions + 1L]
+  valid_station &lt;- function(id) {
+    (is.character(id) || is.numeric(id)) &amp;&amp; length(id) == 1L &amp;&amp; !is.na(id) &amp;&amp; grepl(&quot;^[0-9]+$&quot;, id)
+  }
+  if (anyDuplicated(positions) || !all(vapply(selected, valid_station, logical(1L)))) {
+    stop(&quot;Active positions and station mapping disagree.&quot;)
+  }
+  data.frame(segment_position = positions,
+    station_id = vapply(selected, as.character, character(1L), USE.NAMES = FALSE))
+}
+
+pems_case_roads &lt;- function(register, config, meta) {
+  la &lt;- config$links
+  reverse &lt;- la$id %in% register$la_reverse_id
+  if (anyDuplicated(la$id) || any(!register$la_reverse_id %in% la$id)) {
+    stop(&quot;LA display IDs differ from the direction register.&quot;)
+  }
+  la$geometry &lt;- lapply(seq_len(nrow(la)), function(i) {
+    geometry &lt;- la$coords[[i]][, 2:1, drop = FALSE]
+    if (reverse[i]) geometry[nrow(geometry):1, , drop = FALSE] else geometry
+  })
+  la$coords &lt;- NULL
+  for (key in c(&quot;station&quot;, &quot;abs_pm&quot;, &quot;station_index&quot;)) {
+    from &lt;- paste0(&quot;from_&quot;, key)
+    to &lt;- paste0(&quot;to_&quot;, key)
+    saved &lt;- la[[from]][reverse]
+    la[[from]][reverse] &lt;- la[[to]][reverse]
+    la[[to]][reverse] &lt;- saved
+  }
+  la$region &lt;- &quot;Los Angeles Area&quot;
+  la$road_id &lt;- as.character(la$id)
+
+  keys &lt;- register$d04_links
+  from &lt;- meta[match(keys$from_station, meta$ID), ]
+  to &lt;- meta[match(keys$to_station, meta$ID), ]
+  if (anyNA(from$ID) || anyNA(to$ID) ||
+      any(from$Fwy != to$Fwy | from$Dir != to$Dir | from$District != &quot;4&quot; |
+          to$District != &quot;4&quot; | from$Type != &quot;ML&quot; | to$Type != &quot;ML&quot;)) {
+    stop(&quot;D04 link endpoints do not agree with station metadata.&quot;)
+  }
+  bay &lt;- data.frame(district = &quot;04&quot;, freeway = from$Fwy, direction = from$Dir,
+    from_station = from$ID, to_station = to$ID, from_abs_pm = as.numeric(from$Abs_PM),
+    to_abs_pm = as.numeric(to$Abs_PM), id = seq_len(nrow(keys)) - 1L,
+    from_station_index = NA_integer_, to_station_index = NA_integer_,
+    region = &quot;San Francisco Bay Area&quot;, road_id = keys$road_id)
+  bay$geometry &lt;- lapply(seq_len(nrow(keys)), function(i) {
+    cbind(as.numeric(c(from$Longitude[i], to$Longitude[i])),
+      as.numeric(c(from$Latitude[i], to$Latitude[i])))
+  })
+  rbind(la[names(bay)], bay)
+}
+
+pems_selection &lt;- function(register_file, files) {
+  register &lt;- readRDS(register_file)
+  if (!identical(register$schema, &quot;pems-links-and-rules-v1&quot;)) {
+    stop(&quot;The selected display links need a compatible endpoint register.&quot;)
+  }
+  pems_case_times(register$settings$times)
+  month &lt;- format(as.POSIXct(register$settings$times[1L], origin = &quot;1970-01-01&quot;, tz = &quot;UTC&quot;),
+    &quot;%Y_%m&quot;, tz = &quot;UTC&quot;)
+  # The original volume map holds the shared LA link geometry.
+  config &lt;- pems_map_config(files[&quot;flow_geometry&quot;])
+  metadata &lt;- read.delim(files[&quot;metadata&quot;], colClasses = &quot;character&quot;, quote = &quot;&quot;,
+    na.strings = NULL, check.names = FALSE, fileEncoding = &quot;latin1&quot;)
+  if (anyDuplicated(metadata$ID)) stop(&quot;Metadata station IDs are duplicated.&quot;)
+  result &lt;- list(register = register, config = config, metadata = metadata)
+  result$speed &lt;- pems_positions(files[&quot;speed_manifest&quot;], pems_map_config(files[&quot;speed_geometry&quot;]), month)
+  legacy &lt;- pems_map_config(files[&quot;legacy_geometry&quot;])$stations
+  legacy_ids &lt;- sub(&quot;\\.0$&quot;, &quot;&quot;, as.character(legacy$station[!is.na(legacy$speed_index)]))
+  result$speed$in_legacy &lt;- result$speed$station_id %in% legacy_ids
+  result
+}</code></pre>
+</details>
 <pre class="r"><code>selection &lt;- pems_selection(register_file, files)
 register &lt;- selection$register
 frame_times &lt;- register$settings$times
@@ -717,6 +830,219 @@ summary fields. Coordinates put each start in one of three groups in the
 native table. Only starts marked <code>inside</code> enter the prepared
 event table; <code>outside</code> means valid coordinates outside the
 region, and <code>invalid</code> means bad coordinates.</p>
+<details>
+<summary>
+Code that reads detector records and places them in station-by-time
+slots
+</summary>
+<pre class="r"><code>pems_detector_rows &lt;- function(file, district, labels) {
+  columns &lt;- rep(&quot;NULL&quot;, 52L)
+  columns[c(1L, 2L, 3L, 6L)] &lt;- c(&quot;character&quot;, &quot;character&quot;, &quot;integer&quot;, &quot;character&quot;)
+  columns[12L] &lt;- &quot;numeric&quot;
+  rows &lt;- read.csv(file, header = FALSE, colClasses = columns, quote = &quot;&quot;)
+  if (any(!rows$V1 %in% labels)) {
+    stop(&quot;Invalid daily five-minute source-clock timestamp in &quot;, basename(file), &quot;.&quot;)
+  }
+  if (anyNA(rows$V3) || any(rows$V3 != district)) {
+    stop(&quot;The supplied detector text contains records from a different district: &quot;, basename(file))
+  }
+  mainline &lt;- rows[rows$V6 %in% &quot;ML&quot;, , drop = FALSE]
+  mainline
+}
+
+pems_five_minute_clock &lt;- function(times) {
+  rep(times, each = 12L) + rep(seq(0, 3300, 300), length(times))
+}
+
+pems_observations &lt;- function(files, times) {
+  pems_case_times(times)
+  clock &lt;- pems_five_minute_clock(times)
+  labels &lt;- format(as.POSIXct(clock, origin = &quot;1970-01-01&quot;, tz = &quot;UTC&quot;), &quot;%m/%d/%Y %H:%M:%S&quot;)
+  districts &lt;- c(4L, 7L, 8L, 12L)
+  detector_names &lt;- paste0(&quot;detector&quot;, sprintf(&quot;%02d&quot;, districts))
+  records &lt;- Map(pems_detector_rows, unname(files[detector_names]), districts,
+    MoreArgs = list(labels = labels))
+  names(records) &lt;- detector_names
+  columns &lt;- rep(&quot;NULL&quot;, 20L)
+  columns[c(1L, 4:7, 10:12)] &lt;- &quot;character&quot;
+  incidents &lt;- read.csv(files[&quot;incidents&quot;], header = FALSE, colClasses = columns, na.strings = NULL)
+  starts &lt;- as.numeric(pems_chp_clock(incidents$V4))
+  if (any(starts &lt; times[1L] | starts &gt;= times[1L] + 86400)) {
+    stop(&quot;CHP summary starts must all be on the supplied day.&quot;)
+  }
+  if (any(!incidents$V12 %in% c(&quot;4&quot;, &quot;7&quot;, &quot;8&quot;, &quot;12&quot;))) {
+    stop(&quot;CHP summaries must belong to districts 04, 07, 08 or 12.&quot;)
+  }
+  list(clock = clock, labels = labels, records = records, incidents = incidents)
+}
+
+pems_la_station_slots &lt;- function(observations, stations, field) {
+  rows &lt;- do.call(rbind, observations$records[c(&quot;detector07&quot;, &quot;detector08&quot;, &quot;detector12&quot;)])
+  rows &lt;- rows[rows$V2 %in% stations, , drop = FALSE]
+  row &lt;- match(rows$V1, observations$labels)
+  column &lt;- match(rows$V2, stations)
+  slots &lt;- length(observations$clock)
+  cell &lt;- row + (column - 1L) * slots
+  if (anyNA(cell)) stop(&quot;Unknown LA detector or five-minute slot.&quot;)
+  if (anyDuplicated(cell)) stop(&quot;Duplicate LA detector and five-minute slot.&quot;)
+  values &lt;- matrix(NA_real_, slots, length(stations))
+  values[cell] &lt;- rows[[field]]
+  values
+}
+
+pems_d04_selection &lt;- function(meta, station_map_file) {
+  ids &lt;- sort(meta$ID[meta$District == &quot;4&quot; &amp; meta$Type == &quot;ML&quot;])
+  station_map &lt;- read.csv(station_map_file, colClasses = &quot;character&quot;)
+  mapped &lt;- station_map[[&quot;station_id&quot;]]
+  if (!length(mapped) || anyDuplicated(mapped) || any(!mapped %in% ids)) {
+    stop(&quot;D04 station mapping does not align with ML metadata.&quot;)
+  }
+  list(station_id = ids, matched_station_id = ids[ids %in% mapped])
+}
+
+pems_station_slots &lt;- function(stations, clocks, values, station_ids, labels) {
+  if (!length(station_ids) || anyNA(station_ids) || anyDuplicated(station_ids) ||
+      !length(labels) || anyNA(labels) || anyDuplicated(labels)) {
+    stop(&quot;Declare unique stations and source-clock slots.&quot;)
+  }
+  row &lt;- match(as.character(stations), station_ids)
+  column &lt;- match(as.character(clocks), labels)
+  if (anyNA(row) || anyNA(column)) stop(&quot;An unexpected source station or timestamp is present.&quot;)
+  cell &lt;- row + (column - 1L) * length(station_ids)
+  if (anyDuplicated(cell)) stop(&quot;Duplicate station and timestamp.&quot;)
+  if (length(cell) != length(station_ids) * length(labels)) {
+    stop(&quot;Missing station and timestamp in D04 detector records.&quot;)
+  }
+  result &lt;- matrix(NA_real_, length(station_ids), length(labels), dimnames = list(station_ids, labels))
+  result[cell] &lt;- values
+  result
+}
+
+pems_d04_station_rows &lt;- function(d04, values, times) {
+  if (!is.matrix(values) || !is.numeric(values) ||
+      anyNA(d04$station_id) || anyDuplicated(d04$station_id) ||
+      anyNA(d04$matched_station_id) || anyDuplicated(d04$matched_station_id) ||
+      !identical(rownames(values), d04$station_id) ||
+      ncol(values) != 12L * length(times) ||
+      !identical(as.numeric(d04$minute), pems_five_minute_clock(times) %% 86400 / 60)) {
+    stop(&quot;D04 source minutes and output hours do not align.&quot;)
+  }
+  row &lt;- match(d04$matched_station_id, d04$station_id)
+  if (anyNA(row)) stop(&quot;A matched D04 station is absent from its source observations.&quot;)
+  row
+}
+
+pems_native &lt;- function(stages, observations, files) {
+  register &lt;- stages$register
+  roads &lt;- pems_case_roads(register, stages$config, stages$metadata)
+  incidents &lt;- pems_incidents(observations$incidents, files, register$scopes)
+  la &lt;- pems_la_speed(stages$speed, observations)
+  d04 &lt;- pems_d04_speed(observations, stages$metadata, files[&quot;station_map&quot;])
+  list(schema = &quot;pems-speed-source-v1&quot;, roads = roads, la = la, d04 = d04,
+    event_summaries = incidents$summaries, event_categories = register$event_categories,
+    scopes = register$scopes, settings = register$settings, register_origin = register$origin,
+    source_files = data.frame(file = basename(files), bytes = unname(file.info(files)$size),
+      role = names(files), row.names = NULL), incident_details = incidents$details)
+}</code></pre>
+</details>
+<details>
+<summary>
+Code that reads incident starts, assigns coordinates and applies the
+geographic scope
+</summary>
+<pre class="r"><code>pems_event_scope &lt;- function(events, scopes) {
+  regions &lt;- c(&quot;Los Angeles Area&quot;, &quot;San Francisco Bay Area&quot;)
+  bounds &lt;- c(&quot;west&quot;, &quot;east&quot;, &quot;south&quot;, &quot;north&quot;)
+  if (!is.data.frame(scopes) || !all(c(&quot;region&quot;, bounds) %in% names(scopes)) ||
+      nrow(scopes) != length(regions) || !setequal(scopes$region, regions) ||
+      !all(vapply(scopes[bounds], is.numeric, logical(1L))) ||
+      any(!is.finite(as.matrix(scopes[bounds]))) ||
+      any(scopes$west &lt; -180 | scopes$east &gt; 180 | scopes$west &gt;= scopes$east |
+          scopes$south &lt; -90 | scopes$north &gt; 90 | scopes$south &gt;= scopes$north)) {
+    stop(&quot;Each PeMS region needs one set of finite regional bounds in longitude and latitude.&quot;)
+  }
+  if (any(!events$district %in% c(&quot;04&quot;, &quot;07&quot;, &quot;08&quot;, &quot;12&quot;))) {
+    stop(&quot;An incident district has no declared regional scope.&quot;)
+  }
+  region &lt;- ifelse(events$district == &quot;04&quot;, regions[2L], regions[1L])
+  at &lt;- match(region, scopes$region)
+  longitude &lt;- suppressWarnings(as.numeric(events$lon))
+  latitude &lt;- suppressWarnings(as.numeric(events$lat))
+  valid &lt;- is.finite(longitude) &amp; is.finite(latitude) &amp; abs(longitude) &lt;= 180 &amp; abs(latitude) &lt;= 90
+  inside &lt;- valid &amp; longitude &gt;= scopes$west[at] &amp; longitude &lt;= scopes$east[at] &amp;
+    latitude &gt;= scopes$south[at] &amp; latitude &lt;= scopes$north[at]
+  list(inside = inside, outside = valid &amp; !inside, invalid = !valid)
+}
+
+pems_scope_class &lt;- function(events, scopes) {
+  scope &lt;- pems_event_scope(events, scopes)
+  ifelse(scope$inside, &quot;inside&quot;, ifelse(scope$invalid, &quot;invalid&quot;, &quot;outside&quot;))
+}
+
+pems_chp_clock &lt;- function(values) {
+  text &lt;- as.character(values)
+  source_format &lt;- &quot;%m/%d/%Y %H:%M:%S&quot;
+  if (anyNA(text) || any(!grepl(&quot;^[0-9]{2}/[0-9]{2}/[0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2}$&quot;, text))) {
+    stop(&quot;CHP start times must use the complete source clock.&quot;)
+  }
+  clock &lt;- as.POSIXct(strptime(text, source_format, tz = &quot;UTC&quot;))
+  if (anyNA(clock) || any(format(clock, source_format, tz = &quot;UTC&quot;) != text)) {
+    stop(&quot;Invalid CHP source-clock timestamp.&quot;)
+  }
+  clock
+}
+
+pems_summary_records &lt;- function(rows) {
+  required &lt;- c(&quot;V1&quot;, &quot;V4&quot;, &quot;V5&quot;, &quot;V6&quot;, &quot;V7&quot;, &quot;V10&quot;, &quot;V11&quot;, &quot;V12&quot;)
+  if (!all(required %in% names(rows))) stop(&quot;The CHP summary fields are incomplete.&quot;)
+  clock &lt;- pems_chp_clock(rows$V4)
+  clean &lt;- function(x) trimws(gsub(&quot;[[:space:]]+&quot;, &quot; &quot;, as.character(x)))
+  data.frame(id = as.character(rows$V1), reported_time = format(clock, &quot;%Y-%m-%d %H:%M:%S&quot;, tz = &quot;UTC&quot;),
+    district = sprintf(&quot;%02d&quot;, as.integer(rows$V12)), lon = as.character(rows$V11),
+    lat = as.character(rows$V10), source_type = clean(rows$V5), location = clean(rows$V6),
+    area = clean(rows$V7), stringsAsFactors = FALSE)
+}
+
+pems_incidents &lt;- function(summary, files, scopes) {
+  events &lt;- pems_summary_records(summary)
+  scope &lt;- pems_scope_class(events, scopes)
+  event_order &lt;- order(scope != &quot;inside&quot;, events$district == &quot;04&quot;, events$reported_time, events$id)
+  events &lt;- events[event_order, ]
+  events$scope &lt;- scope[event_order]
+  rownames(events) &lt;- NULL
+
+  connection &lt;- file(files[&quot;details&quot;], &quot;rt&quot;)
+  on.exit(close(connection), add = TRUE)
+  message_keys &lt;- character()
+  repeat {
+    lines &lt;- readLines(connection, n = 50000L, warn = FALSE)
+    if (!length(lines)) break
+    lines &lt;- grep(&quot;^[0-9]+,[0-9]+,[0-9]{2}/[0-9]{2}/[0-9]{4} &quot;, lines, value = TRUE, useBytes = TRUE)
+    lines &lt;- lines[sub(&quot;,.*&quot;, &quot;&quot;, lines, useBytes = TRUE) %in% events$id]
+    message_keys &lt;- c(message_keys, sub(&quot;^([0-9]+,[0-9]+),.*&quot;, &quot;\\1&quot;, lines, useBytes = TRUE))
+  }
+  if (anyDuplicated(message_keys)) stop(&quot;Incident detail message IDs are duplicated.&quot;)
+  nmsg &lt;- tabulate(match(sub(&quot;,.*&quot;, &quot;&quot;, message_keys), events$id), nbins = nrow(events))
+
+  detail &lt;- events$area
+  names_needed &lt;- c(&quot;Incident ID&quot;, &quot;Incident detail summary&quot;, &quot;Raw message count&quot;)
+  header &lt;- names(read.csv(files[&quot;annotations&quot;], nrows = 0, check.names = FALSE))
+  if (!all(names_needed %in% header)) stop(&quot;English annotations lack required ID and message fields.&quot;)
+  english &lt;- read.csv(files[&quot;annotations&quot;], check.names = FALSE, na.strings = NULL,
+    colClasses = ifelse(header %in% names_needed, &quot;character&quot;, &quot;NULL&quot;))
+  use &lt;- events$district != &quot;04&quot; &amp; events$scope == &quot;inside&quot;
+  annotations &lt;- match(events$id[use], english[[&quot;Incident ID&quot;]])
+  message_counts &lt;- suppressWarnings(as.integer(english[[&quot;Raw message count&quot;]][annotations]))
+  if (anyNA(annotations) || anyDuplicated(english[[&quot;Incident ID&quot;]]) ||
+      anyNA(message_counts) || any(message_counts != nmsg[use])) {
+    stop(&quot;English annotations do not align with raw incident message counts.&quot;)
+  }
+  detail[use] &lt;- english[[&quot;Incident detail summary&quot;]][annotations]
+  description &lt;- function(type, place, text) paste(Filter(nzchar, c(type, place, text)), collapse = &quot; | &quot;)
+  events$description &lt;- mapply(description, events$source_type, events$location, detail, USE.NAMES = FALSE)
+  list(summaries = events, details = list(records = sum(nmsg), events_with_detail = sum(nmsg &gt; 0L)))
+}</code></pre>
+</details>
 <pre class="r"><code>observations &lt;- pems_observations(files, frame_times)
 knitr::kable(data.frame(
   district = sub(&quot;detector&quot;, &quot;&quot;, names(observations$records)),
@@ -887,6 +1213,236 @@ stays missing when both endpoints are missing. The hourly road speed is
 the mean of available five-minute road values across the twelve slots.
 The <code>valid_five_minute_slots</code> column records how many
 contributed, and an hour with no valid slot stays missing.</p>
+<details>
+<summary>
+Code that combines road regions, frame starts and prepared event
+intervals
+</summary>
+<pre class="r"><code>pems_context &lt;- function(native) {
+  if (!identical(native$schema, &quot;pems-speed-source-v1&quot;)) {
+    stop(&quot;Expected native PeMS speed observations and CHP summaries.&quot;)
+  }
+  roads &lt;- native$roads
+  roads$road_id &lt;- as.character(roads$road_id)
+  times &lt;- native$settings$times
+  pems_case_times(times)
+  if (anyDuplicated(roads$road_id)) stop(&quot;Unique road IDs are required.&quot;)
+  if (any(!roads$region %in% c(&quot;Los Angeles Area&quot;, &quot;San Francisco Bay Area&quot;))) {
+    stop(&quot;A road has no declared station region.&quot;)
+  }
+
+  source &lt;- native$event_summaries
+  if (anyNA(source$id) || anyDuplicated(source$id) ||
+      any(!grepl(&quot;^2026-06-16 ([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$&quot;, source$reported_time))) {
+    stop(&quot;CHP IDs and reported start clocks must identify the selected source day.&quot;)
+  }
+  scope &lt;- source$scope
+  if (is.null(scope)) scope &lt;- pems_scope_class(source, native$scopes)
+  shown &lt;- source[scope == &quot;inside&quot;, , drop = FALSE]
+  # A numeric encoding of the source clock, without assigning a source time zone.
+  event_clock &lt;- as.numeric(as.POSIXct(shown$reported_time, tz = &quot;UTC&quot;))
+  key &lt;- tolower(trimws(gsub(&quot;[[:space:]]+&quot;, &quot; &quot;, shown$source_type)))
+  categories &lt;- native$event_categories
+  category &lt;- categories$category[match(key, tolower(trimws(categories$source_type)))]
+  category[is.na(category)] &lt;- &quot;Other alert&quot;
+  events &lt;- data.frame(id = shown$id, time = event_clock, lon = as.numeric(shown$lon),
+    lat = as.numeric(shown$lat), category = category, description = shown$description,
+    region = ifelse(shown$district == &quot;04&quot;, &quot;San Francisco Bay Area&quot;, &quot;Los Angeles Area&quot;),
+    stringsAsFactors = FALSE)
+  list(crs = &quot;EPSG:4326&quot;, roads = roads, events = events, times = times,
+    time_label_format = &quot;%Y-%m-%d %H:%M&quot;, interval_seconds = rep(3600, length(times)),
+    provenance = list(source_dataset = &quot;PeMS and CHP&quot;, day = &quot;2026-06-16&quot;,
+      clock = &quot;Supplied source wall clock; numeric encoding does not establish a UTC offset.&quot;,
+      register_origin = native$register_origin, source_files = native$source_files,
+      source_incidents = nrow(source), included_incidents = nrow(events),
+      outside_scope = sum(scope == &quot;outside&quot;), invalid_coordinates = sum(scope == &quot;invalid&quot;)))
+}
+
+pems_endpoint_mean &lt;- function(from, to) {
+  available &lt;- (!is.na(from)) + (!is.na(to))
+  values &lt;- (replace(from, is.na(from), 0) + replace(to, is.na(to), 0)) / available
+  values[available == 0L] &lt;- NA_real_
+  values
+}</code></pre>
+</details>
+<details>
+<summary>
+Code that rolls up detector values and builds the Speed road tables
+</summary>
+<pre class="r"><code>pems_la_speed &lt;- function(positions, observations) {
+  legacy &lt;- positions$in_legacy
+  stations &lt;- unique(positions$station_id[legacy])
+  mph &lt;- pems_la_station_slots(observations, stations, &quot;V12&quot;)
+  observed &lt;- is.finite(mph) &amp; mph &gt;= 1 &amp; mph &lt;= 100
+  # The previous LA series stored single-precision values and rounded ties to even.
+  single &lt;- readBin(writeBin(mph[observed], raw(), size = 4L), &quot;numeric&quot;, sum(observed), size = 4L)
+  station_mph &lt;- matrix(NA_integer_, nrow(mph), ncol(mph))
+  station_mph[observed] &lt;- as.integer(round(single))
+  position_mph &lt;- matrix(NA_integer_, nrow(mph), nrow(positions))
+  position_mph[, legacy] &lt;- station_mph[, match(positions$station_id[legacy], stations), drop = FALSE]
+  list(position_mph = position_mph, position_station = positions$station_id, times = observations$clock)
+}
+
+pems_d04_speed &lt;- function(observations, meta, station_map_file) {
+  selection &lt;- pems_d04_selection(meta, station_map_file)
+  rows &lt;- observations$records$detector04
+  mph &lt;- rows$V12
+  mph[!is.finite(mph) | mph &lt;= 0] &lt;- NA_real_
+  mph &lt;- pems_station_slots(rows$V2, rows$V1, mph, selection$station_id, observations$labels)
+  c(list(mph = mph, minute = observations$clock %% 86400 / 60), selection)
+}
+
+pems_speed_details &lt;- function(native) {
+  context &lt;- pems_context(native)
+  roads &lt;- context$roads
+  la &lt;- native$la
+  d04 &lt;- native$d04
+  hour_slots &lt;- outer(context$times, (0:11) * 300L, `+`)
+  if (!identical(as.numeric(la$times), pems_five_minute_clock(context$times))) {
+    stop(&quot;The input hours must each cover twelve five-minute speed slots.&quot;)
+  }
+  slot_indices &lt;- matrix(match(hour_slots, la$times), nrow = nrow(hour_slots))
+  if (!is.matrix(la$position_mph) || !is.numeric(la$position_mph) ||
+      nrow(la$position_mph) != length(la$times) ||
+      ncol(la$position_mph) != length(la$position_station) || anyNA(la$position_station)) {
+    stop(&quot;LA active-position speeds do not align with station IDs and five-minute slots.&quot;)
+  }
+
+  observed &lt;- !is.na(la$position_mph)
+  if (any(observed &amp; (!is.finite(la$position_mph) | la$position_mph &lt; 1 | la$position_mph &gt; 100))) {
+    stop(&quot;Invalid LA five-minute position speed.&quot;)
+  }
+  station_sums &lt;- rowsum(t(replace(la$position_mph, !observed, 0L)), la$position_station, reorder = FALSE)
+  station_counts &lt;- rowsum(t(observed * 1L), la$position_station, reorder = FALSE)
+  la_mph &lt;- t(station_sums / station_counts)
+  la_mph[t(station_counts == 0L)] &lt;- NA_real_
+
+  station_rows &lt;- pems_d04_station_rows(d04, d04$mph, context$times)
+  if (any(!is.na(d04$mph) &amp; (!is.finite(d04$mph) | d04$mph &lt;= 0))) {
+    stop(&quot;Invalid D04 five-minute station speed.&quot;)
+  }
+  bay_mph &lt;- t(d04$mph[station_rows, , drop = FALSE])
+  from &lt;- to &lt;- matrix(NA_real_, length(la$times), nrow(roads))
+  regions &lt;- list(&quot;Los Angeles Area&quot; = la_mph, &quot;San Francisco Bay Area&quot; = bay_mph)
+  for (region in names(regions)) {
+    use &lt;- which(roads$region == region)
+    stations &lt;- regions[[region]]
+    from[, use] &lt;- stations[, match(roads$from_station[use], colnames(stations)), drop = FALSE]
+    to[, use] &lt;- stations[, match(roads$to_station[use], colnames(stations)), drop = FALSE]
+  }
+  road_mph &lt;- pems_endpoint_mean(from, to)
+  speed_by_hour &lt;- lapply(seq_along(context$times), function(i) {
+    observations &lt;- road_mph[slot_indices[i, ], , drop = FALSE]
+    valid_slots &lt;- colSums(!is.na(observations))
+    hourly_mph &lt;- colMeans(observations, na.rm = TRUE)
+    hourly_mph[valid_slots == 0L] &lt;- NA_real_
+    data.frame(road_id = roads$road_id, time = context$times[i], speed = hourly_mph,
+      valid_five_minute_slots = valid_slots)
+  })
+
+  context$speed &lt;- do.call(rbind, speed_by_hour)
+  context$unit &lt;- &quot;mph&quot;
+  context$title &lt;- &quot;PeMS hourly speed | 2026-06-16&quot;
+  context$speed_label &lt;- &quot;Hourly mean speed&quot;
+  context$speed_definition &lt;- &quot;Mean of available five-minute endpoint-mean road speeds within each source hour.&quot;
+  context$provenance &lt;- c(context$provenance,
+    list(d04_source_records = length(d04$mph), d04_available_records = sum(!is.na(d04$mph)),
+      d04_retained_records = length(bay_mph),
+      excluded_d04_stations = setdiff(d04$station_id, d04$matched_station_id),
+      missing_link_hours = sum(is.na(context$speed$speed)),
+      measurement = &quot;Native five-minute V12 average speed in mph. Los Angeles retains the original position selection and rounding; Bay Area uses the source decimal values.&quot;))
+  list(input = context, slots = slot_indices, from = from, to = to, road_mph = road_mph)
+}</code></pre>
+</details>
+<details>
+<summary>
+Code that passes the native object and road tables to the writer
+</summary>
+<pre class="r"><code>write_pems_speed &lt;- function(native, input, output_dir, sources) {
+  dictionary &lt;- rbind(pems_roads_dictionary(),
+    data.frame(table = &quot;speed&quot;, field = &quot;valid_five_minute_slots&quot;,
+      meaning = &quot;Five-minute slots with at least one observed endpoint speed in the hour.&quot;))
+  write_traffic_input(input, output_dir, source_files = sources, native = native,
+    dictionary = dictionary)
+}</code></pre>
+</details>
+<details>
+<summary>
+Code that aligns the drawing matrix and writes all three RDS files
+</summary>
+<pre class="r"><code>.prep_road_frames &lt;- function(input) {
+  if (!is.list(input) || is.null(names(input)) || anyDuplicated(names(input)))
+    stop(&#39;Supply a uniquely named list of prepared tables.&#39;, call. = FALSE)
+  if (inherits(input, &#39;trafficmap_data&#39;))
+    stop(&#39;Supply a standard Speed table list to write_traffic_input().&#39;, call. = FALSE)
+  if (any(c(&#39;nodes&#39;, &#39;flows&#39;, &#39;od&#39;, &#39;flow&#39;, &#39;measurements&#39;, &#39;flow_columns&#39;) %in% names(input)))
+    stop(&#39;Flow, Speed and OD inputs are separate formats.&#39;, call. = FALSE)
+  schema &lt;- input[[&#39;schema&#39;]]
+  if (!is.null(schema) &amp;&amp; !identical(schema, &#39;bdynets-speed-input-v1&#39;))
+    stop(&#39;Unsupported Speed input schema.&#39;, call. = FALSE)
+  roads &lt;- input[[&#39;roads&#39;]]
+  observations &lt;- input[[&#39;speed&#39;]]
+  if (!is.data.frame(roads) || !all(c(&#39;road_id&#39;, &#39;geometry&#39;) %in% names(roads)) ||
+      !is.data.frame(observations) || !all(c(&#39;road_id&#39;, &#39;time&#39;, &#39;speed&#39;) %in% names(observations)))
+    stop(&#39;Speed tables require roads(road_id, geometry) and speed(road_id, time, speed).&#39;, call. = FALSE)
+  if (!is.character(roads$road_id) || !is.character(observations$road_id))
+    stop(&#39;Road IDs must be character in both Speed tables.&#39;, call. = FALSE)
+  if (is.null(input[[&#39;unit&#39;]])) stop(&#39;Supply the Speed unit.&#39;, call. = FALSE)
+  input[[&#39;schema&#39;]] &lt;- NULL
+  if (any(!names(input) %in% names(formals(traffic_speed_data))))
+    stop(&#39;Unknown Speed input fields.&#39;, call. = FALSE)
+  frames &lt;- do.call(traffic_speed_data, input)
+  frames$input_type &lt;- &#39;speed&#39;
+  frames
+}
+
+write_traffic_input &lt;- function(input,output_dir,source_files=character(),native=NULL,dictionary=NULL) {
+  target&lt;-.prep_destination(output_dir,source_files)
+  parent&lt;-dirname(target);dir.create(parent,recursive=TRUE,showWarnings=FALSE)
+  lock&lt;-paste0(target,&#39;.preparation-lock&#39;)
+  if(!dir.create(lock,showWarnings=FALSE))stop(&#39;Another preparation is using this output directory.&#39;,call.=FALSE)
+  on.exit(unlink(lock,recursive=TRUE,expand=FALSE),add=TRUE)
+  .prep_destination(output_dir,source_files)
+  stage&lt;-tempfile(&#39;prepared-data-&#39;,tmpdir=parent)
+  if(!dir.create(stage))stop(&#39;Cannot create preparation staging directory.&#39;,call.=FALSE)
+  on.exit(unlink(stage,recursive=TRUE,expand=FALSE),add=TRUE)
+  info_before&lt;-file.info(source_files)[,c(&#39;size&#39;,&#39;mtime&#39;),drop=FALSE]
+  identities&lt;-.prep_sources(source_files)
+  object&lt;-input
+  object$provenance$preparation_sources &lt;- identities
+  road_frames &lt;- .prep_road_frames(object)
+  object$schema &lt;- &#39;bdynets-speed-input-v1&#39;
+  tables &lt;- .prep_tables(object)
+  dictionary &lt;- .prep_dictionary(tables, object, dictionary)
+  na_token&lt;-&#39;\\N&#39;
+  strings&lt;-unlist(lapply(tables,function(t)unlist(lapply(t,function(x)if(is.character(x))x else character()),use.names=FALSE)),use.names=FALSE)
+  while(na_token%in%strings)na_token&lt;-paste0(na_token,&#39;_&#39;)
+  saveRDS(object,file.path(stage,&#39;input.rds&#39;),compress=&#39;xz&#39;,version=3)
+  saveRDS(road_frames,file.path(stage,&#39;speed-frames.rds&#39;),compress=&#39;xz&#39;,version=3)
+  if(!is.null(native))saveRDS(native,file.path(stage,&#39;source.rds&#39;),compress=&#39;xz&#39;,version=3)
+  for(name in names(tables)) {
+    tab&lt;-as.data.frame(.prep_csv(tables[[name]]),stringsAsFactors=FALSE,optional=TRUE)
+    utils::write.csv(tab,file.path(stage,paste0(name,&#39;.csv&#39;)),row.names=FALSE,na=na_token,fileEncoding=&#39;UTF-8&#39;)
+  }
+  utils::write.csv(dictionary,file.path(stage,&#39;data-dictionary.csv&#39;),row.names=FALSE,na=&#39;&#39;)
+  utils::write.csv(identities,file.path(stage,&#39;source-files.csv&#39;),row.names=FALSE)
+  metadata&lt;-object[setdiff(names(object),names(tables))]
+  metadata$input_type &lt;- &#39;speed&#39;
+  metadata$clock &lt;- road_frames$clock
+  metadata$timezone &lt;- road_frames$timezone
+  metadata$times &lt;- road_frames$times
+  if (is.null(object[[&#39;interval_seconds&#39;]])) metadata$interval_seconds &lt;- road_frames$interval_seconds
+  metadata$csv&lt;-list(missing=na_token,timestamp=&#39;POSIXct times are Unix seconds; numeric times retain the declared source clock.&#39;,
+                     identifiers=&#39;Read identifier fields as character.&#39;,data=&#39;input.rds preserves original types, geometry, timezones and nested provenance.&#39;)
+  writeLines(jsonlite::toJSON(.tm_provenance_for_json(metadata),auto_unbox=TRUE,null=&#39;null&#39;,na=&#39;null&#39;,digits=NA,pretty=TRUE),file.path(stage,&#39;metadata.json&#39;),useBytes=TRUE)
+  files&lt;-sort(list.files(stage))
+  utils::write.csv(data.frame(file=files,md5=unname(tools::md5sum(file.path(stage,files)))),file.path(stage,&#39;checksums.csv&#39;),row.names=FALSE)
+  if(!identical(info_before,file.info(source_files)[,c(&#39;size&#39;,&#39;mtime&#39;),drop=FALSE]))stop(&#39;A source changed during preparation.&#39;,call.=FALSE)
+  .prep_destination(output_dir,source_files)
+  if(!file.rename(stage,target))stop(&#39;Cannot publish the completed preparation.&#39;,call.=FALSE)
+  invisible(file.path(target,&#39;input.rds&#39;))
+}</code></pre>
+</details>
 <pre class="r"><code>speed_details &lt;- pems_speed_details(native)
 day_input &lt;- speed_details$input
 prepared_dir &lt;- file.path(work, &quot;prepared-data&quot;)

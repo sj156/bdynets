@@ -34,6 +34,18 @@ knitr::opts_chunk$set(fig.path = file.path(figure_dir, "figure-"), dev = "png",
   fig.retina = 1, dpi = 180,
   echo = TRUE, message = FALSE, warning = FALSE,
                       out.width = "100%")
+
+report_source <- function(file, names) {
+  expressions <- parse(file, keep.source = TRUE)
+  definitions <- vapply(expressions, function(expr) {
+    if (is.call(expr) && identical(expr[[1L]], as.name("<-")) &&
+        is.symbol(expr[[2L]])) as.character(expr[[2L]]) else ""
+  }, character(1))
+  refs <- attr(expressions, "srcref")
+  unlist(lapply(which(definitions %in% names), function(i) {
+    c(as.character(refs[[i]]), "")
+  }), use.names = FALSE)
+}
 ```
 
 This example prepares hourly freeway flow in vehicles per hour for the Los Angeles and San Francisco Bay areas. The drawing input covers all 24 source hours of 16 June 2026. By default, the report shows the 08:00 hour for both regions. Diamonds mark when the California Highway Patrol (CHP) logged the start of an incident.
@@ -42,7 +54,9 @@ This example prepares hourly freeway flow in vehicles per hour for the Los Angel
 
 In an interactive R session, set the working directory to the folder containing this report and run the visible R blocks in order. The blocks use the installed `bdynets` package, the supplied PeMS and CHP files, and a temporary directory for the prepared tables. The YAML parameters control the plotted hour, offline street context and export.
 
-`prepare.R` converts this case’s source records. The detector and event readers are in `scripts/read-source.R`.
+[`prepare.R`](prepare.R) contains this case’s conversion functions.
+
+The expandable code blocks in the following steps show the definitions from the same scripts used by this report. The regular R blocks load those scripts, call the functions in order and show the resulting data. The detector and event readers are in `scripts/read-source.R`.
 The local `scripts/prepare-input.R` aligns the road and time tables and writes the prepared RDS files.
 `scripts/street-context.R` reads the local background, and
 `scripts/report-export.R` saves the prepared data and static maps when export is requested.
@@ -88,9 +102,17 @@ knitr::kable(data.frame(
 
 ### Inspect the case register and station links
 
-The supplied [case register](data/case-register.rds) preserves the link selections and travel-order decisions for the 16 June 2026 case from the 21 November handover. This report reads those settings from the included RDS. The [input inventory](data/README.md) lists the other references. The register stores the LA links whose endpoint order and geometry need to be reversed together, the selected D04 directed endpoint pairs, the event coordinate bounds and category lookup, and the 24 hour starts.
+The supplied [case register](data/case-register.rds) preserves the link selections and travel-order decisions for the 16 June 2026 case from the 21 November handover. This register is a supplied case reference created before the report runs. The report reads the recorded choices from it. For another date or study area, choose the links, event scope and frame starts for that dataset during preparation. The [input inventory](data/README.md) lists the other references. The register stores the LA links whose endpoint order and geometry need to be reversed together, the selected D04 directed endpoint pairs, the event coordinate bounds and category lookup, and the 24 hour starts.
 
 LA road geometry comes from the project volume HTML configuration. D04 road geometry connects the two endpoint coordinates from the dated Caltrans metadata, with the two detectors on the same freeway and direction. The D04 station-map CSV identifies the stations selected for the Bay Area. Match its `station_id` and the register’s endpoint IDs to `ID` in the station metadata.
+
+<details>
+<summary>Code that reads the register, maps positions to sensors and builds the directed roads</summary>
+
+```{r source-reference, eval=FALSE, code=report_source("scripts/read-source.R", c("pems_case_times", "pems_map_config", "pems_positions", "pems_case_roads", "pems_selection"))}
+```
+
+</details>
 
 ```{r case-register}
 selection <- pems_selection(register_file, files)
@@ -131,6 +153,22 @@ in the native table. Only starts marked `inside` enter the prepared event table;
 `outside` means valid coordinates outside the region, and `invalid` means bad
 coordinates.
 
+<details>
+<summary>Code that reads detector records and places them in station-by-time slots</summary>
+
+```{r source-detectors, eval=FALSE, code=report_source("scripts/read-source.R", c("pems_detector_rows", "pems_five_minute_clock", "pems_observations", "pems_la_station_slots", "pems_d04_selection", "pems_station_slots", "pems_d04_station_rows", "pems_native"))}
+```
+
+</details>
+
+<details>
+<summary>Code that reads incident starts, assigns coordinates and applies the geographic scope</summary>
+
+```{r source-chp, eval=FALSE, code=report_source("scripts/read-source.R", c("pems_event_scope", "pems_scope_class", "pems_chp_clock", "pems_summary_records", "pems_incidents"))}
+```
+
+</details>
+
 ```{r native-source}
 observations <- pems_observations(files, frame_times)
 knitr::kable(data.frame(
@@ -157,6 +195,38 @@ knitr::kable(head(native$roads[c("road_id", "from_station", "to_station", "regio
 For D04, add twelve five-minute counts for each detector and hour. For LA, sum the available five-minute counts at each active position, record the number of slots that contributed, and average the available position totals for each detector. An observed zero contributes to coverage. An LA position with no reading that hour stays missing.
 
 The hourly road value is the mean of its available endpoint totals. One observed endpoint supplies the road value. Two missing endpoints yield a missing road-hour. The flow table in `input.rds` includes all roads and hours, including missing road-hours.
+
+<details>
+<summary>Code that combines road regions, frame starts and prepared event intervals</summary>
+
+```{r source-event-join, eval=FALSE, code=report_source("scripts/read-source.R", c("pems_context", "pems_endpoint_mean"))}
+```
+
+</details>
+
+<details>
+<summary>Code that rolls up detector values and builds the Flow road tables</summary>
+
+```{r source-metric, eval=FALSE, code=report_source("prepare.R", c("pems_five_minute_counts", "pems_counts", "pems_la_flow", "pems_d04_counts", "pems_flow_input"))}
+```
+
+</details>
+
+<details>
+<summary>Code that passes the native object and road tables to the writer</summary>
+
+```{r source-case-writer, eval=FALSE, code=report_source("prepare.R", c("write_pems_flow"))}
+```
+
+</details>
+
+<details>
+<summary>Code that aligns the drawing matrix and writes all three RDS files</summary>
+
+```{r source-rds-writer, eval=FALSE, code=report_source("scripts/prepare-input.R", c(".prep_road_frames", "write_traffic_input"))}
+```
+
+</details>
 
 ```{r prepared-day}
 day_input <- pems_flow_input(native)

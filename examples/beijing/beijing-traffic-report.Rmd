@@ -25,6 +25,18 @@ dir.create(figure_dir)
 knitr::opts_chunk$set(fig.path = file.path(figure_dir, "figure-"), dev = "png",
   fig.retina = 1, dpi = 180,
   echo = TRUE, message = FALSE, warning = FALSE, cache = FALSE)
+
+report_source <- function(file, names) {
+  expressions <- parse(file, keep.source = TRUE)
+  definitions <- vapply(expressions, function(expr) {
+    if (is.call(expr) && identical(expr[[1L]], as.name("<-")) &&
+        is.symbol(expr[[2L]])) as.character(expr[[2L]]) else ""
+  }, character(1))
+  refs <- attr(expressions, "srcref")
+  unlist(lapply(which(definitions %in% names), function(i) {
+    c(as.character(refs[[i]]), "")
+  }), use.names = FALSE)
+}
 ```
 
 The Beijing simulator reports the entry rate across all lanes of each directed road, in vehicles/hour, once per minute. This example converts one complete day of those records into 288 five-minute Flow frames.
@@ -33,7 +45,9 @@ The Beijing simulator reports the entry rate across all lanes of each directed r
 
 Run the visible R blocks in order in a fresh interactive R session from this example directory. The setup loads `bdynets` and the local helpers.
 
-`prepare.R` converts this case’s source records.
+[`prepare.R`](prepare.R) contains this case’s conversion functions.
+
+The expandable code blocks in the following steps show the definitions from the same scripts used by this report. The regular R blocks load those scripts, call the functions in order and show the resulting data.
 The local `scripts/prepare-input.R` aligns the road and time tables and writes the prepared RDS files.
 `scripts/street-context.R` reads the local background, and
 `scripts/report-export.R` saves the prepared data and static maps when export is requested.
@@ -56,14 +70,10 @@ The [prepared input guide](../../bdynets/inst/INPUT-FORMAT.md) describes the fin
 
 ## Read the supplied data
 
-Start with [the supplied one-day gzip](data/raw/output_LinkTDMOE.csv.gz).
-It contains `output_LinkTDMOE.csv` with the original header and all rows
-for simulation day 10, with source minutes 0–1,439. At one row per directed pair per minute, 12,287 pairs × 1,440 minutes
-produce 17,693,280 rows. All 22 original columns and the source row order
-are retained. The case distributes the day as `output_LinkTDMOE.csv.gz`.
-The next block expands it byte for byte into a temporary
-`output_LinkTDMOE.csv` (2,534,181,910 bytes). This step changes only the
-compression. The source clock counts minutes since simulation midnight.
+Read the [supplied simulation-day observations](data/raw/output_LinkTDMOE.csv.gz)
+for day 10. The sample has 17,693,280 rows in the original order,
+covering 12,287 directed pairs and 1,440 source minutes. It retains all 22
+source columns. The clock counts minutes since simulation midnight.
 
 The supplied [project geometry HTML](data/raw/saturation_dynamic_leaflet_osm_osmgeom.html)
 contains a GeoJSON FeatureCollection in the JavaScript `const network`
@@ -71,19 +81,22 @@ assignment. Its features give each road’s directed pair, index and
 longitude–latitude `LineString`. The [source manifest](data/raw/source-manifest.csv)
 lists the two input files and their checksums.
 
-`restore_beijing_csv()` in `prepare.R` reads the gzip stream as binary data and writes the unchanged bytes in chunks. Both the report and the command-line preparation use the same [preparation function](prepare.R).
-
-```{r restore-source}
-archive_file <- "data/raw/output_LinkTDMOE.csv.gz"
-moe_file <- restore_beijing_csv(archive_file, work_dir)
-data.frame(file = basename(c(archive_file, moe_file)),
-  bytes = unname(file.size(c(archive_file, moe_file))))
+```{r source-files}
+moe_file <- "data/raw/output_LinkTDMOE.csv.gz"
 geometry_file <- "data/raw/saturation_dynamic_leaflet_osm_osmgeom.html"
 
 cat(readLines(moe_file, n = 2L), sep = "\n")
 ```
 
-For Flow, the reader keeps `link_id_from_to`, `day_no`, `timestamp_in_min` and `link_volume_in_veh_per_hour_for_all_lanes`. The trailing comma on a source row is preserved in the file. In R, `beijing_read_moe()` selects the columns by the original header. `beijing_read_network()` extracts the road properties and coordinates from the HTML.
+For Flow, the reader keeps `link_id_from_to`, `day_no`, `timestamp_in_min` and `link_volume_in_veh_per_hour_for_all_lanes`. The trailing comma on a source row is preserved in the file. `beijing_read_moe()` reads the supplied file and uses `beijing_moe_table()` to select columns by their original names. `beijing_read_network()` extracts the road properties and coordinates from the HTML.
+
+<details>
+<summary>Code that reads the CSV fields and the road geometry</summary>
+
+```{r source-readers, eval=FALSE, code=report_source("prepare.R", c("beijing_fields", "beijing_moe_table", "beijing_read_network", "beijing_network"))}
+```
+
+</details>
 
 ```{r read-sources}
 fields <- beijing_fields
@@ -109,6 +122,14 @@ print(example_road$geometry[[1L]])
 
 Join CSV `link_id_from_to` to GeoJSON `edge_id`. The rates for a directed pair fill one row of the native matrix, with columns ordered by source minute. The native object keeps all source pairs and all 1,440 minutes. For the map, the GeoJSON `edge_index` becomes `road_id` and the 11,742 roads with geometry enter the plotted table. The other 545 source pairs have no matching geometry and remain in the native snapshot. The small tables follow one road over ten minutes so the five-minute calculation can be read row by row.
 
+<details>
+<summary>Code that indexes directed pairs and fills the native minute matrix</summary>
+
+```{r source-native, eval=FALSE, code=report_source("prepare.R", c("beijing_records"))}
+```
+
+</details>
+
 ```{r build-native}
 native <- beijing_records(observations, roads, minutes, fields, day = 10L)
 native$source <- basename(c(moe_file, geometry_file))
@@ -123,6 +144,30 @@ knitr::kable(data.frame(
 ```
 
 The example averages the five observed hourly rates in each interval. For road 102, the first five rates shown above are 300, 720, 600, 1,080 and 540. Their mean is 648 vehicles/hour at the 08:00 frame start. The next five rates give 708 at 08:05. Each output frame starts at the first source minute multiplied by 60. The Flow preparation table pairs every mapped road with every five-minute start from 00:00 through 23:55. `write_beijing_prepared()` writes `source.rds` (the native object), `input.rds` (the Flow preparation tables), and `flow-frames.rds` (the aligned data passed to the map).
+
+<details>
+<summary>Code that averages five-minute road rates and builds the Flow tables</summary>
+
+```{r source-flow, eval=FALSE, code=report_source("prepare.R", c("beijing_input"))}
+```
+
+</details>
+
+<details>
+<summary>Code that passes the native object and road tables to the writer</summary>
+
+```{r source-case-writer, eval=FALSE, code=report_source("prepare.R", c("write_beijing_prepared"))}
+```
+
+</details>
+
+<details>
+<summary>Code that aligns the drawing matrix and writes all three RDS files</summary>
+
+```{r source-rds-writer, eval=FALSE, code=report_source("scripts/prepare-input.R", c(".prep_road_frames", "write_traffic_input"))}
+```
+
+</details>
 
 ```{r write-standard-input}
 prepared_dir <- file.path(work_dir, "prepared-data")

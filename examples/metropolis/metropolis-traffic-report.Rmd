@@ -32,6 +32,18 @@ knitr::opts_chunk$set(
   fig.path = file.path(figure_dir, "figure-"), dev = "png",
   fig.retina = 1, dpi = 180, out.width = "100%"
 )
+
+report_source <- function(file, names) {
+  expressions <- parse(file, keep.source = TRUE)
+  definitions <- vapply(expressions, function(expr) {
+    if (is.call(expr) && identical(expr[[1L]], as.name("<-")) &&
+        is.symbol(expr[[2L]])) as.character(expr[[2L]]) else ""
+  }, character(1))
+  refs <- attr(expressions, "srcref")
+  unlist(lapply(which(definitions %in% names), function(i) {
+    c(as.character(refs[[i]]), "")
+  }), use.names = FALSE)
+}
 ```
 
 City Traffic Benchmarks v4 estimates five-minute road volume in Yekaterinburg from vehicle GPS observations. This example prepares road volume for 720 roads from the original-format Parquet records for 18 October 2024. The example prepares all 96 quarter-hours and traces one road from the source observations to a static map. The default map shows 08:00.
@@ -40,7 +52,9 @@ City Traffic Benchmarks v4 estimates five-minute road volume in Yekaterinburg fr
 
 Start a fresh interactive R session in this example directory and run the visible R blocks in order. The setup loads the installed `bdynets` package and the example's preparation functions. The Parquet step calls Python 3 with NumPy, pandas and PyArrow installed.
 
-`prepare.R` converts this case’s source records. The Parquet reader is `read_parquet.py`.
+[`prepare.R`](prepare.R) contains this case’s conversion functions.
+
+The expandable code blocks in the following steps show the definitions from the same scripts used by this report. The regular R blocks load those scripts, call the functions in order and show the resulting data. The Parquet reader is `read_parquet.py`.
 The local `scripts/prepare-input.R` aligns the road and time tables and writes the prepared RDS files.
 `scripts/street-context.R` reads the local background, and
 `scripts/report-export.R` saves the prepared data and static maps when export is requested.
@@ -78,6 +92,23 @@ In the call below, `day = "2024-10-18"` is the date expected in the supplied
 file. The reader checks that the full set of 288 timestamps matches it.
 
 `read_metropolis_raw()` reads the chosen road columns and their matching static rows from the bundled Parquets through `read_parquet.py`. The actual dimensions and the records for the first road at 08:00 through 08:10 appear below. The nine source attributes shown here are the fields used by the conversion.
+
+<details>
+<summary>Python code that reads the Parquet columns, joins road IDs and calculates quarter-hour volumes</summary>
+
+```{r source-parquet, echo=FALSE, results="asis"}
+cat(c("```python", readLines("read_parquet.py"), "```"), sep = "\n")
+```
+
+</details>
+
+<details>
+<summary>R code that runs the Parquet reader and loads its temporary JSON</summary>
+
+```{r source-native, eval=FALSE, code=report_source("prepare.R", c("read_metropolis_raw"))}
+```
+
+</details>
 
 ```{r read-original}
 raw_directory <- "data/raw"
@@ -142,6 +173,30 @@ Preparation takes the mean of three five-minute volume observations per quarter-
 | `trends` | The quarter-hour mean across roads uses unrounded road volumes. The final mean is rounded to two decimals. |
 
 The conversion retains the source volume scale. `metropolis_input()` uses the computed quarter-hour volumes and preserves the counts of native observations.
+
+<details>
+<summary>Code that builds the road, quarter-hour Flow and trend tables</summary>
+
+```{r source-flow, eval=FALSE, code=report_source("prepare.R", c("metropolis_bins", "metropolis_input"))}
+```
+
+</details>
+
+<details>
+<summary>Code that passes the native object and road tables to the writer</summary>
+
+```{r source-case-writer, eval=FALSE, code=report_source("prepare.R", c("write_metropolis_prepared"))}
+```
+
+</details>
+
+<details>
+<summary>Code that aligns the drawing matrix and writes all three RDS files</summary>
+
+```{r source-rds-writer, eval=FALSE, code=report_source("scripts/prepare-input.R", c(".prep_road_frames", "write_traffic_input"))}
+```
+
+</details>
 
 ```{r prepare-input}
 day_directory <- tempfile("metropolis-full-day-")

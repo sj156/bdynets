@@ -392,12 +392,17 @@ the visible R blocks in order. The setup loads the installed
 <code>bdynets</code> package and the example’s preparation functions.
 The Parquet step calls Python 3 with NumPy, pandas and PyArrow
 installed.</p>
-<p><code>prepare.R</code> converts this case’s source records. The
-Parquet reader is <code>read_parquet.py</code>. The local
-<code>scripts/prepare-input.R</code> aligns the road and time tables and
-writes the prepared RDS files. <code>scripts/street-context.R</code>
-reads the local background, and <code>scripts/report-export.R</code>
-saves the prepared data and static maps when export is requested.</p>
+<p><a href="prepare.R"><code>prepare.R</code></a> contains this case’s
+conversion functions.</p>
+<p>The expandable code blocks in the following steps show the
+definitions from the same scripts used by this report. The regular R
+blocks load those scripts, call the functions in order and show the
+resulting data. The Parquet reader is <code>read_parquet.py</code>. The
+local <code>scripts/prepare-input.R</code> aligns the road and time
+tables and writes the prepared RDS files.
+<code>scripts/street-context.R</code> reads the local background, and
+<code>scripts/report-export.R</code> saves the prepared data and static
+maps when export is requested.</p>
 <pre class="r"><code>library(bdynets)
 source(&quot;scripts/prepare-input.R&quot;)
 source(&quot;prepare.R&quot;)
@@ -436,6 +441,116 @@ their matching static rows from the bundled Parquets through
 <code>read_parquet.py</code>. The actual dimensions and the records for
 the first road at 08:00 through 08:10 appear below. The nine source
 attributes shown here are the fields used by the conversion.</p>
+<details>
+<summary>
+Python code that reads the Parquet columns, joins road IDs and
+calculates quarter-hour volumes
+</summary>
+<pre class="python"><code>&quot;&quot;&quot;Read the supplied day of five-minute volumes and the corresponding static roads.
+
+Arguments: raw directory, road-ID CSV, output JSON, YYYY-MM-DD.
+The caller supplies a temporary destination; this program never updates its inputs.
+&quot;&quot;&quot;
+import csv
+import json
+import sys
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import pyarrow.parquet as pq
+
+
+def read_source_clock(volume_file, day):
+    field_type = volume_file.schema_arrow.field(&#39;timestamp&#39;).type
+    if getattr(field_type, &#39;tz&#39;, None) is not None:
+        raise ValueError(&#39;This source reader expects timezone-unspecified release clocks.&#39;)
+    raw = volume_file.read(columns=[&#39;timestamp&#39;]).column(&#39;timestamp&#39;).to_numpy()
+    clock = raw.astype(&#39;datetime64[s]&#39;)
+    if np.any(np.isnat(clock)) or np.any(raw != clock):
+        raise ValueError(&#39;Volume clocks contain missing times or unsupported fractional seconds.&#39;)
+    start = np.datetime64(day, &#39;D&#39;).astype(&#39;datetime64[s]&#39;)
+    if not np.array_equal(clock, start + np.arange(288) * np.timedelta64(300, &#39;s&#39;)):
+        raise ValueError(f&#39;The supplied day {day} needs 288 consecutive five-minute timestamps from midnight.&#39;)
+
+    return clock
+
+
+def read_native(directory, identifiers, day):
+    paths = {name: directory / (&#39;city-traffic-M-raw-&#39; + name + &#39;.parquet&#39;)
+             for name in (&#39;static-features&#39;, &#39;volume&#39;)}
+    files = {key: pq.ParquetFile(path) for key, path in paths.items()}
+    ids = [int(value) for value in identifiers]
+    if not ids or len(set(ids)) != len(ids) or min(ids) &lt; 0:
+        raise ValueError(&#39;Road IDs must be distinct zero-based static-row identifiers.&#39;)
+    static_fields = [&#39;x_coordinate_start&#39;, &#39;y_coordinate_start&#39;, &#39;x_coordinate_end&#39;,
+                     &#39;y_coordinate_end&#39;, &#39;length&#39;, &#39;region_id&#39;, &#39;category&#39;, &#39;edge_type&#39;, &#39;speed_limit&#39;]
+    static = files[&#39;static-features&#39;].read(columns=static_fields).take(ids).to_pydict()
+    volume_file = files[&#39;volume&#39;]
+    day_clock = read_source_clock(volume_file, day)
+
+    native = []
+    for offset in range(0, len(ids), 48):
+        columns = [&#39;node_&#39; + str(i) for i in ids[offset:offset + 48]]
+        table = volume_file.read(columns=columns)
+        for column in columns:
+            values = table.column(column).to_numpy().astype(float)
+            if np.any(~np.isfinite(values) | (values &lt; 0)):
+                raise ValueError(f&#39;{column} has missing, infinite or negative volume on {day}.&#39;)
+            native.append(values.tolist())
+    for name in static:
+        static[name] = [None if x is None else float(x) for x in static[name]]
+    facts = {key: {&#39;file&#39;: paths[key].name, &#39;bytes&#39;: paths[key].stat().st_size,
+                  &#39;rows&#39;: file.metadata.num_rows, &#39;columns&#39;: file.metadata.num_columns}
+             for key, file in files.items()}
+    data = pd.DataFrame(np.asarray(native, dtype=float).T, index=pd.to_datetime(day_clock))
+    volume = data.resample(&#39;15min&#39;).mean().to_numpy(dtype=float)
+    return {
+        &#39;schema&#39;: &#39;metropolis-flow-native-v1&#39;, &#39;ids&#39;: identifiers, &#39;static&#39;: static,
+        &#39;times&#39;: data.index.to_numpy(dtype=&#39;datetime64[s]&#39;).astype(&#39;int64&#39;).tolist(),
+        &#39;volume&#39;: native, &#39;source_files&#39;: facts,
+        &#39;clock&#39;: &#39;Source wall clock. No timezone is declared in the Parquets.&#39;,
+        &#39;source_summaries&#39;: {&#39;flow&#39;: [round(float(row.mean()), 2) for row in volume]},
+        &#39;frame_values&#39;: {&#39;volume&#39;: volume.T.tolist()},
+        &#39;summary_definition&#39;: &#39;Fifteen-minute means, then means across the selected roads before road-level rounding.&#39;
+    }
+
+
+if __name__ == &#39;__main__&#39;:
+    directory, ids_file, destination, day = sys.argv[1:]
+    with open(ids_file, encoding=&#39;utf-8&#39;, newline=&#39;&#39;) as handle:
+        identifiers = [row[&#39;road_id&#39;] for row in csv.DictReader(handle)]
+    result = read_native(Path(directory), identifiers, day)
+    with open(destination, &#39;x&#39;, encoding=&#39;utf-8&#39;) as handle:
+        json.dump(result, handle, allow_nan=False, separators=(&#39;,&#39;, &#39;:&#39;))</code></pre>
+</details>
+<details>
+<summary>
+R code that runs the Parquet reader and loads its temporary JSON
+</summary>
+<pre class="r"><code>read_metropolis_raw &lt;- function(base, raw_dir, selection_file = file.path(base, &#39;data&#39;, &#39;selected-roads.csv&#39;),
+                                python = &#39;python3&#39;, day = &#39;2024-10-18&#39;) {
+  required &lt;- c(metropolis_raw_files(raw_dir), selection_file)
+  if (any(!file.exists(required)))
+    stop(&#39;Missing original Parquet input or road register: &#39;,
+         paste(basename(required[!file.exists(required)]), collapse = &#39;, &#39;))
+  path &lt;- tempfile(&#39;metropolis-native-&#39;, fileext = &#39;.json&#39;)
+  diagnostic &lt;- tempfile(&#39;parquet-reader-&#39;, fileext = &#39;.log&#39;)
+  on.exit(unlink(c(path, diagnostic)), add = TRUE)
+  arguments &lt;- c(file.path(base, &#39;read_parquet.py&#39;), raw_dir, selection_file, path, day)
+  status &lt;- system2(python, shQuote(arguments), stderr = diagnostic)
+  if (status != 0L) {
+    lines &lt;- readLines(diagnostic, warn = FALSE)
+    detail &lt;- grep(&#39;^(ValueError|ModuleNotFoundError|ImportError|KeyError|IndexError):&#39;, lines, value = TRUE)
+    stop(&#39;The source Parquet reader failed. &#39;,
+         if (length(detail)) tail(detail, 1) else &#39;Check original fields and Python, NumPy, pandas and PyArrow.&#39;)
+  }
+  native &lt;- jsonlite::read_json(path, simplifyVector = TRUE)
+  native$static &lt;- as.data.frame(native$static)
+  native$times &lt;- as.numeric(native$times)
+  native
+}</code></pre>
+</details>
 <pre class="r"><code>raw_directory &lt;- &quot;data/raw&quot;
 selection_file &lt;- &quot;data/selected-roads.csv&quot;
 print(head(read.csv(selection_file, colClasses = &quot;character&quot;), 3L))</code></pre>
@@ -543,6 +658,172 @@ final mean is rounded to two decimals.</td>
 <p>The conversion retains the source volume scale.
 <code>metropolis_input()</code> uses the computed quarter-hour volumes
 and preserves the counts of native observations.</p>
+<details>
+<summary>
+Code that builds the road, quarter-hour Flow and trend tables
+</summary>
+<pre class="r"><code>metropolis_bins &lt;- function(values, clock, prepared_values) {
+  if (!is.matrix(values) || !nrow(values) || ncol(values) != length(clock) ||
+      !is.numeric(clock) || any(!is.finite(clock)))
+    stop(&#39;Native observations need a road-by-time matrix and complete source times.&#39;)
+  if (length(clock) != 288L || clock[1] %% 86400 || any(diff(clock) != 300))
+    stop(&#39;The source day must contain 288 consecutive five-minute slots beginning at midnight.&#39;)
+  if (any(!is.finite(values) | values &lt; 0))
+    stop(&#39;The selected roads need complete finite, nonnegative native volume.&#39;)
+
+  starts &lt;- seq.int(1L, ncol(values), 3L)
+  frame_dims &lt;- c(nrow(values), length(starts))
+  if (!identical(dim(prepared_values), frame_dims) || any(!is.finite(prepared_values) | prepared_values &lt; 0))
+    stop(&#39;Prepared quarter-hour volume must be finite, nonnegative and aligned to the source roads and times.&#39;)
+  frame_names &lt;- list(rownames(values), NULL)
+  dimnames(prepared_values) &lt;- frame_names
+  status &lt;- matrix(as.raw(ifelse(values == 0, 2L, 1L)), nrow(values), ncol(values),
+                   dimnames = frame_names)
+  list(values = prepared_values, times = clock[starts],
+       coverage = list(native_times = clock, native_status = status,
+                       frame_observed_n = matrix(3L, frame_dims[1], frame_dims[2], dimnames = frame_names)))
+}
+
+metropolis_input &lt;- function(native) {
+  if (!identical(native$schema, &#39;metropolis-flow-native-v1&#39;))
+    stop(&#39;Expected original five-minute volume and static road attributes.&#39;)
+  ids &lt;- as.character(native$ids)
+  static &lt;- native$static
+  if (!length(ids) || anyNA(ids) || any(!nzchar(ids)) || anyDuplicated(ids) ||
+      nrow(static) != length(ids) || nrow(native$volume) != length(ids))
+    stop(&#39;Road IDs, original attributes and volume rows do not align.&#39;)
+  rownames(native$volume) &lt;- ids
+  volume &lt;- metropolis_bins(native$volume, native$times, native$frame_values$volume)
+  roads &lt;- data.frame(id = as.integer(ids), length = round(static$length, 1))
+  if (all(c(&#39;region_id&#39;, &#39;category&#39;, &#39;edge_type&#39;, &#39;speed_limit&#39;) %in% names(static))) {
+    code &lt;- as.integer(static$speed_limit)
+    code[is.na(code)] &lt;- 0L
+    limits &lt;- c(NA, 5, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110)
+    if (any(!code %in% 0:11)) stop(&#39;Unknown source speed-limit code.&#39;)
+    roads$source_region &lt;- as.integer(static$region_id)
+    roads$category &lt;- as.integer(static$category)
+    roads$edgeType &lt;- as.integer(static$edge_type)
+    roads$speedLimitCode &lt;- code
+    roads$speedLimit &lt;- ifelse(code == 0, &#39;unknown&#39;, paste(limits[code + 1L], &#39;km/h&#39;))
+  }
+  roads$road_id &lt;- ids
+  roads$geometry &lt;- lapply(seq_along(ids), function(i) rbind(
+    c(round(static$x_coordinate_start[i], 6), round(static$y_coordinate_start[i], 6)),
+    c(round(static$x_coordinate_end[i], 6), round(static$y_coordinate_end[i], 6))))
+  times &lt;- volume$times
+  flow &lt;- data.frame(road_id = rep(ids, length(times)), time = rep(times, each = length(ids)),
+                     flow = as.vector(round(volume$values, 2)))
+  means &lt;- native$source_summaries$flow
+  if (length(means) != length(times) || any(!is.finite(means)))
+    stop(&#39;Source volume summaries must match the selected full-day frame domain.&#39;)
+  trends &lt;- data.frame(time = times, metric = &#39;flow&#39;, value = as.numeric(means),
+                       definition = &#39;Mean unrounded frame volume across the selected source roads.&#39;, label = &#39;flow&#39;)
+  list(crs = &#39;EPSG:4326&#39;, roads = roads, flow = flow, trends = trends,
+       title = &#39;City-traffic-M traffic volume&#39;, time_label_format = &#39;%Y-%m-%d %H:%M&#39;,
+       times = times, interval_seconds = rep(900, length(times)), unit = &#39;source volume&#39;,
+       provenance = list(
+         source_dataset = &#39;mightyneghbor/city-traffic-benchmarks v4&#39;,
+         clock = &#39;Source wall clock; timezone is unspecified.&#39;,
+         selection = sprintf(&#39;The supplied %d-road register and %s source date.&#39;,
+                             length(ids), format(as.POSIXct(native$times[1L], origin = &#39;1970-01-01&#39;, tz = &#39;UTC&#39;),
+                                                 &#39;%Y-%m-%d&#39;, tz = &#39;UTC&#39;)),
+         source_files = native$source_files[c(&#39;static-features&#39;, &#39;volume&#39;)],
+         source_summary_definition = native$summary_definition,
+         native_coverage = list(status_codes = c(observed_nonzero = 1L, observed_zero = 2L),
+                                volume = volume$coverage)),
+       metric_info = list(flow = list(unit = &#39;source volume&#39;,
+         definition = &#39;Mean of the three native five-minute volume values in each quarter hour.&#39;)))
+}</code></pre>
+</details>
+<details>
+<summary>
+Code that passes the native object and road tables to the writer
+</summary>
+<pre class="r"><code>write_metropolis_prepared &lt;- function(native, output_dir, raw_dir, selection_file) {
+  meanings &lt;- c(id = &#39;Zero-based static Parquet row ID.&#39;,
+                length = &#39;Source road length in metres, rounded to one decimal.&#39;,
+                source_region = &#39;Source region_id category.&#39;, category = &#39;Source category code.&#39;,
+                edgeType = &#39;Source edge_type code.&#39;, speedLimitCode = &#39;Source speed_limit category.&#39;,
+                speedLimit = &#39;Source speed-limit category decoded using the source map lookup.&#39;)
+  dictionary &lt;- rbind(data.frame(table = &#39;roads&#39;, field = names(meanings), meaning = unname(meanings)),
+    data.frame(table = &#39;trends&#39;, field = c(&#39;definition&#39;, &#39;label&#39;),
+               meaning = c(&#39;Definition of this derived source summary.&#39;, &#39;Display label for the summary metric.&#39;)))
+  write_traffic_input(metropolis_input(native), output_dir,
+    source_files = c(metropolis_raw_files(raw_dir), selection_file),
+    native = native, dictionary = dictionary)
+}</code></pre>
+</details>
+<details>
+<summary>
+Code that aligns the drawing matrix and writes all three RDS files
+</summary>
+<pre class="r"><code>.prep_road_frames &lt;- function(input) {
+  if (!is.list(input) || is.null(names(input)) || anyDuplicated(names(input)))
+    stop(&#39;Supply a uniquely named list of prepared tables.&#39;, call. = FALSE)
+  if (any(c(&#39;nodes&#39;, &#39;flows&#39;, &#39;od&#39;, &#39;speed&#39;) %in% names(input)))
+    stop(&#39;Flow, Speed and OD inputs are separate formats.&#39;, call. = FALSE)
+  schema &lt;- input[[&#39;schema&#39;]]
+  if (!is.null(schema) &amp;&amp; !identical(schema, &#39;bdynets-flow-input-v1&#39;))
+    stop(&#39;Unsupported Flow input schema.&#39;, call. = FALSE)
+  roads &lt;- input[[&#39;roads&#39;]]
+  observations &lt;- input[[&#39;flow&#39;]]
+  if (!is.data.frame(roads) || !all(c(&#39;road_id&#39;, &#39;geometry&#39;) %in% names(roads)) ||
+      !is.data.frame(observations) || !all(c(&#39;road_id&#39;, &#39;time&#39;, &#39;flow&#39;) %in% names(observations)))
+    stop(&#39;Flow tables require roads(road_id, geometry) and flow(road_id, time, flow).&#39;, call. = FALSE)
+  if (!is.character(roads$road_id) || !is.character(observations$road_id))
+    stop(&#39;Road IDs must be character in both Flow tables.&#39;, call. = FALSE)
+  if (is.null(input[[&#39;unit&#39;]])) stop(&#39;Supply the Flow unit.&#39;, call. = FALSE)
+  input[[&#39;schema&#39;]] &lt;- NULL
+  if (any(!names(input) %in% names(formals(traffic_data))))
+    stop(&#39;Unknown Flow input fields.&#39;, call. = FALSE)
+  frames &lt;- do.call(traffic_data, input)
+  frames$input_type &lt;- &#39;flow&#39;
+  frames
+}
+
+write_traffic_input &lt;- function(input,output_dir,source_files=character(),native=NULL,dictionary=NULL) {
+  target&lt;-.prep_destination(output_dir,source_files)
+  parent&lt;-dirname(target);dir.create(parent,recursive=TRUE,showWarnings=FALSE)
+  lock&lt;-paste0(target,&#39;.preparation-lock&#39;)
+  if(!dir.create(lock,showWarnings=FALSE))stop(&#39;Another preparation is using this output directory.&#39;,call.=FALSE)
+  on.exit(unlink(lock,recursive=TRUE,expand=FALSE),add=TRUE)
+  .prep_destination(output_dir,source_files)
+  stage&lt;-tempfile(&#39;prepared-data-&#39;,tmpdir=parent)
+  if(!dir.create(stage))stop(&#39;Cannot create preparation staging directory.&#39;,call.=FALSE)
+  on.exit(unlink(stage,recursive=TRUE,expand=FALSE),add=TRUE)
+  info_before&lt;-file.info(source_files)[,c(&#39;size&#39;,&#39;mtime&#39;),drop=FALSE]
+  identities&lt;-.prep_sources(source_files)
+  object&lt;-input
+  object$provenance$preparation_sources &lt;- identities
+  road_frames &lt;- .prep_road_frames(object)
+  object$schema &lt;- &#39;bdynets-flow-input-v1&#39;
+  tables &lt;- .prep_tables(object)
+  dictionary &lt;- .prep_dictionary(tables, object, dictionary)
+  na_token&lt;-&#39;\\N&#39;
+  strings&lt;-unlist(lapply(tables,function(t)unlist(lapply(t,function(x)if(is.character(x))x else character()),use.names=FALSE)),use.names=FALSE)
+  while(na_token%in%strings)na_token&lt;-paste0(na_token,&#39;_&#39;)
+  saveRDS(object,file.path(stage,&#39;input.rds&#39;),compress=&#39;xz&#39;,version=3)
+  saveRDS(road_frames,file.path(stage,&#39;flow-frames.rds&#39;),compress=&#39;xz&#39;,version=3)
+  if(!is.null(native))saveRDS(native,file.path(stage,&#39;source.rds&#39;),compress=&#39;xz&#39;,version=3)
+  for(name in names(tables)) {
+    tab&lt;-as.data.frame(.prep_csv(tables[[name]]),stringsAsFactors=FALSE,optional=TRUE)
+    utils::write.csv(tab,file.path(stage,paste0(name,&#39;.csv&#39;)),row.names=FALSE,na=na_token,fileEncoding=&#39;UTF-8&#39;)
+  }
+  utils::write.csv(dictionary,file.path(stage,&#39;data-dictionary.csv&#39;),row.names=FALSE,na=&#39;&#39;)
+  utils::write.csv(identities,file.path(stage,&#39;source-files.csv&#39;),row.names=FALSE)
+  metadata&lt;-object[setdiff(names(object),names(tables))]
+  metadata$input_type &lt;- &#39;flow&#39;
+  metadata$csv&lt;-list(missing=na_token,timestamp=&#39;POSIXct times are Unix seconds; numeric times retain the declared source clock.&#39;,
+                     identifiers=&#39;Read identifier fields as character.&#39;,data=&#39;input.rds preserves original types, geometry, timezones and nested provenance.&#39;)
+  writeLines(jsonlite::toJSON(.tm_provenance_for_json(metadata),auto_unbox=TRUE,null=&#39;null&#39;,na=&#39;null&#39;,digits=NA,pretty=TRUE),file.path(stage,&#39;metadata.json&#39;),useBytes=TRUE)
+  files&lt;-sort(list.files(stage))
+  utils::write.csv(data.frame(file=files,md5=unname(tools::md5sum(file.path(stage,files)))),file.path(stage,&#39;checksums.csv&#39;),row.names=FALSE)
+  if(!identical(info_before,file.info(source_files)[,c(&#39;size&#39;,&#39;mtime&#39;),drop=FALSE]))stop(&#39;A source changed during preparation.&#39;,call.=FALSE)
+  .prep_destination(output_dir,source_files)
+  if(!file.rename(stage,target))stop(&#39;Cannot publish the completed preparation.&#39;,call.=FALSE)
+  invisible(file.path(target,&#39;input.rds&#39;))
+}</code></pre>
+</details>
 <pre class="r"><code>day_directory &lt;- tempfile(&quot;metropolis-full-day-&quot;)
 dir.create(day_directory)
 prepared_dir &lt;- file.path(day_directory, &quot;prepared-data&quot;)

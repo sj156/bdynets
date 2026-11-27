@@ -392,10 +392,15 @@ this example directory. The supplied CSV already contains the 1 January
 departures. The example interprets the departure clocks in
 <code>America/Chicago</code> and writes its prepared files in a new
 temporary directory.</p>
-<p><code>prepare.R</code> converts this case’s source records. The local
-<code>scripts/prepare-input.R</code> assembles the OD pairs and writes
-the station and group tables. <code>scripts/report-export.R</code> saves
-the prepared data and static maps when export is requested.</p>
+<p><a href="prepare.R"><code>prepare.R</code></a> contains this case’s
+conversion functions.</p>
+<p>The expandable code blocks in the following steps show the
+definitions from the same scripts used by this report. The regular R
+blocks load those scripts, call the functions in order and show the
+resulting data. The local <code>scripts/prepare-input.R</code> assembles
+the OD pairs and writes the station and group tables.
+<code>scripts/report-export.R</code> saves the prepared data and static
+maps when export is requested.</p>
 <pre class="r"><code>library(bdynets)
 source(&quot;scripts/prepare-input.R&quot;)
 source(&quot;prepare.R&quot;)
@@ -426,6 +431,20 @@ and its checksum.</p>
 timestamps and trailing spaces. The table shows the first row and the
 ride <code>5004926658EA27AE</code> traced through the rest of the
 report.</p>
+<details>
+<summary>
+Code that reads the trip CSV and names the required fields
+</summary>
+<pre class="r"><code>divvy_fields &lt;- c(ride=&#39;ride_id&#39;,departure=&#39;started_at&#39;,origin=&#39;start_station_id&#39;,destination=&#39;end_station_id&#39;,
+  origin_name=&#39;start_station_name&#39;,destination_name=&#39;end_station_name&#39;,
+  origin_lat=&#39;start_lat&#39;,origin_lon=&#39;start_lng&#39;,destination_lat=&#39;end_lat&#39;,destination_lon=&#39;end_lng&#39;)
+
+read_divvy_csv &lt;- function(source_file,fields=divvy_fields) {
+  raw&lt;-as.data.frame(data.table::fread(file=source_file,colClasses=&#39;character&#39;,na.strings=&#39;&#39;,strip.white=FALSE,showProgress=FALSE))
+  if(!all(unname(fields)%in%names(raw)))stop(&#39;The original trip columns do not match the declared roles.&#39;)
+  raw
+}</code></pre>
+</details>
 <pre class="r"><code>raw_file &lt;- &quot;data/raw/202601-divvy-tripdata.csv&quot;
 raw_trips &lt;- read_divvy_csv(raw_file)
 preview_fields &lt;- c(&quot;ride_id&quot;, &quot;started_at&quot;, &quot;ended_at&quot;, &quot;start_station_id&quot;, &quot;end_station_id&quot;)
@@ -482,6 +501,116 @@ columns, and removes exact duplicate rows from the cleaned data before
 conversion. The table compares the original fields with the cleaned
 fields. The worked ride’s two station names are already clean, so all 13
 source values for that ride carry over unchanged.</p>
+<details>
+<summary>
+Code that cleans the records and builds the station and departure tables
+</summary>
+<pre class="r"><code>divvy_departure_clocks &lt;- function(records,fields) {
+  clocks&lt;-as.character(records[[fields[&#39;departure&#39;]]])
+  pattern&lt;-&#39;^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{1,6})?$&#39;
+  if(anyNA(clocks)||any(!grepl(pattern,clocks)))
+    stop(&#39;Departure timestamps need complete local dates and clocks, with optional fractional seconds.&#39;)
+  clocks
+}
+
+clean_divvy_station_names &lt;- function(records,fields=divvy_fields) {
+  name_fields&lt;-unname(fields[c(&#39;origin_name&#39;,&#39;destination_name&#39;)])
+  if(!is.data.frame(records)||length(name_fields)!=2L||anyNA(name_fields)||anyDuplicated(name_fields)||
+     any(!name_fields%in%names(records)))stop(&#39;Map the two station-name columns before cleaning.&#39;)
+  for(field in name_fields) {
+    if(!is.character(records[[field]]))stop(&#39;Read original station names as character fields.&#39;)
+    records[[field]]&lt;-sub(&#39; +$&#39;,&#39;&#39;,records[[field]])
+  }
+  records
+}
+
+prepare_divvy_day &lt;- function(records,day=&#39;2026-01-01&#39;,timezone=&#39;America/Chicago&#39;,bin_seconds=NULL,fields=divvy_fields) {
+  divvy_date(day)
+  if(length(timezone)!=1L||!timezone%in%OlsonNames())stop(&#39;An explicit IANA source timezone is required.&#39;)
+  if(!setequal(names(fields),names(divvy_fields))||anyNA(fields)||anyDuplicated(fields)||
+     any(!fields%in%names(records)))stop(&#39;Map each required trip role to one distinct source field.&#39;)
+  records&lt;-as.data.frame(records)
+  clocks&lt;-divvy_departure_clocks(records,fields)
+  if(any(substr(clocks,1,10)!=day))stop(&#39;Trip records must all depart on the example day.&#39;)
+  source_rows&lt;-nrow(records)
+  if(!source_rows)stop(&#39;The source contains no departure on the example day.&#39;)
+  name_fields&lt;-unname(fields[c(&#39;origin_name&#39;,&#39;destination_name&#39;)])
+  records[name_fields]&lt;-lapply(records[name_fields],as.character)
+  cleaned&lt;-clean_divvy_station_names(records,fields)
+  records&lt;-unique(cleaned)
+  duplicates&lt;-source_rows-nrow(records)
+  records&lt;-records[unname(fields[names(divvy_fields)])];names(records)&lt;-names(divvy_fields)
+  records[]&lt;-lapply(records,as.character)
+  if(anyNA(records$ride)||any(!nzchar(trimws(records$ride)))||anyDuplicated(records$ride))
+    stop(&#39;Ride IDs must be nonblank and unique after exact duplicate removal.&#39;)
+  departure&lt;-as.POSIXct(strptime(records$departure,&#39;%Y-%m-%d %H:%M:%OS&#39;,tz=timezone))
+  if(anyNA(departure)||any(format(departure,&#39;%Y-%m-%d %H:%M:%S&#39;,tz=timezone)!=substr(records$departure,1,19)))
+    stop(&#39;A departure timestamp is invalid in the declared source timezone.&#39;)
+  if(ambiguous_divvy_clock(departure,timezone))stop(&#39;A source local clock is ambiguous at a timezone transition.&#39;)
+  records$origin&lt;-trimws(records$origin);records$destination&lt;-trimws(records$destination)
+  coordinate&lt;-function(text) {
+    value&lt;-suppressWarnings(as.numeric(text))
+    if(any(!is.na(text)&amp;nzchar(text)&amp;is.na(value)))stop(&#39;An endpoint coordinate contains nonnumeric text.&#39;)
+    value
+  }
+  endpoint&lt;-function(side)data.frame(node_id=records[[side]],name=records[[paste0(side,&#39;_name&#39;)]],
+    latitude=coordinate(records[[paste0(side,&#39;_lat&#39;)]]),longitude=coordinate(records[[paste0(side,&#39;_lon&#39;)]]))
+  endpoints&lt;-rbind(endpoint(&#39;origin&#39;),endpoint(&#39;destination&#39;))
+  endpoints&lt;-endpoints[!is.na(endpoints$node_id)&amp;nzchar(endpoints$node_id),,drop=FALSE]
+  latitude_limit &lt;- getFromNamespace(&quot;.tm_mercator_limit&quot;, &quot;bdynets&quot;)
+  located&lt;-endpoints[is.finite(endpoints$latitude)&amp;abs(endpoints$latitude)&lt;=latitude_limit&amp;
+    is.finite(endpoints$longitude)&amp;abs(endpoints$longitude)&lt;=180,,drop=FALSE]
+  ids&lt;-sort(unique(located$node_id))
+  station_name&lt;-function(id) {
+    text&lt;-endpoints$name[endpoints$node_id==id]
+    text&lt;-text[!is.na(text)&amp;nzchar(trimws(text))]
+    if(!length(text))return(NA_character_)
+    frequency&lt;-table(text);names(frequency)[order(-frequency,names(frequency))][1]
+  }
+  nodes&lt;-data.frame(node_id=ids,
+    latitude=vapply(ids,function(id)median(located$latitude[located$node_id==id]),0),
+    longitude=vapply(ids,function(id)median(located$longitude[located$node_id==id]),0),
+    display_name=vapply(ids,station_name,&#39;&#39;),row.names=NULL)
+  origin_ok&lt;-!is.na(records$origin)&amp;nzchar(records$origin)
+  destination_ok&lt;-!is.na(records$destination)&amp;nzchar(records$destination)
+  mapped&lt;-records$origin%in%nodes$node_id&amp;records$destination%in%nodes$node_id
+  keep&lt;-origin_ok&amp;destination_ok&amp;mapped
+  if(!any(keep))stop(&#39;No departure has two identified and located stations.&#39;)
+  active&lt;-unique(c(records$origin[keep],records$destination[keep]))
+  nodes&lt;-nodes[nodes$node_id%in%active,,drop=FALSE];rownames(nodes)&lt;-NULL
+  nodes$node_idx&lt;-seq_len(nrow(nodes))-1L
+  nodes$representative_station_id&lt;-nodes$node_id
+  nodes$n_raw_stations&lt;-1L;nodes$member_weight&lt;-1L;nodes$coordinate_available&lt;-TRUE
+  od&lt;-data.frame(ride_id=records$ride[keep],origin_id=records$origin[keep],destination_id=records$destination[keep],time=departure[keep],flow=1L)
+  # Optional temporal totals retain the original helper&#39;s whole-clock-hour divisors.
+  # The supplied example leaves this argument NULL and retains each departure.
+  if(!is.null(bin_seconds)) {
+    if(length(bin_seconds)!=1L||!is.finite(bin_seconds)||bin_seconds&lt;1||bin_seconds!=trunc(bin_seconds)||3600%%bin_seconds)
+      stop(&#39;The source departure interval must divide one clock hour in whole seconds.&#39;)
+    clock&lt;-as.POSIXlt(od$time,tz=timezone);seconds&lt;-clock$min*60+clock$sec
+    hour_start&lt;-round(as.numeric(od$time)-seconds)
+    od$time&lt;-as.POSIXct(hour_start+floor(seconds/bin_seconds)*bin_seconds,origin=&#39;1970-01-01&#39;,tz=timezone)
+    od&lt;-aggregate(list(flow=od$flow),od[c(&#39;time&#39;,&#39;origin_id&#39;,&#39;destination_id&#39;)],sum)
+  }
+  od$origin_node_idx&lt;-nodes$node_idx[match(od$origin_id,nodes$node_id)]
+  od$destination_node_idx&lt;-nodes$node_idx[match(od$destination_id,nodes$node_id)]
+  od&lt;-od[order(od$time,od$origin_id,od$destination_id),,drop=FALSE];rownames(od)&lt;-NULL
+  retained&lt;-sum(keep)
+  exclusions&lt;-list(missing_origin_only=sum(!origin_ok&amp;destination_ok),
+    missing_destination_only=sum(origin_ok&amp;!destination_ok),missing_both=sum(!origin_ok&amp;!destination_ok),
+    unmatched_coordinates=sum(origin_ok&amp;destination_ok&amp;!mapped))
+  if(sum(od$flow)!=retained||source_rows!=duplicates+retained+sum(unlist(exclusions)))
+    stop(&#39;Source departures and retained OD totals do not reconcile.&#39;)
+  input&lt;-list(nodes=nodes,flows=od,unit=&#39;trips&#39;,timezone=timezone,
+    time_kind=if(is.null(bin_seconds))&#39;instant&#39; else &#39;interval_start&#39;,
+    provenance=c(list(source_columns=fields,departure_date=day,timezone=timezone,
+      source_departures=source_rows,duplicate_rows=duplicates),exclusions,
+      list(retained_trips=retained,
+        geometry=&#39;Per-station median of valid paired source endpoint coordinates on the selected departure day.&#39;)))
+  if(!is.null(bin_seconds))input$interval_seconds&lt;-bin_seconds
+  list(cleaned=cleaned,input=input)
+}</code></pre>
+</details>
 <pre class="r"><code>prepared_day &lt;- prepare_divvy_day(raw_trips, day = day, timezone = timezone)
 daily_trips &lt;- prepared_day$cleaned
 
@@ -537,6 +666,64 @@ IDs join that located register. Saving the two tables and their metadata
 creates <code>station/input.rds</code>. It holds 1,230 retained
 departures across 512 stations, including rides that return to the same
 station.</p>
+<details>
+<summary>
+Code that writes the station tables to station/input.rds
+</summary>
+<pre class="r"><code>write_divvy_station_input &lt;- function(input,output_dir,source_file) {
+  meanings&lt;-c(display_name=&#39;Most frequent nonblank station name; alphabetical tie break.&#39;,node_idx=&#39;Zero-based row in this station register.&#39;,
+    representative_station_id=&#39;The original station ID; one source station per node.&#39;,n_raw_stations=&#39;One source station per node.&#39;,
+    member_weight=&#39;One station per node, for the existing OD interface.&#39;,coordinate_available=&#39;Valid paired station coordinates are available.&#39;)
+  dictionary&lt;-rbind(data.frame(table=&#39;nodes&#39;,field=names(meanings),meaning=unname(meanings)),
+    data.frame(table=&#39;flows&#39;,field=c(&#39;origin_node_idx&#39;,&#39;destination_node_idx&#39;),
+      meaning=c(&#39;Generated zero-based departure index joining nodes.node_idx.&#39;,&#39;Generated zero-based arrival index joining nodes.node_idx.&#39;)))
+  write_traffic_input(input,output_dir,source_files=source_file,dictionary=dictionary)
+}</code></pre>
+</details>
+<details>
+<summary>
+Code that writes each preparation object and its source inventory
+</summary>
+<pre class="r"><code>write_traffic_input &lt;- function(input,output_dir,source_files=character(),dictionary=NULL) {
+  target&lt;-.prep_destination(output_dir,source_files)
+  parent&lt;-dirname(target);dir.create(parent,recursive=TRUE,showWarnings=FALSE)
+  lock&lt;-paste0(target,&#39;.preparation-lock&#39;)
+  if(!dir.create(lock,showWarnings=FALSE))stop(&#39;Another preparation is using this output directory.&#39;,call.=FALSE)
+  on.exit(unlink(lock,recursive=TRUE,expand=FALSE),add=TRUE)
+  .prep_destination(output_dir,source_files)
+  stage&lt;-tempfile(&#39;prepared-data-&#39;,tmpdir=parent)
+  if(!dir.create(stage))stop(&#39;Cannot create preparation staging directory.&#39;,call.=FALSE)
+  on.exit(unlink(stage,recursive=TRUE,expand=FALSE),add=TRUE)
+  info_before&lt;-file.info(source_files)[,c(&#39;size&#39;,&#39;mtime&#39;),drop=FALSE]
+  identities&lt;-.prep_sources(source_files)
+  object&lt;-input
+  .prep_validate_od(object)
+  object$provenance$preparation_sources &lt;- identities
+  tables &lt;- .prep_tables(object)
+  dictionary &lt;- .prep_dictionary(tables, object, dictionary)
+  na_token&lt;-&#39;\\N&#39;
+  strings&lt;-unlist(lapply(tables,function(t)unlist(lapply(t,function(x)if(is.character(x))x else character()),use.names=FALSE)),use.names=FALSE)
+  while(na_token%in%strings)na_token&lt;-paste0(na_token,&#39;_&#39;)
+  saveRDS(object,file.path(stage,&#39;input.rds&#39;),compress=&#39;xz&#39;,version=3)
+  for(name in names(tables)) {
+    tab&lt;-as.data.frame(.prep_csv(tables[[name]]),stringsAsFactors=FALSE,optional=TRUE)
+    utils::write.csv(tab,file.path(stage,paste0(name,&#39;.csv&#39;)),row.names=FALSE,na=na_token,fileEncoding=&#39;UTF-8&#39;)
+  }
+  utils::write.csv(dictionary,file.path(stage,&#39;data-dictionary.csv&#39;),row.names=FALSE,na=&#39;&#39;)
+  utils::write.csv(identities,file.path(stage,&#39;source-files.csv&#39;),row.names=FALSE)
+  metadata&lt;-object[setdiff(names(object),names(tables))]
+  metadata$input_type &lt;- &#39;od&#39;
+  metadata$csv&lt;-list(missing=na_token,timestamp=&#39;POSIXct times are Unix seconds; numeric times retain the declared source clock.&#39;,
+                     identifiers=&#39;Read identifier fields as character.&#39;,data=&#39;input.rds preserves original types, geometry, timezones and nested provenance.&#39;)
+  writeLines(jsonlite::toJSON(.tm_provenance_for_json(metadata),auto_unbox=TRUE,null=&#39;null&#39;,na=&#39;null&#39;,digits=NA,pretty=TRUE),file.path(stage,&#39;metadata.json&#39;),useBytes=TRUE)
+  files&lt;-sort(list.files(stage))
+  utils::write.csv(data.frame(file=files,md5=unname(tools::md5sum(file.path(stage,files)))),file.path(stage,&#39;checksums.csv&#39;),row.names=FALSE)
+  if(!identical(info_before,file.info(source_files)[,c(&#39;size&#39;,&#39;mtime&#39;),drop=FALSE]))stop(&#39;A source changed during preparation.&#39;,call.=FALSE)
+  .prep_destination(output_dir,source_files)
+  if(!file.rename(stage,target))stop(&#39;Cannot publish the completed preparation.&#39;,call.=FALSE)
+  invisible(file.path(target,&#39;input.rds&#39;))
+}</code></pre>
+</details>
 <pre class="r"><code>prepared_dir &lt;- file.path(work_dir, &quot;prepared-data&quot;)
 station_file &lt;- write_divvy_station_input(
   prepared_day$input, output_dir = file.path(prepared_dir, &quot;station&quot;), source_file = raw_file
@@ -653,6 +840,342 @@ endpoints to Columbus Dr &amp; Randolph St (<code>CHI00345</code>) and
 State St &amp; Chicago Ave (<code>CHI01772</code>). The grouped day sums
 trips that share a departure instant and an ordered pair of group
 IDs.</p>
+<details>
+<summary>
+Code that reads the station RDS and writes the grouped input.rds
+</summary>
+<pre class="r"><code>spatial_od_input &lt;- function(input,radius_m=1500) {
+  if(!is.list(input)||!all(c(&#39;nodes&#39;,&#39;flows&#39;,&#39;unit&#39;,&#39;timezone&#39;,&#39;time_kind&#39;,&#39;provenance&#39;)%in%names(input)))
+    stop(&#39;input must be a prepared OD list with nodes, flows and metadata.&#39;)
+  if(length(radius_m)!=1L||!is.finite(radius_m)||radius_m&lt;=0)
+    stop(&#39;radius_m must be one positive number in metres.&#39;)
+  aggregation&lt;-aggregate_od_data(
+    nodes=input$nodes,flows=input$flows,radius_m=radius_m,
+    node_columns=c(id=&#39;node_id&#39;,longitude=&#39;longitude&#39;,latitude=&#39;latitude&#39;,name=&#39;display_name&#39;,weight=NA_character_),
+    flow_columns=c(origin=&#39;origin_id&#39;,destination=&#39;destination_id&#39;,count=&#39;flow&#39;,time=&#39;time&#39;),
+    timezone=input$timezone)
+  membership&lt;-as.data.frame(aggregation$membership)
+  result&lt;-list(nodes=as.data.frame(aggregation$nodes),flows=as.data.frame(aggregation$flows),
+    unit=input$unit,timezone=input$timezone,time_kind=input$time_kind,
+    provenance=list(station_preparation=input$provenance,display_radius_m=as.numeric(radius_m),
+      spatial_aggregation=c(aggregation$metadata,list(membership=membership))))
+  if(!is.null(input$interval_seconds))result$interval_seconds&lt;-input$interval_seconds
+  result
+}
+
+prepare_spatial_example &lt;- function(base=&#39;.&#39;,output_dir=file.path(base,&#39;prepared-spatial-1500m&#39;),
+                                    station_file,radius_m=1500) {
+  if(!file.exists(station_file)||dir.exists(station_file))stop(&#39;The prepared station OD input is missing.&#39;)
+  station_input&lt;-readRDS(station_file)
+  spatial_input&lt;-spatial_od_input(station_input,radius_m)
+  dictionary&lt;-data.frame(table=c(rep(&#39;nodes&#39;,4),rep(&#39;flows&#39;,3)),
+    field=c(&#39;raw_node_count&#39;,&#39;member_weight&#39;,&#39;endpoint_activity&#39;,&#39;display_name&#39;,&#39;origin_id&#39;,&#39;destination_id&#39;,&#39;flow&#39;),
+    meaning=c(&#39;Number of source stations assigned to this representative.&#39;,
+      &#39;Sum of unit source-station weights in this group.&#39;,
+      &#39;Departure plus arrival activity across member stations.&#39;,
+      &#39;Name of the representative source station.&#39;,
+      &#39;Prepared representative origin ID.&#39;,&#39;Prepared representative destination ID.&#39;,
+      &#39;Trip count for this time and prepared directed pair.&#39;),stringsAsFactors=FALSE)
+  write_traffic_input(spatial_input,output_dir,source_files=station_file,dictionary=dictionary)
+}</code></pre>
+</details>
+<details>
+<summary>
+Code that selects representatives, assigns members and sums directed
+departures
+</summary>
+<pre class="r"><code>aggregate_od_data &lt;- function(
+    nodes,
+    flows,
+    radius_m,
+    node_columns = c(
+      id = &quot;node_id&quot;, longitude = &quot;longitude&quot;, latitude = &quot;latitude&quot;,
+      name = NA_character_, weight = NA_character_
+    ),
+    flow_columns = c(
+      origin = &quot;origin_id&quot;, destination = &quot;destination_id&quot;,
+      count = &quot;flow&quot;, time = NA_character_
+    ),
+    timezone = &quot;UTC&quot;,
+    time_format = NULL,
+    output_dir = NULL,
+    overwrite = FALSE) {
+  if (!requireNamespace(&quot;data.table&quot;, quietly = TRUE)) {
+    stop(&quot;Install the &#39;data.table&#39; package before using this function.&quot;, call. = FALSE)
+  }
+  if (length(radius_m) != 1L || !is.finite(radius_m) || radius_m &lt;= 0) {
+    stop(&quot;radius_m must be one positive number in metres.&quot;, call. = FALSE)
+  }
+
+  read_table &lt;- function(x, label) {
+    if (is.character(x) &amp;&amp; length(x) == 1L) {
+      if (!file.exists(x)) stop(&quot;Missing &quot;, label, &quot; file: &quot;, x, call. = FALSE)
+      extension &lt;- tolower(tools::file_ext(sub(&quot;\\.gz$&quot;, &quot;&quot;, x)))
+      if (extension == &quot;rds&quot;) {
+        x &lt;- readRDS(x)
+      } else if (extension == &quot;csv&quot;) {
+        # Keep source timestamps as text so a timezone-free wall clock is
+        # interpreted in the caller&#39;s requested timezone rather than UTC.
+        x &lt;- data.table::fread(x, showProgress = FALSE, colClasses = &quot;character&quot;)
+      } else {
+        stop(label, &quot; must be a data frame or CSV/CSV.GZ/RDS path.&quot;, call. = FALSE)
+      }
+    }
+    if (!is.data.frame(x)) stop(label, &quot; must be tabular data.&quot;, call. = FALSE)
+    data.table::as.data.table(data.table::copy(x))
+  }
+  validate_mapping &lt;- function(mapping, required, allowed, label) {
+    if (is.null(names(mapping)) || anyDuplicated(names(mapping))) {
+      stop(label, &quot; must be a uniquely named character vector.&quot;, call. = FALSE)
+    }
+    unknown &lt;- setdiff(names(mapping), allowed)
+    missing &lt;- setdiff(required, names(mapping))
+    if (length(unknown)) stop(&quot;Unknown &quot;, label, &quot; names: &quot;, paste(unknown, collapse = &quot;, &quot;), call. = FALSE)
+    if (length(missing)) stop(&quot;Missing &quot;, label, &quot; names: &quot;, paste(missing, collapse = &quot;, &quot;), call. = FALSE)
+    mapping
+  }
+  mapped_column &lt;- function(mapping, key, table, required = FALSE) {
+    value &lt;- unname(mapping[key])
+    if (!length(value) || is.na(value) || !nzchar(value)) {
+      if (required) stop(&quot;A column mapping is required for &#39;&quot;, key, &quot;&#39;.&quot;, call. = FALSE)
+      return(NULL)
+    }
+    if (!value %in% names(table)) {
+      stop(&quot;Mapped column &#39;&quot;, value, &quot;&#39; for &#39;&quot;, key, &quot;&#39; does not exist.&quot;, call. = FALSE)
+    }
+    value
+  }
+  haversine &lt;- function(lat1, lon1, lat2, lon2) {
+    rad &lt;- pi / 180
+    lat1 &lt;- lat1 * rad
+    lon1 &lt;- lon1 * rad
+    lat2 &lt;- lat2 * rad
+    lon2 &lt;- lon2 * rad
+    a &lt;- sin((lat2 - lat1) / 2)^2 +
+      cos(lat1) * cos(lat2) * sin((lon2 - lon1) / 2)^2
+    a[a &lt; 0] &lt;- 0
+    a[a &gt; 1] &lt;- 1
+    2 * 6371008.8 * asin(sqrt(a))
+  }
+
+  node_source &lt;- if (is.character(nodes) &amp;&amp; length(nodes) == 1L) basename(nodes) else &quot;in-memory&quot;
+  flow_source &lt;- if (is.character(flows) &amp;&amp; length(flows) == 1L) basename(flows) else &quot;in-memory&quot;
+  nodes &lt;- read_table(nodes, &quot;nodes&quot;)
+  flows &lt;- read_table(flows, &quot;flows&quot;)
+  node_columns &lt;- validate_mapping(
+    node_columns, c(&quot;id&quot;, &quot;longitude&quot;, &quot;latitude&quot;),
+    c(&quot;id&quot;, &quot;longitude&quot;, &quot;latitude&quot;, &quot;name&quot;, &quot;weight&quot;), &quot;node_columns&quot;
+  )
+  flow_columns &lt;- validate_mapping(
+    flow_columns, c(&quot;origin&quot;, &quot;destination&quot;),
+    c(&quot;origin&quot;, &quot;destination&quot;, &quot;count&quot;, &quot;time&quot;), &quot;flow_columns&quot;
+  )
+
+  id_col &lt;- mapped_column(node_columns, &quot;id&quot;, nodes, TRUE)
+  lon_col &lt;- mapped_column(node_columns, &quot;longitude&quot;, nodes, TRUE)
+  lat_col &lt;- mapped_column(node_columns, &quot;latitude&quot;, nodes, TRUE)
+  name_col &lt;- mapped_column(node_columns, &quot;name&quot;, nodes)
+  weight_col &lt;- mapped_column(node_columns, &quot;weight&quot;, nodes)
+  origin_col &lt;- mapped_column(flow_columns, &quot;origin&quot;, flows, TRUE)
+  destination_col &lt;- mapped_column(flow_columns, &quot;destination&quot;, flows, TRUE)
+  count_col &lt;- mapped_column(flow_columns, &quot;count&quot;, flows)
+  time_col &lt;- mapped_column(flow_columns, &quot;time&quot;, flows)
+
+  node_id &lt;- as.character(nodes[[id_col]])
+  longitude &lt;- as.numeric(nodes[[lon_col]])
+  latitude &lt;- as.numeric(nodes[[lat_col]])
+  display_name &lt;- if (is.null(name_col)) node_id else as.character(nodes[[name_col]])
+  member_weight &lt;- if (is.null(weight_col)) rep(1, nrow(nodes)) else as.numeric(nodes[[weight_col]])
+  if (anyNA(node_id) || any(!nzchar(node_id)) || anyDuplicated(node_id)) {
+    stop(&quot;Node identifiers must be nonmissing and unique.&quot;, call. = FALSE)
+  }
+  if (any(!is.finite(longitude)) || any(!is.finite(latitude)) ||
+      any(abs(longitude) &gt; 180) || any(abs(latitude) &gt; 90)) {
+    stop(&quot;Node coordinates are invalid.&quot;, call. = FALSE)
+  }
+  if (any(!is.finite(member_weight)) || any(member_weight &lt;= 0)) {
+    stop(&quot;Node weights must be positive finite numbers.&quot;, call. = FALSE)
+  }
+
+  origin_id &lt;- as.character(flows[[origin_col]])
+  destination_id &lt;- as.character(flows[[destination_col]])
+  flow_value &lt;- if (is.null(count_col)) rep(1, nrow(flows)) else as.numeric(flows[[count_col]])
+  if (anyNA(origin_id) || anyNA(destination_id) ||
+      any(!origin_id %in% node_id) || any(!destination_id %in% node_id)) {
+    stop(&quot;Every OD endpoint must match one node identifier.&quot;, call. = FALSE)
+  }
+  if (any(!is.finite(flow_value)) || any(flow_value &lt; 0) ||
+      any(abs(flow_value - round(flow_value)) &gt; .Machine$double.eps^0.5)) {
+    stop(&quot;Flow counts must be nonnegative integers.&quot;, call. = FALSE)
+  }
+
+  parsed_time &lt;- NULL
+  if (!is.null(time_col)) {
+    raw_time &lt;- flows[[time_col]]
+    parsed_time &lt;- .od_parse_time(raw_time, timezone, time_format)
+    if (anyNA(parsed_time)) stop(&quot;The mapped time column contains invalid timestamps.&quot;, call. = FALSE)
+  }
+
+  endpoint_ids &lt;- c(origin_id, destination_id)
+  endpoint_flow &lt;- c(flow_value, flow_value)
+  activity_lookup &lt;- tapply(endpoint_flow, endpoint_ids, sum)
+  activity &lt;- as.numeric(activity_lookup[node_id])
+  activity[is.na(activity)] &lt;- 0
+
+  candidate_order &lt;- order(-activity, node_id)
+  representatives &lt;- integer(0)
+  for (position in candidate_order) {
+    if (!length(representatives)) {
+      representatives &lt;- position
+    } else {
+      distance &lt;- haversine(
+        latitude[position], longitude[position],
+        latitude[representatives], longitude[representatives]
+      )
+      if (min(distance) &gt; radius_m) representatives &lt;- c(representatives, position)
+    }
+  }
+
+  nearest &lt;- integer(length(node_id))
+  assignment_distance &lt;- numeric(length(node_id))
+  for (i in seq_along(node_id)) {
+    distance &lt;- haversine(
+      latitude[i], longitude[i],
+      latitude[representatives], longitude[representatives]
+    )
+    nearest[i] &lt;- which.min(distance)
+    assignment_distance[i] &lt;- distance[nearest[i]]
+  }
+  max_distance &lt;- max(assignment_distance)
+  if (max_distance &gt; radius_m + 1e-7) {
+    stop(&quot;Radius-cover invariant failed.&quot;, call. = FALSE)
+  }
+
+  representative_id &lt;- node_id[representatives]
+  aggregate_nodes &lt;- data.table::rbindlist(lapply(seq_along(representatives), function(k) {
+    members &lt;- which(nearest == k)
+    representative &lt;- representatives[k]
+    data.table::data.table(
+      node_id = representative_id[k],
+      longitude = longitude[representative],
+      latitude = latitude[representative],
+      display_name = display_name[representative],
+      raw_node_count = length(members),
+      member_weight = sum(member_weight[members]),
+      endpoint_activity = sum(activity[members])
+    )
+  }))
+  membership &lt;- data.table::data.table(
+    raw_node_id = node_id,
+    aggregate_node_id = representative_id[nearest],
+    distance_to_representative_m = round(assignment_distance, 3)
+  )
+  id_map &lt;- stats::setNames(membership$aggregate_node_id, membership$raw_node_id)
+  standardized_flows &lt;- data.table::data.table(
+    origin_id = unname(id_map[origin_id]),
+    destination_id = unname(id_map[destination_id]),
+    flow = flow_value
+  )
+  if (!is.null(parsed_time)) standardized_flows[, time := parsed_time]
+  group_columns &lt;- c(if (!is.null(parsed_time)) &quot;time&quot;, &quot;origin_id&quot;, &quot;destination_id&quot;)
+  aggregated_flows &lt;- standardized_flows[
+    , .(flow = sum(.SD[[1L]])), by = group_columns, .SDcols = &quot;flow&quot;
+  ]
+  data.table::setorderv(aggregated_flows, group_columns)
+
+  source_total &lt;- sum(flow_value)
+  output_total &lt;- sum(aggregated_flows$flow)
+  if (!isTRUE(all.equal(source_total, output_total, tolerance = 0))) {
+    stop(&quot;Total flow changed during aggregation.&quot;, call. = FALSE)
+  }
+  metadata &lt;- list(
+    schema_version = 1L,
+    method = &quot;activity-prioritized radius cover with nearest-representative assignment&quot;,
+    radius_m = as.numeric(radius_m),
+    timezone = timezone,
+    source_nodes = node_source,
+    source_flows = flow_source,
+    raw_nodes = length(node_id),
+    aggregate_nodes = nrow(aggregate_nodes),
+    raw_flow_rows = nrow(flows),
+    aggregate_flow_rows = nrow(aggregated_flows),
+    total_flow = as.numeric(output_total),
+    max_assignment_distance_m = max_distance,
+    created_utc = format(Sys.time(), tz = &quot;UTC&quot;, usetz = TRUE)
+  )
+  result &lt;- structure(
+    list(nodes = aggregate_nodes, flows = aggregated_flows,
+         membership = membership, metadata = metadata),
+    class = &quot;od_aggregation&quot;
+  )
+
+  if (!is.null(output_dir)) {
+    if (!requireNamespace(&quot;jsonlite&quot;, quietly = TRUE)) {
+      stop(&quot;Install the &#39;jsonlite&#39; package to write aggregation files.&quot;, call. = FALSE)
+    }
+    dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+    output_dir &lt;- normalizePath(output_dir, mustWork = TRUE)
+    tag &lt;- paste0(&quot;r&quot;, gsub(&quot;[^0-9]+&quot;, &quot;_&quot;, format(radius_m, scientific = FALSE, trim = TRUE)))
+    paths &lt;- c(
+      nodes = file.path(output_dir, paste0(&quot;nodes_&quot;, tag, &quot;.csv&quot;)),
+      flows = file.path(output_dir, paste0(&quot;flows_&quot;, tag, &quot;.csv&quot;)),
+      membership = file.path(output_dir, paste0(&quot;membership_&quot;, tag, &quot;.csv&quot;)),
+      metadata = file.path(output_dir, paste0(&quot;aggregation_&quot;, tag, &quot;.json&quot;))
+    )
+    if (!overwrite &amp;&amp; any(file.exists(paths))) {
+      stop(&quot;Output already exists; set overwrite=TRUE or choose another directory.&quot;, call. = FALSE)
+    }
+    data.table::fwrite(result$nodes, paths[[&quot;nodes&quot;]])
+    data.table::fwrite(result$flows, paths[[&quot;flows&quot;]])
+    data.table::fwrite(result$membership, paths[[&quot;membership&quot;]])
+    jsonlite::write_json(metadata, paths[[&quot;metadata&quot;]], auto_unbox = TRUE,
+                         pretty = TRUE, null = &quot;null&quot;)
+    result$files &lt;- paths
+  }
+  result
+}
+
+.tm_aggregate_od_reference &lt;- aggregate_od_data
+
+aggregate_od_data &lt;- function(
+    nodes,
+    flows = NULL,
+    radius_m,
+    node_columns = c(
+      id = &quot;node_id&quot;, longitude = &quot;longitude&quot;, latitude = &quot;latitude&quot;,
+      name = NA_character_, weight = NA_character_
+    ),
+    flow_columns = c(
+      origin = &quot;origin_id&quot;, destination = &quot;destination_id&quot;,
+      count = &quot;flow&quot;, time = NA_character_
+    ),
+    timezone = &quot;UTC&quot;,
+    time_format = NULL,
+    output_dir = NULL,
+    overwrite = FALSE) {
+  args &lt;- as.list(environment())
+  if(inherits(nodes,&#39;traffic_od_data&#39;)) {
+    .tm_assert(is.null(flows),&#39;When nodes is a traffic_od_data object, omit flows&#39;)
+    args$flows &lt;- nodes$flows;args$nodes &lt;- nodes$nodes
+    if(missing(node_columns)) {
+      # Display size is separate from aggregation weight. Keep unit weights
+      # unless the caller explicitly maps a weight column.
+      args$node_columns &lt;- nodes$node_columns[names(nodes$node_columns)!=&#39;size&#39;]
+    }
+    if(missing(flow_columns))args$flow_columns &lt;- nodes$flow_columns
+    if(missing(timezone))args$timezone &lt;- nodes$timezone
+  }
+  sources &lt;- list(nodes=if(is.character(nodes)&amp;&amp;length(nodes)==1L)basename(nodes) else &#39;in-memory&#39;,
+    flows=if(is.character(flows)&amp;&amp;length(flows)==1L)basename(flows) else &#39;in-memory&#39;)
+  input &lt;- .tm_od_input(args$nodes,args$flows,args$node_columns,args$flow_columns,missing(node_columns),missing(flow_columns),&#39;weight&#39;)
+  args$nodes &lt;- input$nodes;args$flows &lt;- input$flows
+  args$node_columns &lt;- input$node_columns;args$flow_columns &lt;- input$flow_columns
+  result &lt;- do.call(.tm_aggregate_od_reference,args)
+  result$metadata$source_nodes &lt;- sources$nodes;result$metadata$source_flows &lt;- sources$flows
+  if(!is.null(result$files))jsonlite::write_json(result$metadata,result$files[[&#39;metadata&#39;]],auto_unbox=TRUE,pretty=TRUE,null=&#39;null&#39;)
+  result
+}</code></pre>
+</details>
 <pre class="r"><code>aggregation_radius_m &lt;- 1500
 spatial_dir &lt;- file.path(prepared_dir, &quot;spatial-1500m&quot;)
 spatial_file &lt;- prepare_spatial_example(
@@ -738,6 +1261,215 @@ drawing input. The station and grouped <code>input.rds</code> files
 above remain tables for preparation. Each frame already contains the
 joined longitude and latitude of its directed endpoints, their counts,
 and its start and end times.</p>
+<details>
+<summary>
+Code that makes the three-hour boundaries and prepares every window
+</summary>
+<pre class="r"><code>divvy_window_times &lt;- function(day, start_clock, end_clock, timezone) {
+  date &lt;- divvy_date(day)
+  if(length(timezone)!=1L || !timezone%in%OlsonNames())stop(&#39;Supply a valid IANA timezone.&#39;)
+  clock_pattern &lt;- &#39;^([01][0-9]|2[0-3]):[0-5][0-9]$&#39;
+  if(length(start_clock)!=1L || length(end_clock)!=1L || anyNA(c(start_clock,end_clock)) ||
+     !grepl(clock_pattern,start_clock) || !(grepl(clock_pattern,end_clock) || end_clock==&#39;24:00&#39;))
+    stop(&#39;Use HH:MM for the window clocks. 24:00 is allowed as the end.&#39;)
+  from &lt;- paste(day,start_clock)
+  to &lt;- if(end_clock==&#39;24:00&#39;)paste(date+1L,&#39;00:00&#39;) else paste(day,end_clock)
+  times &lt;- as.POSIXct(c(from,to),format=&#39;%Y-%m-%d %H:%M&#39;,tz=timezone)
+  if(anyNA(times) || !identical(format(times,&#39;%Y-%m-%d %H:%M&#39;,tz=timezone),c(from,to)) ||
+     times[1]&gt;=times[2])stop(&#39;The display window must have valid local times and end after it starts.&#39;)
+  if(ambiguous_divvy_clock(times,timezone))stop(&#39;An OD window clock is ambiguous at a timezone transition.&#39;)
+  list(start_time=times[1],end_time=times[2])
+}
+
+.divvy_window_pairs &lt;- function(input, start_time, end_time, allow_empty, time = NULL) {
+  if(!inherits(start_time,&#39;POSIXct&#39;) || !inherits(end_time,&#39;POSIXct&#39;) ||
+     length(start_time)!=1L || length(end_time)!=1L ||
+     any(!is.finite(c(as.numeric(start_time),as.numeric(end_time)))) || start_time&gt;=end_time)
+    stop(&#39;Supply two ordered POSIXct bounds for the OD window.&#39;)
+  selection &lt;- .od_select_window(input, start_time, end_time, NULL, allow_empty, time)
+  pairs &lt;- traffic_od_pairs(selection, include_loops = TRUE, allow_empty = allow_empty)
+  pairs$display_radius_m &lt;- input$provenance$display_radius_m
+  pairs
+}
+
+divvy_report_windows &lt;- function(day, timezone, window_minutes = 180L) {
+  if (!is.numeric(window_minutes) || length(window_minutes) != 1L ||
+      !is.finite(window_minutes) || window_minutes &lt; 1L ||
+      window_minutes != floor(window_minutes)) {
+    stop(&quot;Supply a positive whole number of minutes for each window.&quot;)
+  }
+  day_bounds &lt;- divvy_window_times(day, &quot;00:00&quot;, &quot;24:00&quot;, timezone)
+  edges &lt;- seq(day_bounds$start_time, day_bounds$end_time, by = window_minutes * 60)
+  if (tail(edges, 1L) &lt; day_bounds$end_time) edges &lt;- c(edges, day_bounds$end_time)
+  data.frame(start_time = head(edges, -1L), end_time = tail(edges, -1L))
+}
+
+divvy_frame_inputs &lt;- function(spatial_input, windows) {
+  if (!is.data.frame(windows) || !nrow(windows) ||
+      !all(c(&quot;start_time&quot;, &quot;end_time&quot;) %in% names(windows))) {
+    stop(&quot;Supply a nonempty table of start_time and end_time values.&quot;)
+  }
+  input &lt;- .od_selection_input(spatial_input, timezone = spatial_input$timezone)
+  time &lt;- .od_selection_times(input)
+  lapply(seq_len(nrow(windows)), function(i) {
+    .divvy_window_pairs(
+      input, windows$start_time[i], windows$end_time[i], allow_empty = TRUE, time = time
+    )
+  })
+}</code></pre>
+</details>
+<details>
+<summary>
+Code that selects departures, sums directed pairs and attaches endpoint
+coordinates
+</summary>
+<pre class="r"><code>.od_selection_input &lt;- function(nodes, flows = NULL,
+    node_columns = c(id = &quot;node_id&quot;, longitude = &quot;longitude&quot;, latitude = &quot;latitude&quot;, size = &quot;member_weight&quot;),
+    flow_columns = c(origin = &quot;origin_id&quot;, destination = &quot;destination_id&quot;, count = &quot;flow&quot;, time = &quot;time&quot;),
+    timezone = &quot;UTC&quot;, node_default = missing(node_columns), flow_default = missing(flow_columns),
+    timezone_default = missing(timezone)) {
+  nodes &lt;- .tm_od_read_nodes(nodes)
+  provenance &lt;- NULL
+  if (.tm_od_bundle(nodes)) {
+    .tm_assert(is.null(flows),&quot;When nodes is an OD object, omit flows&quot;)
+    if (node_default &amp;&amp; !is.null(nodes$node_columns)) {
+      node_columns &lt;- nodes$node_columns
+      node_default &lt;- FALSE
+    }
+    if (flow_default &amp;&amp; !is.null(nodes$flow_columns)) {
+      flow_columns &lt;- nodes$flow_columns
+      flow_default &lt;- FALSE
+    }
+    if (timezone_default &amp;&amp; is.character(nodes$timezone) &amp;&amp;
+        length(nodes$timezone) == 1L) timezone &lt;- nodes$timezone
+    provenance &lt;- nodes$provenance
+    tables &lt;- .tm_od_bundle_tables(nodes)
+    flows &lt;- tables$flows
+    nodes &lt;- tables$nodes
+  }
+  input &lt;- .tm_od_input(nodes, flows, node_columns, flow_columns, node_default, flow_default)
+  nodes &lt;- input$nodes
+  flows &lt;- input$flows
+  nc &lt;- input$node_columns
+  fc &lt;- input$flow_columns
+  size_col &lt;- .tm_map_mapped(nc,&quot;size&quot;,nodes)
+  count_col &lt;- .tm_map_mapped(fc,&quot;count&quot;,flows)
+  time_col &lt;- .tm_map_mapped(fc,&quot;time&quot;,flows)
+  node_data &lt;- data.frame(node_id = as.character(nodes[[nc[[&quot;id&quot;]]]]),
+    longitude = as.numeric(nodes[[nc[[&quot;longitude&quot;]]]]),
+    latitude = as.numeric(nodes[[nc[[&quot;latitude&quot;]]]]),
+    size = if (is.null(size_col)) rep(1, nrow(nodes)) else as.numeric(nodes[[size_col]]),
+    stringsAsFactors = FALSE)
+  .tm_assert(all(node_data$size &gt;= 0), &quot;Mapped node sizes must be nonnegative and finite&quot;)
+  origin &lt;- as.character(flows[[fc[[&quot;origin&quot;]]]])
+  destination &lt;- as.character(flows[[fc[[&quot;destination&quot;]]]])
+  count &lt;- if (is.null(count_col)) rep(1, nrow(flows)) else as.numeric(flows[[count_col]])
+  list(nodes = node_data, origin = origin, destination = destination, count = count,
+    time = if (!is.null(time_col)) flows[[time_col]], timezone = timezone,
+    provenance = provenance)
+}
+
+.od_selection_times &lt;- function(input) {
+  .tm_assert(!is.null(input$time), &quot;A mapped time column is required for time filtering&quot;)
+  time &lt;- .tm_od_plot_time(input$time, input$timezone)
+  .tm_assert(!anyNA(time), &quot;The mapped time column contains invalid timestamps&quot;)
+  time
+}
+
+.od_select_window &lt;- function(input, start_time, end_time, hour_window, allow_empty,
+    time = NULL) {
+  timezone &lt;- input$timezone
+  .tm_assert(is.logical(allow_empty) &amp;&amp; length(allow_empty) == 1L &amp;&amp; !is.na(allow_empty),
+    &quot;allow_empty must be TRUE or FALSE&quot;)
+  .tm_assert(!xor(is.null(start_time),is.null(end_time)),
+    &quot;Supply both start_time and end_time, or neither&quot;)
+  .tm_assert(is.null(hour_window) || (is.null(start_time) &amp;&amp; is.null(end_time)),
+    &quot;hour_window cannot be combined with start_time or end_time&quot;)
+  keep &lt;- rep(TRUE, length(input$count))
+  start &lt;- end &lt;- NULL
+  if (is.null(time) &amp;&amp; (!is.null(start_time) || !is.null(hour_window))) {
+    time &lt;- .od_selection_times(input)
+  }
+  if (!is.null(start_time)) {
+    start &lt;- .tm_od_plot_time(start_time,timezone)
+    end &lt;- .tm_od_plot_time(end_time,timezone)
+    .tm_assert(length(start) == 1L &amp;&amp; length(end) == 1L &amp;&amp; end &gt; start,
+      &quot;The mapped timestamps or requested time window are invalid&quot;)
+    keep &lt;- time &gt;= start &amp; time &lt; end
+  } else if (!is.null(hour_window)) {
+    .tm_assert(is.numeric(hour_window) &amp;&amp; length(hour_window) == 2L &amp;&amp;
+      all(is.finite(hour_window)) &amp;&amp; all(hour_window == floor(hour_window)) &amp;&amp;
+      all(hour_window &gt;= 0) &amp;&amp; all(hour_window &lt;= 24) &amp;&amp;
+      hour_window[1] != hour_window[2],
+      &quot;hour_window must contain two different integer clock hours from 0 to 24&quot;)
+    hour_start &lt;- hour_window[1] %% 24
+    hour_end &lt;- hour_window[2] %% 24
+    clock_hour &lt;- as.integer(format(time,&quot;%H&quot;,tz=timezone))
+    keep &lt;- if (hour_start &lt; hour_end) {
+      clock_hour &gt;= hour_start &amp; clock_hour &lt; hour_end
+    } else {
+      clock_hour &gt;= hour_start | clock_hour &lt; hour_end
+    }
+  }
+  selected &lt;- data.frame(origin_id = input$origin[keep],destination_id = input$destination[keep],
+    flow = input$count[keep],stringsAsFactors = FALSE)
+  if (!nrow(selected) &amp;&amp; !allow_empty) stop(structure(list(
+    message=&quot;No flows remain in the requested time window&quot;,call=NULL,
+    nodes=input$nodes,start_time=start,end_time=end,timezone=timezone),
+    class=c(&quot;traffic_od_empty_window&quot;,&quot;error&quot;,&quot;condition&quot;)))
+  structure(list(nodes = input$nodes,selected = selected,
+    start_time = start,end_time = end,hour_window = hour_window,
+    timezone = timezone,unit = &quot;trips&quot;,provenance = input$provenance,
+    records = nrow(selected),flow = sum(selected$flow)),
+    class = &quot;bdynets_od_selection&quot;)
+}
+
+traffic_od_pairs &lt;- function(selection,top_n=Inf,include_loops=FALSE,active_nodes_only=TRUE,
+    allow_empty=FALSE) {
+  .tm_assert(inherits(selection,&quot;bdynets_od_selection&quot;),
+    &quot;traffic_od_pairs() needs the object returned by traffic_od_select()&quot;)
+  .tm_assert(is.logical(allow_empty) &amp;&amp; length(allow_empty) == 1L &amp;&amp; !is.na(allow_empty),
+    &quot;allow_empty must be TRUE or FALSE&quot;)
+  node_data &lt;- selection$nodes; selected &lt;- selection$selected
+  positive &lt;- selected[selected$flow &gt; 0,,drop=FALSE]
+  totals &lt;- if (nrow(positive)) stats::aggregate(flow ~ origin_id + destination_id,positive,sum) else positive
+  loop_total &lt;- sum(totals$flow[totals$origin_id == totals$destination_id])
+  routes &lt;- totals[totals$origin_id != totals$destination_id,,drop=FALSE]
+  routes &lt;- routes[order(-routes$flow,routes$origin_id,routes$destination_id),,drop=FALSE]
+  active_pairs &lt;- nrow(routes)
+  .tm_assert(length(top_n) == 1L &amp;&amp; !is.na(top_n) &amp;&amp; top_n &gt; 0,
+    &quot;top_n must be positive or Inf&quot;)
+  if (is.finite(top_n)) routes &lt;- utils::head(routes,as.integer(top_n))
+  if (!nrow(routes) &amp;&amp; !isTRUE(include_loops) &amp;&amp; !allow_empty) stop(structure(list(
+    message=&quot;No nonloop OD flows remain for plotting&quot;,call=NULL,
+    nodes=node_data,start_time=selection$start_time,
+    end_time=selection$end_time,timezone=selection$timezone,selected_records=nrow(selected),
+    selected_flow=selection$flow,within_node_flow=loop_total,
+    nonloop_flow=sum(totals$flow)-loop_total),
+    class=c(&quot;traffic_od_no_routes&quot;,&quot;error&quot;,&quot;condition&quot;)))
+  origin_at &lt;- match(routes$origin_id,node_data$node_id)
+  destination_at &lt;- match(routes$destination_id,node_data$node_id)
+  routes$origin_longitude &lt;- node_data$longitude[origin_at]
+  routes$origin_latitude &lt;- node_data$latitude[origin_at]
+  routes$destination_longitude &lt;- node_data$longitude[destination_at]
+  routes$destination_latitude &lt;- node_data$latitude[destination_at]
+  plot_nodes &lt;- node_data
+  if (isTRUE(active_nodes_only) &amp;&amp; nrow(routes)) {
+    active_ids &lt;- unique(c(routes$origin_id,routes$destination_id))
+    plot_nodes &lt;- node_data[node_data$node_id %in% active_ids,,drop=FALSE]
+  }
+  .tm_assert(nrow(plot_nodes) &gt; 0L,&quot;No nodes remain for plotting&quot;)
+  structure(list(routes = routes,nodes = plot_nodes,all_nodes = node_data,
+    totals = totals,active_pairs = active_pairs,within_node_flow = loop_total,
+    selected_flow = selection$flow,selected_records = selection$records,
+    status = if (!nrow(selected)) &quot;no_records&quot; else if (!nrow(routes)) &quot;no_routes&quot; else &quot;ok&quot;,
+    start_time = selection$start_time,
+    end_time = selection$end_time,hour_window = selection$hour_window,
+    timezone = selection$timezone,unit = selection$unit,provenance = selection$provenance,
+    include_loops = isTRUE(include_loops)),
+    class = &quot;bdynets_od_pairs&quot;)
+}</code></pre>
+</details>
 <pre class="r"><code>windows &lt;- divvy_report_windows(day, timezone)
 od_frames &lt;- divvy_frame_inputs(spatial_input, windows)
 map_input_file &lt;- file.path(prepared_dir, &quot;od-frames.rds&quot;)
