@@ -1,60 +1,100 @@
 # bdynets
 
-An R package for Bayesian dynamic network analysis. The installable source is in
-`bdynets/`. The paper workflows, data preparation examples and saved study
-summaries live alongside it.
+`bdynets` is an R package for Bayesian analysis of time series observed on a network. Its GLS model asks which links help forecast counts on another link one time step later. It uses the physical graph to guide shrinkage and allows the strength of each relationship to change over time. The package also fits graph-informed mixtures for clustering series with similar patterns.
 
-## Install
+## Install from GitHub
 
-From the root of a downloaded checkout, run the following in R with R 4.1 or
-later and a C++17 toolchain. The package compiles its numerical kernels during
-installation.
+Use R 4.1 or later with a C++17 compiler. The revision below installs bdynets 0.3.0, the version used in this walkthrough.
 
 ```r
-if (!requireNamespace("pak", quietly = TRUE)) install.packages("pak")
-pak::pak("./bdynets")
+if (!requireNamespace("remotes", quietly = TRUE)) install.packages("remotes")
+remotes::install_github("sj156/bdynets", subdir = "bdynets", ref = "d8e936984a")
 library(bdynets)
 ```
 
-To install the published GitHub version directly, use
-`pak::pak("sj156/bdynets/bdynets")`. For a Linux terminal installation and a
-complete simulation smoke run, follow the [GLS launcher instructions](GLS-paper/README.md#linux-installation).
+If you have cloned this revision, you can install the local package with `remotes::install_local("bdynets")` from its root. [Linux installation guide](GLS-paper/README.md#linux-installation)
 
-## Run an analysis
+## Which road links help forecast downstream traffic?
 
-| Task | Entry point | Guide |
-| --- | --- | --- |
-| Fit GLS to observed network counts | `gls_fit_general()`, `gls_dss()`, `predict()` | [Prepared-data application and Divvy replication requirements](GLS-paper/README.md) |
-| Run the three replicated GLS experiments | Graph error, sparse dynamic grid and upstream surges, with one generator, method-fit and comparison driver per case | [Experiment guide](GLS-paper/experiments/README.md) · [Five executive reports and walkthroughs](GLS-paper/README.md#cases-for-collaborator-review) |
-| Prepare the GLS applications | Divvy origin–destination departures and PeMS US-101 detector flow, from raw data to model comparison | [Application guide](GLS-paper/README.md#run-the-applications) |
-| Run the original Simulation 1 | `GLS-paper/run_simulation.R` generates the directed-grid data, fits GLS and runs the PNAR comparisons | [Study launcher](GLS-paper/README.md#directed-grid-simulation) · [Model and benchmark settings](bdynets/GLS.md) |
-| Fit graph-informed mixtures | `gmde_fit()` for static Gaussian panels, `gmde_dynamic_fit()` for dynamic counts | [Package example](bdynets/README.md#gaussianstatic-graphmode-example) · [Eight-method study and results](graphMoDE/README.md) |
-| Draw prepared Flow, Speed and OD maps | `traffic_flow_map()`, `traffic_speed_map()`, `traffic_od_map()` | [Five examples](examples/README.md) · [Data sources](examples/DATA-SOURCES.md) · [Input format](bdynets/inst/INPUT-FORMAT.md) |
-| Reproduce the Poisson latent-position study | `lpr_*` functions and study scripts | [GP-LPR runs and figure reproduction](GP-LPR/README.md) |
-| Reuse scalar state-space kernels | `gaussian_ffbs()`, `poisson_discount_filter()`, installed C++ header | [R and C++ interfaces](bdynets/CPP-KERNELS.md) |
-
-The [Divvy traffic example](examples/DivvyBike/README.md) prepares one day of
-station trips. The projected Divvy GLS study uses six months of three-hour link
-counts and its own archived DSS search. The [GLS replication guide](GLS-paper/README.md)
-identifies the inputs and scripts for that analysis.
-
-Historical dynamic count mixtures and clustering utilities remain available
-through `gibbs_sampler()`, `adj_rand_index()` and `best_label_accuracy()`.
-See the [package guide](bdynets/README.md) and [migration record](MIGRATION.md).
-
-## Develop and test
-
-Package code lives in [R](bdynets/R), [native sources](bdynets/src) and the
-[installed C++ headers](bdynets/inst/include/bdynets).
-The [tests](bdynets/tests) cover public interfaces, numerical implementations
-and saved-draw compatibility. From the repository root, run in R:
+Suppose vehicles travel along three consecutive road links, A → B → C → D. In each time bin, the mean count on AB is randomly set to 5 or 25 vehicles. We simulate BC using the previous count on AB, and CD using the previous count on BC. Those two known relationships let us check which ones the model selects.
 
 ```r
-if (!requireNamespace("pak", quietly = TRUE)) install.packages("pak")
-pak::pak("./bdynets", dependencies = TRUE)
-testthat::test_local("bdynets")
+edges <- data.frame(
+  name = c("AB", "BC", "CD"),
+  from = c("A", "B", "C"), to = c("B", "C", "D")
+)
+graph <- gls_graph(edges)
+
+set.seed(42)
+n <- 72L
+Y <- matrix(0L, nrow = n, ncol = 3L, dimnames = list(NULL, edges$name))
+Y[1, ] <- c(10L, 8L, 6L)
+for (t in 2:n) {
+  rates <- c(sample(c(5, 25), 1),
+             2 + 0.8 * Y[t - 1, "AB"],
+             2 + 0.8 * Y[t - 1, "BC"])
+  Y[t, ] <- rpois(3, rates)
+}
 ```
 
-See the [package development instructions](bdynets/README.md#development-and-validation)
-for building and checking the source archive. Dated migration checks and
-historical package-generation material are indexed in [MIGRATION.md](MIGRATION.md).
+**Fit and select the network.** Each row of `Y` is a time bin, and its columns follow the order of `edges`. Fit GLS on the first 48 bins and use the next 12 to select a sparse set of lagged predictors by decoupled shrinkage and selection (DSS). The model considers all nine ordered pairs, including each link’s own previous count.
+
+```r
+split <- gls_split_rows(n, train_end = 48L, validation_end = 60L)
+Q <- matrix(numeric(), nrow = n, ncol = 0L)  # No calendar predictors here
+fit <- gls_fit_general(Y, graph, covariates = Q, train_rows = split$train,
+                       control = gls_control("smoke"))
+dss <- gls_dss(fit, validation_rows = split$validation)
+fit$pairs$pair[dss$selected]
+```
+
+In this seeded run, DSS retains both simulated relationships, `AB -> BC` and `BC -> CD`. It also retains `AB -> AB`, an extra self-lag.
+
+**Forecast the next count.** Condition on the validation history, then forecast the final 12 bins one step at a time. Each observed test count becomes available only for later forecasts. The table shows the first test bin, with a predictive interval for each link’s vehicle count.
+
+```r
+pred <- predict(fit, rows = split$test, conditioning_rows = split$validation,
+                d = dss$d, label = "DSS")
+forecast <- gls_forecast_summary(pred, Y)
+forecast$link <- edges$name[forecast$series]
+forecast[forecast$row == split$test[1],
+         c("link", "observed", "mean_intensity", "count_lower", "count_upper")]
+```
+
+For BC, the forecast mean is 25.1 vehicles and the 95% count interval is 20–34. The observed count is 26. The example uses short chains. For an analysis, check `gls_diagnostics(fit)` for mixing and effective sample size. For longer runs, `gls_fit_general()` supports periodic checkpoints, disk-backed draws and a limit on parallel chain workers. [GLS fitting guide](bdynets/GLS.md)
+
+## Reproduce the GLS paper workflows
+
+Each experiment generates one panel per replicate, fits GLS and competitors on the same chronological split, and collects paired comparisons. From the root of this checkout, the commands below run one graph-error condition and render its report. Set `RESULTS` to an absolute directory outside the checkout, preferably on the SSD used for draws. HTML rendering requires the R packages `rmarkdown` and `knitr`, plus Pandoc.
+
+```sh
+RESULTS="$HOME/bdynets-results/readme-smoke"
+CASE=GLS-paper/experiments/01-graph-error
+Rscript "$CASE/generate.R" --profile=smoke --scenario=T100-error25 --output="$RESULTS"
+Rscript "$CASE/fit.R" --profile=smoke --scenario=T100-error25 --method=all --output="$RESULTS"
+Rscript "$CASE/compare.R" --profile=smoke --output="$RESULTS"
+Rscript GLS-paper/reports/render.R 01-graph-error "$RESULTS/01-graph-error" "$RESULTS/reports"
+```
+
+Open `$RESULTS/reports/01-graph-error.html` to inspect the held-out comparisons. The bundled reports use one smoke replicate per condition. The [experiment guide](GLS-paper/experiments/README.md) gives the full designs and replication options.
+
+| Walkthrough | Question and data |
+| --- | --- |
+| [Experiment 1 · Graph error](GLS-paper/reports/01-graph-error.Rmd) | How do forecasts and link recovery change as true edges are removed and false edges inserted? |
+| [Experiment 2 · Sparse dynamic grid](GLS-paper/reports/02-sparse-grid.Rmd) | Which signed, time-varying lag effects can GLS recover, and how does test error change as the selected network gets smaller? |
+| [Experiment 3 · Upstream surges](GLS-paper/reports/03-surges.Rmd) | Does observing an upstream surge improve the next downstream forecast when a transmission effect is present? |
+| [Divvy · Chicago bike departures](GLS-paper/reports/divvy.Rmd) | Forecast one day of departures on six origin–destination links. The six-month projected-link analysis uses a [separate archive](GLS-paper/README.md#divvy-experiment-archive). |
+| [PeMS · California freeway counts](GLS-paper/reports/pems.Rmd) | Forecast five-minute vehicle counts at four adjacent northbound US-101 stations. |
+
+The [paper workflow guide](GLS-paper/README.md#cases-for-collaborator-review) pairs each walkthrough with its rendered HTML and links the data-preparation scripts. The [original directed-grid study](GLS-paper/README.md#directed-grid-simulation) has its own replication instructions.
+
+## Other analyses in bdynets
+
+| Task | Where to start |
+| --- | --- |
+| Cluster network series with graphMoDE | [Gaussian example](bdynets/README.md#gaussianstatic-graphmode-example) · [Dynamic count models and eight-method comparison](graphMoDE/README.md) |
+| Fit a Poisson latent-position model | [GP-LPR pilot and figure reproduction](GP-LPR/README.md) |
+| Map traffic flow, speed or origin–destination trips | [Five traffic examples and their data](examples/README.md) · [Prepared input format](bdynets/inst/INPUT-FORMAT.md) |
+| Reuse Gaussian and Poisson state-space kernels | [R functions and C++ interface](bdynets/CPP-KERNELS.md) |
+
+See the [package guide](bdynets/README.md) for the full set of modules and development tests, and the [migration record](MIGRATION.md) for historical samplers.
