@@ -67,6 +67,10 @@ test_that("Graph-Laplace tau-one sampler keeps tau fixed", {
   expect_identical(unique(fit$acceptance$joint_scale_method), "fixed_tau_1")
   expect_identical(diagnostic$ParameterType[1L], "tau_fixed")
   expect_true(diagnostic$Converged[1L])
+  missing <- diagnostic$ParameterType != "tau_fixed" & is.na(diagnostic$SplitRhat)
+  if (control$n_chains == 1L) expect_true(any(missing))
+  expect_false(any(diagnostic$PassRhat[missing]))
+  expect_false(any(diagnostic$Converged[missing]))
   expect_true(any(diagnostic$ParameterType == "theta_total"))
   expect_false(any(diagnostic$ParameterType %in%
     c("theta_bar", "loading", "beta_terminal")))

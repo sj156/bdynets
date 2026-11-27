@@ -1,0 +1,96 @@
+---
+title: "Recovering time-varying directed effects"
+params:
+  results: ""
+output:
+  html_document:
+    template: report-template.html
+    theme: null
+    highlight: null
+    mathjax: null
+    self_contained: true
+---
+
+A directed road grid supplies known lag coefficients and a broad candidate dictionary. The design crosses the location of the active sources with static or dynamic coefficients. The continuous GLS fit and its validation-selected DSS projection share a posterior.
+
+```{r setup, include=FALSE}
+source("report.R", local = TRUE)
+x <- read_experiment(params$results, "02-sparse-grid")
+```
+
+**Run scope.** Profile **`r x$config$profile`**, `r length(unique(x$jobs$scenario))` generated scenario(s), `r length(unique(x$jobs$replicate))` distinct replicate ID(s). `r if (x$config$profile == "smoke") "This execution check uses reduced dimensions or sampling budgets. Its scores cannot establish method rankings." else "Interpret comparisons using independent replicated panels and their paired Monte Carlo uncertainty."`
+
+## Forecast comparison
+
+The table gives method minus static all-pairs Poisson lasso on test deviance. Use the same scenarios to compare static GLS, constant-affinity GLS and graph-informed GLS. With one matched dataset the Monte Carlo standard error is unavailable.
+
+```{r primary, echo=FALSE}
+primary_report(x, "poisson-lasso", "all", "deviance")
+```
+
+## Network recovery
+
+For the continuous GLS fit, selection means that the fitted trajectory exceeds the amplitude threshold with posterior probability above one half. DSS selects by validation prediction loss.
+
+```{r recovery, echo=FALSE}
+z <- subset(x$scores, window == "pairs-cross" & metric %in% c("trajectory_rmse", "recall") & is.finite(value))
+z <- subset(z, method %in% c("gls", "gls-dss", "gls-static", "poisson-lasso"))
+if (nrow(z)) {
+  averages <- aggregate(value ~ scenario + method + metric, z, mean)
+  knitr::kable(reshape(averages, idvar=c("scenario", "method"), timevar="metric",
+                       direction="wide"), digits=3, row.names=FALSE)
+}
+```
+
+## Sparsity and test loss
+
+The curve follows the candidate graphs in one saved replication. The symbols locate the two decisions made using validation data. All candidates and replications are in `support-path.csv`.
+
+```{r support-path, echo=FALSE, fig.width=7.5, fig.height=3.6, fig.alt="Test deviance against number of retained relations for validation-selected graph candidates"}
+path_file <- file.path(params$results, "support-path.csv")
+if (file.exists(path_file)) {
+  path <- read.csv(path_file)
+  available <- unique(path$scenario[path$method == "gls"])
+  cell <- if ("mixed-dynamic" %in% available) "mixed-dynamic" else head(available, 1)
+  curve <- subset(path, method == "gls" & scenario %in% cell)
+  if (nrow(curve)) {
+    rep_id <- min(curve$replicate)
+    curve <- subset(curve, replicate == rep_id & is.finite(test_deviance))
+    if (nrow(curve)) {
+      curve <- curve[order(curve$n_selected), ]
+      plot(curve$n_selected, curve$test_deviance, type="b", col="#234b56",
+           xlab="Retained relations", ylab="Mean test deviance",
+           main=paste(cell, "• replication", rep_id))
+      points(curve$n_selected[curve$one_se], curve$test_deviance[curve$one_se], pch=17, col="#ad461b", cex=1.5)
+      points(curve$n_selected[curve$tolerance], curve$test_deviance[curve$tolerance], pch=1, col="#376d36", cex=2)
+      legend("topright", c("One standard error", "0.7% tolerance"), pch=c(17,1),
+             col=c("#ad461b","#376d36"), bty="n", cex=.8)
+    }
+  }
+}
+```
+
+## Method completion
+
+```{r status, echo=FALSE}
+report_status(x)
+```
+
+```{r problems, echo=FALSE, results='asis'}
+problems <- subset(x$jobs, status != "complete" & status != "pending")
+if (nrow(problems)) print(knitr::kable(problems[c("scenario", "replicate", "method", "status", "detail")]))
+```
+
+## Reproduce from the repository root
+
+Set `RESULTS` to the external results directory. The generator stores a panel and its identity. The fit driver reads the panel and records a job by method. The comparison driver collects scores, numbers of matched replicates, Monte Carlo errors, and incomplete jobs. Select another cell with `--scenario` or an individual fit with `--method`.
+
+```sh
+CASE=GLS-paper/experiments/02-sparse-grid
+Rscript "$CASE/generate.R" --output="$RESULTS" --profile=smoke --scenario=mixed-dynamic --replicate=1
+Rscript "$CASE/fit.R" --output="$RESULTS" --profile=smoke --scenario=mixed-dynamic --replicate=1 --method=all
+Rscript "$CASE/compare.R" --output="$RESULTS" --profile=smoke
+Rscript GLS-paper/reports/render.R 02-sparse-grid "$RESULTS/02-sparse-grid"
+```
+
+The full results directory contains the individual job statuses, all metrics in `comparison.csv`, and replicate-level paired differences in `paired-replicates.csv`. Rendering reads those saved results.

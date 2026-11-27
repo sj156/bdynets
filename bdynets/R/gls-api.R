@@ -563,16 +563,15 @@ gls_diagnostics <- function(object, truth_pairs = NULL,
     stop("object must be a gls_fit, gls_general_fit, or gls_study_fit.",
          call. = FALSE)
   }
-  object <- gls_load_draws(object)
   if (inherits(object, "gls_study_fit")) {
     control <- .gls_study_validate_control(control)
-    out <- .gls_study_convergence(object, object$signal, control)
+    out <- .gls_study_convergence(gls_load_draws(object), object$signal, control)
     out$Converged <- out$PassRhat & out$PassESS
     return(out)
   }
   if (inherits(object, "gls_general_fit")) {
     control <- .validate_gls_control(control)
-    out <- basic_convergence(object, object$signal, control)
+    out <- basic_convergence(.gls_general_diagnostic_view(object), object$signal, control)
     out$Converged <- out$PassRhat & out$PassESS
     return(out)
   }
@@ -583,7 +582,7 @@ gls_diagnostics <- function(object, truth_pairs = NULL,
   if (!all(c("target", "source") %in% names(truth_pairs))) {
     stop("truth_pairs must contain target and source columns.", call. = FALSE)
   }
-  diagnose_fit(object, object$signal, model_id, truth_pairs, control)
+  diagnose_fit(gls_load_draws(object), object$signal, model_id, truth_pairs, control)
 }
 
 #' Select a sparse GLS network with joint DSS
@@ -614,7 +613,7 @@ gls_dss <- function(object, validation_rows, control = object$control) {
     stop("validation_rows must be valid rows outside the training set.",
          call. = FALSE)
   }
-  object <- gls_load_draws(object)
+  if (!inherits(object, "gls_general_fit")) object <- gls_load_draws(object)
   ans <- if (inherits(object, "gls_study_fit")) {
     .gls_study_run_dss(
       object, object$X[object$train_rows, , drop = FALSE],

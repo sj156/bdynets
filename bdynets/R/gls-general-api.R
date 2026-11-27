@@ -33,6 +33,19 @@ gls_all_pairs <- function(graph, control = gls_control()) {
 #' @param signal Numeric label used only to derive deterministic random seeds.
 #' @param label Human-readable fit label.
 #' @param control A [gls_control()] object.
+#' @param checkpoint_dir Optional persistent directory for this fit. When supplied,
+#'   each chain commits its state during warmup and sampling. Draw chunks are
+#'   saved under this directory unless a separate `draw_dir` is supplied.
+#' @param checkpoint_every Positive number of MCMC iterations between commits.
+#' @param resume Set to TRUE to continue this exact run, using the same inputs,
+#'   controls, software environment, chunk size and checkpoint directory.
+#'   The most recent committed iteration is restored separately for each chain.
+#' @param max_workers Optional positive integer limiting concurrent chains.
+#'   With parallel chains enabled, workers are capped by this value, the chain
+#'   count and the detected physical core count. NULL uses the available cores.
+#'   Setting the cap to one runs all chains sequentially.
+#' @param draw_dir Optional parent directory for per-chain draw chunks. Draws
+#'   stay in memory when both this argument and `checkpoint_dir` are NULL.
 #' @inheritParams gls_fit
 #' @return A `gls_general_fit` object with frozen inputs and posterior draws or
 #'   a disk draw index. Use [gls_load_draws()] to access the full arrays.
@@ -42,15 +55,24 @@ gls_all_pairs <- function(graph, control = gls_control()) {
 #'   Unix uses forked workers. Each chain records its worker process ID.
 #'   With `affinity_model = "graph_laplace"`, the fit also retains the
 #'   candidate-aligned `affinity_features` and posterior `chi` draws.
+#'   Checkpointing uses an exclusive operating-system lock per run and per
+#'   chain. Completed chains are reused. After interruption, chunks beyond
+#'   the last commit are regenerated. Use a filesystem supporting exclusive
+#'   locks and same-directory renames, such as a local SSD.
 #' @export
 gls_fit_general <- function(
     Y, graph, covariates, train_rows = seq_len(nrow(Y)), pre_history = NULL,
     pairs = NULL, means = NULL, signal = 0,
     label = "GLS, all ordered pairs", control = gls_control(),
-    draw_dir = NULL, chunk_size = 100L) {
+    draw_dir = NULL, chunk_size = 100L, checkpoint_dir = NULL,
+    checkpoint_every = 100L, resume = FALSE, max_workers = NULL) {
   Y <- .validate_count_matrix(Y)
   graph <- .validate_gls_graph(graph)
   control <- .validate_gls_control(control)
+  if (!is.null(max_workers) && (!is.numeric(max_workers) || length(max_workers) != 1L ||
+      !is.finite(max_workers) || max_workers < 1 || max_workers > .Machine$integer.max ||
+      max_workers != floor(max_workers)))
+    stop("max_workers must be NULL or a positive integer.", call. = FALSE)
   if (identical(control$scale_move_method, "slice"))
     stop("Use the archived pilot package to refit with the retired general GLS slice update.",
       call. = FALSE)
@@ -103,11 +125,24 @@ gls_fit_general <- function(
   if (length(means) != ncol(Y) || any(!is.finite(means)) || any(means <= 0)) {
     stop("means must contain one positive finite value per series.", call. = FALSE)
   }
-  draw_store <- .gls_prepare_draw_store(draw_dir, chunk_size)
+  if (!is.logical(resume) || length(resume) != 1L || is.na(resume))
+    stop("resume must be TRUE or FALSE.", call. = FALSE)
+  if (is.null(checkpoint_dir)) {
+    if (resume) stop("resume requires checkpoint_dir.", call. = FALSE)
+    draw_store <- .gls_prepare_draw_store(draw_dir, chunk_size)
+  } else {
+    checkpoint_dir <- .gls_checkpoint_directory(checkpoint_dir, checkpoint_every)
+    lock <- .gls_checkpoint_lock(file.path(checkpoint_dir, "run.lock"))
+    on.exit(filelock::unlock(lock), add = TRUE)
+    draw_store <- .gls_checkpoint_store(checkpoint_dir, draw_dir, chunk_size,
+      checkpoint_every, resume, list(Y = Y, graph = graph, covariates = covariates,
+        train_rows = train_rows, pre_history = pre_history, pairs = pairs,
+        means = means, signal = signal, control = control))
+  }
   fit <- fit_general_gls(
     Y[train_rows, , drop = FALSE], X[train_rows, , drop = FALSE],
     covariates[train_rows, , drop = FALSE], pairs, means, signal, control,
-    draw_store = draw_store, affinity_features = affinity_features
+    draw_store = draw_store, affinity_features = affinity_features, max_workers = max_workers
   )
   fit$affinity_features <- affinity_features
   fit$label <- label
@@ -155,7 +190,7 @@ predict.gls_general_fit <- function(
          call. = FALSE)
   }
   ans <- predict_general_gls(
-    gls_load_draws(object), object$X, object$covariates, object$Y, rows,
+    object, object$X, object$covariates, object$Y, rows,
     conditioning_rows, d, label, object$signal, control
   )
   ans$rows <- rows
@@ -176,18 +211,31 @@ print.gls_general_fit <- function(x, ...) {
   invisible(x)
 }
 
+.gls_general_diagnostic_view <- function(fit) {
+  if (is.null(fit$draw_store)) return(fit)
+  fields <- c("B", "discount", "tau", "network_rms", "alpha", "gamma", "amplitude", "theta_average")
+  if (identical(fit$control$affinity_model, "graph_laplace")) fields <- c(fields, "chi")
+  chains <- .gls_general_chain_ids(fit)
+  view <- .gls_general_draw_fields(fit, seq_along(chains), fields)
+  view$chain_id <- chains
+  view$pairs <- fit$pairs
+  view$control <- fit$control
+  view
+}
+
 #' @export
 summary.gls_general_fit <- function(object, ...) {
-  object <- gls_load_draws(object)
-  diagnostics <- gls_diagnostics(object)
+  view <- .gls_general_diagnostic_view(object)
+  diagnostics <- basic_convergence(view, object$signal, object$control)
+  diagnostics$Converged <- diagnostics$PassRhat & diagnostics$PassESS
   structure(list(
     label = object$label, series = ncol(object$Y),
     covariates = ncol(object$covariates),
     training_times = length(object$train_rows),
-    candidate_pairs = nrow(object$pairs), posterior_draws = nrow(object$alpha),
+    candidate_pairs = nrow(object$pairs), posterior_draws = length(view$chain_id),
     elapsed = object$elapsed,
     posterior_inclusion_probability = colMeans(
-      object$amplitude > object$control$delta_A
+      view$amplitude > object$control$delta_A
     ),
     all_converged = all(diagnostics$Converged[diagnostics$ParameterType != "tau_fixed"]),
     diagnostics = diagnostics

@@ -174,27 +174,35 @@ make_directed_grid <- function(side) {
     edges$y <- nodes$row[edges$from]
     edges$xend <- nodes$col[edges$to]
     edges$yend <- nodes$row[edges$to]
-    k <- nrow(edges)
-    A <- matrix(0, k, k, dimnames = list(target = edges$name, source = edges$name))
-    for (a in seq_len(k)) for (b in seq_len(k)) {
-        if (edges$to[b] == edges$from[a] && edges$from[b] != edges$to[a]) 
-            A[a, b] <- 1
-    }
-    W <- A
-    rs <- rowSums(W)
-    W[rs > 0, ] <- W[rs > 0, , drop = FALSE]/rs[rs > 0]
-    list(nodes = nodes, edges = edges, A = A, W = W)
+    c(list(nodes = nodes), gls_graph(edges, exclude_uturns = TRUE))
 }
 
 hop_matrix <- function(A) {
     k <- nrow(A)
     out <- matrix(Inf, k, k)
     diag(out) <- 0
-    reach <- diag(k)
-    for (d in seq_len(k - 1L)) {
-        reach <- reach %*% A
-        new <- reach > 0 & !is.finite(out)
-        out[new] <- d
+    # Historically some custom fits supplied signed matrices. Preserve their
+    # positive net path-weight convention; a physical adjacency is nonnegative.
+    if (any(A < 0)) {
+        reach <- diag(k)
+        for (d in seq_len(k - 1L)) {
+            reach <- reach %*% A
+            out[reach > 0 & !is.finite(out)] <- d
+        }
+        return(out)
+    }
+    successors <- lapply(seq_len(k), function(source) which(A[, source] > 0))
+    for (source in seq_len(k)) {
+        distances <- out[, source]
+        frontier <- source
+        depth <- 0L
+        while (length(frontier)) {
+            candidates <- unique(unlist(successors[frontier], use.names = FALSE))
+            frontier <- candidates[is.infinite(distances[candidates])]
+            depth <- depth + 1L
+            distances[frontier] <- depth
+        }
+        out[, source] <- distances
     }
     out
 }

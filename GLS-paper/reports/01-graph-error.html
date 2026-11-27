@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>When the supplied graph contains wrong links</title>
+<style>
+body{max-width:58rem;margin:3rem auto;padding:0 1.5rem 4rem;color:#233339;background:#fff;font:17px/1.55 system-ui,sans-serif}
+h1,h2{line-height:1.18;color:#123b47}h1{font-size:2em}h2{font-size:1.35em;margin-top:2em}
+table{border-collapse:collapse;font-size:.9em;display:block;overflow:auto}th,td{padding:.4em .65em;border-bottom:1px solid #ccd5d5}
+th{background:#edf3f2}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f3f5f4;padding:1em}
+img{max-width:100%;height:auto}a{color:#005c70}caption{font-weight:bold;text-align:left;margin:.6em 0}
+</style></head>
+<body><main><h1>When the supplied graph contains wrong links</h1><p>The
+published PNAR control uses a known network average and a separate own
+lag. The experiment measures forecast error on the same count panel as
+increasing fractions of the supplied directed edges are replaced. The
+full and restricted GLS fits show the effect of admitting predictors
+outside the supplied graph.</p>
+<p><strong>Run scope.</strong> Profile <strong>smoke</strong>, 6
+generated scenario(s), 1 distinct replicate ID(s). This execution check
+uses reduced dimensions or sampling budgets. Its scores cannot establish
+method rankings.</p>
+<div id="forecast-comparison" class="section level2">
+<h2>Forecast comparison</h2>
+<p>The table gives method minus pooled PNAR on mean count deviance.
+Negative differences favor the listed method. Rewiring within a
+replication changes the graph supplied to the methods and preserves the
+generated counts. With one matched dataset the Monte Carlo standard
+error is unavailable.</p>
+<table>
+<caption>Mean paired difference ± Monte Carlo SE when estimable (matched
+panels)</caption>
+<colgroup>
+<col width="24%" />
+<col width="11%" />
+<col width="12%" />
+<col width="12%" />
+<col width="11%" />
+<col width="12%" />
+<col width="12%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th align="left">method</th>
+<th align="left">T100-error0</th>
+<th align="left">T100-error25</th>
+<th align="left">T100-error50</th>
+<th align="left">T200-error0</th>
+<th align="left">T200-error25</th>
+<th align="left">T200-error50</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">gls</td>
+<td align="left">0.091 (1)</td>
+<td align="left">0.092 (1)</td>
+<td align="left">0.110 (1)</td>
+<td align="left">0.088 (1)</td>
+<td align="left">0.089 (1)</td>
+<td align="left">0.078 (1)</td>
+</tr>
+<tr class="even">
+<td align="left">gls-dss</td>
+<td align="left">0.074 (1)</td>
+<td align="left">0.077 (1)</td>
+<td align="left">0.100 (1)</td>
+<td align="left">0.066 (1)</td>
+<td align="left">0.069 (1)</td>
+<td align="left">0.069 (1)</td>
+</tr>
+<tr class="odd">
+<td align="left">gls-flat</td>
+<td align="left">0.124 (1)</td>
+<td align="left">0.127 (1)</td>
+<td align="left">0.116 (1)</td>
+<td align="left">0.071 (1)</td>
+<td align="left">0.073 (1)</td>
+<td align="left">0.064 (1)</td>
+</tr>
+<tr class="even">
+<td align="left">gls-flat-dss</td>
+<td align="left">0.091 (1)</td>
+<td align="left">0.094 (1)</td>
+<td align="left">0.083 (1)</td>
+<td align="left">0.085 (1)</td>
+<td align="left">0.087 (1)</td>
+<td align="left">0.079 (1)</td>
+</tr>
+<tr class="odd">
+<td align="left">gls-flat-tolerance</td>
+<td align="left">0.091 (1)</td>
+<td align="left">0.094 (1)</td>
+<td align="left">0.083 (1)</td>
+<td align="left">0.085 (1)</td>
+<td align="left">0.087 (1)</td>
+<td align="left">0.079 (1)</td>
+</tr>
+<tr class="even">
+<td align="left">gls-restricted</td>
+<td align="left">0.137 (1)</td>
+<td align="left">0.129 (1)</td>
+<td align="left">0.118 (1)</td>
+<td align="left">0.020 (1)</td>
+<td align="left">0.059 (1)</td>
+<td align="left">0.005 (1)</td>
+</tr>
+<tr class="odd">
+<td align="left">gls-restricted-dss</td>
+<td align="left">0.142 (1)</td>
+<td align="left">0.134 (1)</td>
+<td align="left">0.107 (1)</td>
+<td align="left">0.023 (1)</td>
+<td align="left">0.063 (1)</td>
+<td align="left">0.020 (1)</td>
+</tr>
+<tr class="even">
+<td align="left">gls-restricted-tolerance</td>
+<td align="left">0.142 (1)</td>
+<td align="left">0.134 (1)</td>
+<td align="left">0.107 (1)</td>
+<td align="left">0.023 (1)</td>
+<td align="left">0.063 (1)</td>
+<td align="left">0.020 (1)</td>
+</tr>
+<tr class="odd">
+<td align="left">gls-tolerance</td>
+<td align="left">0.074 (1)</td>
+<td align="left">0.077 (1)</td>
+<td align="left">0.100 (1)</td>
+<td align="left">0.066 (1)</td>
+<td align="left">0.069 (1)</td>
+<td align="left">0.078 (1)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="supplied-graph-error" class="section level2">
+<h2>Supplied graph error</h2>
+<table>
+<thead>
+<tr class="header">
+<th align="left">scenario</th>
+<th align="right">replicate</th>
+<th align="right">graph_error</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">T100-error0</td>
+<td align="right">1</td>
+<td align="right">0.000</td>
+</tr>
+<tr class="even">
+<td align="left">T100-error25</td>
+<td align="right">1</td>
+<td align="right">0.222</td>
+</tr>
+<tr class="odd">
+<td align="left">T100-error50</td>
+<td align="right">1</td>
+<td align="right">0.500</td>
+</tr>
+<tr class="even">
+<td align="left">T200-error0</td>
+<td align="right">1</td>
+<td align="right">0.000</td>
+</tr>
+<tr class="odd">
+<td align="left">T200-error25</td>
+<td align="right">1</td>
+<td align="right">0.222</td>
+</tr>
+<tr class="even">
+<td align="left">T200-error50</td>
+<td align="right">1</td>
+<td align="right">0.500</td>
+</tr>
+</tbody>
+</table>
+<p>Recall below is the average fraction of displaced true links
+recovered by each fit. The restricted fit can select only links in the
+supplied graph.</p>
+<table>
+<colgroup>
+<col width="18%" />
+<col width="19%" />
+<col width="26%" />
+<col width="35%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th align="left">scenario</th>
+<th align="right">value.gls-dss</th>
+<th align="right">value.gls-flat-dss</th>
+<th align="right">value.gls-restricted-dss</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">T100-error25</td>
+<td align="right">0</td>
+<td align="right">0</td>
+<td align="right">0</td>
+</tr>
+<tr class="even">
+<td align="left">T100-error50</td>
+<td align="right">0</td>
+<td align="right">0</td>
+<td align="right">0</td>
+</tr>
+<tr class="odd">
+<td align="left">T200-error25</td>
+<td align="right">0</td>
+<td align="right">0</td>
+<td align="right">0</td>
+</tr>
+<tr class="even">
+<td align="left">T200-error50</td>
+<td align="right">0</td>
+<td align="right">0</td>
+<td align="right">0</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="method-completion" class="section level2">
+<h2>Method completion</h2>
+<table>
+<caption>Method jobs by completion status</caption>
+<thead>
+<tr class="header">
+<th align="left"></th>
+<th align="right">complete</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">gls</td>
+<td align="right">6</td>
+</tr>
+<tr class="even">
+<td align="left">gls-flat</td>
+<td align="right">6</td>
+</tr>
+<tr class="odd">
+<td align="left">gls-restricted</td>
+<td align="right">6</td>
+</tr>
+<tr class="even">
+<td align="left">pooled-pnar</td>
+<td align="right">6</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="reproduce-from-the-repository-root" class="section level2">
+<h2>Reproduce from the repository root</h2>
+<p>Set <code>RESULTS</code> to the external results directory. The
+generator stores a panel and its identity. The fit driver reads the
+panel and records a job by method. The comparison driver collects
+scores, numbers of matched replicates, Monte Carlo errors, and
+incomplete jobs. Select another cell with <code>--scenario</code> or an
+individual fit with <code>--method</code>.</p>
+<pre class="sh"><code>CASE=GLS-paper/experiments/01-graph-error
+Rscript &quot;$CASE/generate.R&quot; --output=&quot;$RESULTS&quot; --profile=smoke --scenario=T100-error25 --replicate=1
+Rscript &quot;$CASE/fit.R&quot; --output=&quot;$RESULTS&quot; --profile=smoke --scenario=T100-error25 --replicate=1 --method=all
+Rscript &quot;$CASE/compare.R&quot; --output=&quot;$RESULTS&quot; --profile=smoke
+Rscript GLS-paper/reports/render.R 01-graph-error &quot;$RESULTS/01-graph-error&quot;</code></pre>
+<p>The full results directory contains the individual job statuses, all
+metrics in <code>comparison.csv</code>, and replicate-level paired
+differences in <code>paired-replicates.csv</code>. Rendering reads those
+saved results.</p>
+</div></main></body></html>

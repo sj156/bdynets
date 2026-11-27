@@ -25,7 +25,9 @@ complete simulation smoke run, follow the [GLS launcher instructions](GLS-paper/
 | Task | Entry point | Guide |
 | --- | --- | --- |
 | Fit GLS to observed network counts | `gls_fit_general()`, `gls_dss()`, `predict()` | [Prepared-data application and Divvy replication requirements](GLS-paper/README.md) |
-| Run Simulation 1 | `GLS-paper/run_simulation.R` generates the directed-grid data, fits GLS and runs the PNAR comparisons | [Study launcher](GLS-paper/README.md#directed-grid-simulation) · [Model and benchmark settings](bdynets/GLS.md) |
+| Run the three replicated GLS experiments | Graph error, sparse dynamic grid and upstream surges, with one generator, method-fit and comparison driver per case | [Experiment guide](GLS-paper/experiments/README.md) · [Five executive reports and walkthroughs](GLS-paper/README.md#cases-for-collaborator-review) |
+| Prepare the GLS applications | Divvy origin–destination departures and PeMS US-101 detector flow, from raw data to model comparison | [Application guide](GLS-paper/README.md#run-the-applications) |
+| Run the original Simulation 1 | `GLS-paper/run_simulation.R` generates the directed-grid data, fits GLS and runs the PNAR comparisons | [Study launcher](GLS-paper/README.md#directed-grid-simulation) · [Model and benchmark settings](bdynets/GLS.md) |
 | Fit graph-informed mixtures | `gmde_fit()` for static Gaussian panels, `gmde_dynamic_fit()` for dynamic counts | [Package example](bdynets/README.md#gaussianstatic-graphmode-example) · [Eight-method study and results](graphMoDE/README.md) |
 | Draw prepared Flow, Speed and OD maps | `traffic_flow_map()`, `traffic_speed_map()`, `traffic_od_map()` | [Five examples](examples/README.md) · [Data sources](examples/DATA-SOURCES.md) · [Input format](bdynets/inst/INPUT-FORMAT.md) |
 | Reproduce the Poisson latent-position study | `lpr_*` functions and study scripts | [GP-LPR runs and figure reproduction](GP-LPR/README.md) |

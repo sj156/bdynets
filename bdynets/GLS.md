@@ -1,7 +1,17 @@
 # GLS: portable fitting and benchmark workflow
 
 Use the [paper launchers](../GLS-paper/README.md) for Linux installation,
-a self-contained directed-grid simulation and fitting a prepared data panel.
+the three replicated experiments, raw-data applications and five executable case reports.
+The package exposes reusable graph, chronological split, PNAR, static GLS, Poisson lasso,
+sa-PGSS and forecast-summary routines. General GLS supports per-chain checkpoints and
+selective reads from disk-backed draws.
+
+On a fixed 224-series network with 584 directed connections, the median time to
+compute all directed hop distances fell from 0.827 s to 0.010 s across five local
+runs, with identical distances. In a second fixture with 320 retained draws,
+prediction requested eight draws and read eight of 80 chunks. Its additional
+peak R vector heap fell from 3.62 MB to 0.81 MB, with identical fixed-seed forecasts.
+These measurements cover graph construction and prediction on the indicated fixtures.
 The same guide identifies the separate archive for the Divvy 970-relation result.
 
 - **GLS** fits a continuous posterior over the candidate relationships.
@@ -19,7 +29,7 @@ The current repository separates package implementation and paper launchers:
 ```text
 bdynets/
   bdynets/                          installable package, GLS module and Simulation 1 DGP
-  GLS-paper/                        study and prepared-data application launchers
+  GLS-paper/                        experiment drivers, application preparation and executive reports
 
 simulation1_GLS_directed_grid/      optional legacy external benchmark project
   run_simulation.R

@@ -16,7 +16,11 @@ gls_fit_general(
   label = "GLS, all ordered pairs",
   control = gls_control(),
   draw_dir = NULL,
-  chunk_size = 100L
+  chunk_size = 100L,
+  checkpoint_dir = NULL,
+  checkpoint_every = 100L,
+  resume = FALSE,
+  max_workers = NULL
 )
 }
 \arguments{
@@ -42,10 +46,25 @@ for all-zero training series; observations are not changed.}
 
 \item{control}{A \code{\link[=gls_control]{gls_control()}} object.}
 
-\item{draw_dir}{Optional directory for posterior draw storage. Each fit
-creates a separate run subdirectory. With \code{NULL}, draws remain in RAM.}
+\item{draw_dir}{Optional parent directory for per-chain draw chunks. Draws
+stay in memory when both this argument and \code{checkpoint_dir} are NULL.}
 
 \item{chunk_size}{Maximum retained draws per chain per disk chunk.}
+
+\item{checkpoint_dir}{Optional persistent directory for this fit. When supplied,
+each chain commits its state during warmup and sampling. Draw chunks are
+saved under this directory unless a separate \code{draw_dir} is supplied.}
+
+\item{checkpoint_every}{Positive number of MCMC iterations between commits.}
+
+\item{resume}{Set to TRUE to continue this exact run, using the same inputs,
+controls, software environment, chunk size and checkpoint directory.
+The most recent committed iteration is restored separately for each chain.}
+
+\item{max_workers}{Optional positive integer limiting concurrent chains.
+With parallel chains enabled, workers are capped by this value, the chain
+count and the detected physical core count. NULL uses the available cores.
+Setting the cap to one runs all chains sequentially.}
 }
 \value{
 A \code{gls_general_fit} object with frozen inputs and posterior draws or
@@ -64,4 +83,8 @@ at least three physical cores are detected. Windows uses independent socket
 workers. Unix uses forked workers. Each chain records its worker process ID.
 With \code{affinity_model = "graph_laplace"}, the fit also retains the
 candidate-aligned \code{affinity_features} and posterior \code{chi} draws.
+Checkpointing uses an exclusive operating-system lock per run and per
+chain. Completed chains are reused. After interruption, chunks beyond
+the last commit are regenerated. Use a filesystem supporting exclusive
+locks and same-directory renames, such as a local SSD.
 }

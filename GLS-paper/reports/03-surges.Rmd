@@ -1,0 +1,71 @@
+---
+title: "Downstream forecasts after an upstream surge"
+params:
+  results: ""
+output:
+  html_document:
+    template: report-template.html
+    theme: null
+    highlight: null
+    mathjax: null
+    self_contained: true
+---
+
+The source experiences repeated unannounced surges. The target may have independent demand changes and may respond to the previous observed source count. Its first usable downstream forecast follows the observed upstream onset by one bin.
+
+```{r setup, include=FALSE}
+source("report.R", local = TRUE)
+x <- read_experiment(params$results, "03-surges")
+```
+
+**Run scope.** Profile **`r x$config$profile`**, `r length(unique(x$jobs$scenario))` generated scenario(s), `r length(unique(x$jobs$replicate))` distinct replicate ID(s). `r if (x$config$profile == "smoke") "This execution check uses reduced dimensions or sampling budgets. Its scores cannot establish method rankings." else "Interpret comparisons using independent replicated panels and their paired Monte Carlo uncertainty."`
+
+## Forecast comparison
+
+The table gives method minus own-history GLS on target count MAE in the first bin after an upstream onset. Negative differences indicate a smaller error after the source becomes observable. With one matched dataset the Monte Carlo standard error is unavailable.
+
+```{r primary, echo=FALSE}
+primary_report(x, "gls-own", "first", "mae")
+```
+
+## Timing of the downstream response
+
+The table compares mean target-count error at the first informative bin, during the early and late response, and at quiet times in the cell with both local demand changes and transmission. Each panel receives equal weight within its window. The result files also give scores for disjoint source-only and local-only events.
+
+```{r event-windows, echo=FALSE}
+events <- subset(x$scores, scenario == "local-on-transmit-on" & metric == "mae" &
+                   window %in% c("first", "early", "late", "quiet") &
+                   method %in% c("gls-own", "gls", "gls-dss", "pnar", "sa-pgss", "graph-wavenet") &
+                   is.finite(value))
+if (nrow(events)) {
+  scores <- aggregate(value ~ method + window, events, mean)
+  table <- reshape(scores, idvar="method", timevar="window", direction="wide")
+  names(table) <- sub("^value[.]", "", names(table))
+  knitr::kable(table, digits=3, row.names=FALSE)
+}
+```
+
+## Method completion
+
+```{r status, echo=FALSE}
+report_status(x)
+```
+
+```{r problems, echo=FALSE, results='asis'}
+problems <- subset(x$jobs, status != "complete" & status != "pending")
+if (nrow(problems)) print(knitr::kable(problems[c("scenario", "replicate", "method", "status", "detail")]))
+```
+
+## Reproduce from the repository root
+
+Set `RESULTS` to the external results directory. The generator stores a panel and its identity. The fit driver reads the panel and records a job by method. The comparison driver collects scores, numbers of matched replicates, Monte Carlo errors, and incomplete jobs. Select another cell with `--scenario` or an individual fit with `--method`.
+
+```sh
+CASE=GLS-paper/experiments/03-surges
+Rscript "$CASE/generate.R" --output="$RESULTS" --profile=smoke --scenario=local-on-transmit-on --replicate=1
+Rscript "$CASE/fit.R" --output="$RESULTS" --profile=smoke --scenario=local-on-transmit-on --replicate=1 --method=all
+Rscript "$CASE/compare.R" --output="$RESULTS" --profile=smoke
+Rscript GLS-paper/reports/render.R 03-surges "$RESULTS/03-surges"
+```
+
+The full results directory contains the individual job statuses, all metrics in `comparison.csv`, and replicate-level paired differences in `paired-replicates.csv`. Rendering reads those saved results.

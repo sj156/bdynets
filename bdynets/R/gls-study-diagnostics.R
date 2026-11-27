@@ -132,9 +132,10 @@
     rows[[length(rows) + 1L]] <- add(fit$amplitude[, j], "trajectory_amplitude",
                                       paste0("A[", fit$pairs$pair[j], "]"))
   out <- do.call(rbind, rows)
-  out$PassRhat <- is.na(out$SplitRhat) | (is.finite(out$SplitRhat) &
+  fixed <- out$ParameterType == "tau_fixed"
+  out$PassRhat <- fixed | (is.finite(out$SplitRhat) &
     out$SplitRhat <= cfg$mcmc_rhat_threshold)
-  out$PassESS <- is.na(out$ESS) | (is.finite(out$ESS) &
+  out$PassESS <- fixed | (is.finite(out$ESS) &
     out$ESS >= cfg$mcmc_ess_threshold)
   out
 }

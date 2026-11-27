@@ -1,0 +1,73 @@
+---
+title: "When the supplied graph contains wrong links"
+params:
+  results: ""
+output:
+  html_document:
+    template: report-template.html
+    theme: null
+    highlight: null
+    mathjax: null
+    self_contained: true
+---
+
+The published PNAR control uses a known network average and a separate own lag. The experiment measures forecast error on the same count panel as increasing fractions of the supplied directed edges are replaced. The full and restricted GLS fits show the effect of admitting predictors outside the supplied graph.
+
+```{r setup, include=FALSE}
+source("report.R", local = TRUE)
+x <- read_experiment(params$results, "01-graph-error")
+```
+
+**Run scope.** Profile **`r x$config$profile`**, `r length(unique(x$jobs$scenario))` generated scenario(s), `r length(unique(x$jobs$replicate))` distinct replicate ID(s). `r if (x$config$profile == "smoke") "This execution check uses reduced dimensions or sampling budgets. Its scores cannot establish method rankings." else "Interpret comparisons using independent replicated panels and their paired Monte Carlo uncertainty."`
+
+## Forecast comparison
+
+The table gives method minus pooled PNAR on mean count deviance. Negative differences favor the listed method. Rewiring within a replication changes the graph supplied to the methods and preserves the generated counts. With one matched dataset the Monte Carlo standard error is unavailable.
+
+```{r primary, echo=FALSE}
+primary_report(x, "pooled-pnar", "all", "deviance")
+```
+
+## Supplied graph error
+
+```{r graph-error, echo=FALSE}
+graph <- unique(x$jobs[is.finite(x$jobs$graph_error), c("scenario","replicate","graph_error")])
+knitr::kable(graph, digits = 3, row.names = FALSE)
+```
+
+Recall below is the average fraction of displaced true links recovered by each fit. The restricted fit can select only links in the supplied graph.
+
+```{r recall, echo=FALSE}
+removed <- subset(x$scores, window == "pairs-removed" & metric == "recall" &
+                    method %in% c("gls-dss", "gls-flat-dss", "gls-restricted-dss") & is.finite(value))
+if (nrow(removed)) {
+  by_graph <- aggregate(value ~ scenario + method, removed, mean)
+  knitr::kable(reshape(by_graph, idvar = "scenario", timevar = "method", direction = "wide"),
+               digits = 3, row.names = FALSE)
+}
+```
+
+## Method completion
+
+```{r status, echo=FALSE}
+report_status(x)
+```
+
+```{r problems, echo=FALSE, results='asis'}
+problems <- subset(x$jobs, status != "complete" & status != "pending")
+if (nrow(problems)) print(knitr::kable(problems[c("scenario", "replicate", "method", "status", "detail")]))
+```
+
+## Reproduce from the repository root
+
+Set `RESULTS` to the external results directory. The generator stores a panel and its identity. The fit driver reads the panel and records a job by method. The comparison driver collects scores, numbers of matched replicates, Monte Carlo errors, and incomplete jobs. Select another cell with `--scenario` or an individual fit with `--method`.
+
+```sh
+CASE=GLS-paper/experiments/01-graph-error
+Rscript "$CASE/generate.R" --output="$RESULTS" --profile=smoke --scenario=T100-error25 --replicate=1
+Rscript "$CASE/fit.R" --output="$RESULTS" --profile=smoke --scenario=T100-error25 --replicate=1 --method=all
+Rscript "$CASE/compare.R" --output="$RESULTS" --profile=smoke
+Rscript GLS-paper/reports/render.R 01-graph-error "$RESULTS/01-graph-error"
+```
+
+The full results directory contains the individual job statuses, all metrics in `comparison.csv`, and replicate-level paired differences in `paired-replicates.csv`. Rendering reads those saved results.
