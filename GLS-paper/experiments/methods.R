@@ -1,11 +1,3 @@
-scaled_lags <- function(panel) {
-  x <- log1p(rbind(tail(panel$pre_history,1), head(panel$Y,-1)))
-  z <- x[panel$split$train,,drop=FALSE]
-  s <- apply(z,2,sd)
-  s[!is.finite(s) | s<1e-8] <- 1
-  list(X=sweep(sweep(x,2,colMeans(z)),2,s,"/"), scale=s)
-}
-
 # Convex Poisson lasso fitted jointly in matrix notation. Intercepts and
 # seasonal terms are unpenalized, and the tuning loss uses only validation.
 poisson_lasso <- function(panel, X, smoke) {
@@ -28,38 +20,11 @@ poisson_lasso <- function(panel, X, smoke) {
                       chosen=seq_along(valid)==best))
 }
 
-mixture_forecast <- function(lambda, observed, seed, draws=NULL) {
-  set.seed(seed)
-  if (is.null(draws)) draws <- array(rpois(length(lambda),lambda),dim(lambda))
-  pred <- list(lambda=lambda,y=draws,label="GLS",rows=seq_len(nrow(observed)))
-  summary <- bdynets::gls_forecast_summary(pred, observed)
-  shape <- function(x) matrix(x,nrow(observed),ncol(observed))
-  list(mean=shape(summary$mean_intensity),logprob=shape(summary$log_score),
-       lower=shape(summary$count_lower),upper=shape(summary$count_upper))
-}
-
 forecast_metrics <- function(panel, fc) {
   rows <- panel$split$test
-  y <- panel$Y[rows,,drop=FALSE]
-  mu <- fc$mean
-  stopifnot(identical(dim(mu),dim(y)),all(is.finite(mu)),all(mu>=0))
-  # For a true zero forecast, a positive observation has infinite deviance.
-  d <- 2*(ifelse(y==0,0,y*log(y/mu)) - y + mu)
-  err <- list(mae=abs(mu-y),deviance=d,
-              intensity_rmse=(mu-panel$lambda[rows,,drop=FALSE])^2)
-  if (!is.null(fc$logprob)) err$log_score <- fc$logprob
-  if (!is.null(fc$lower) && !is.null(fc$upper)) {
-    err$coverage95 <- (y >= fc$lower & y <= fc$upper)
-    err$width95 <- fc$upper-fc$lower
-  }
-  windows <- c(list(all=matrix(TRUE,nrow(y),ncol(y))),
-               lapply(panel$windows,function(x) x[rows,,drop=FALSE]))
-  do.call(rbind,lapply(names(windows),function(w) {
-    mask <- windows[[w]]
-    v <- vapply(err,function(e) if(any(mask)) mean(e[mask]) else NA_real_,numeric(1))
-    v["intensity_rmse"] <- sqrt(v["intensity_rmse"])
-    data.frame(window=w,metric=names(v),value=unname(v),cells=sum(mask))
-  }))
+  windows <- lapply(panel$windows, function(mask) mask[rows, , drop = FALSE])
+  bdynets::gls_forecast_metrics(panel$Y[rows, , drop = FALSE], fc,
+    intensity = panel$lambda[rows, , drop = FALSE], windows = windows)
 }
 
 coefficient_metrics <- function(panel, pairs, trajectory, selected, scale) {
@@ -76,9 +41,6 @@ coefficient_metrics <- function(panel, pairs, trajectory, selected, scale) {
   estimate <- matrix(0,length(tr),nrow(full))
   estimate[,ids] <- trajectory
   sel <- rep(FALSE,nrow(full)); sel[ids] <- selected
-  amp <- sqrt(colMeans(truth^2))
-  fitted_amp <- sqrt(colMeans(estimate^2))
-  active <- amp>0
   cats <- list(all=rep(TRUE,nrow(full)),cross=full$source!=full$target)
   cats <- c(cats,split(seq_len(nrow(full)),full$pair_class))
   cats <- lapply(cats,function(x) if(is.logical(x)) x else seq_len(nrow(full)) %in% x)
@@ -91,15 +53,8 @@ coefficient_metrics <- function(panel, pairs, trajectory, selected, scale) {
     cats$reverse <- t(panel$graph$A)[cells]==1
     cats$unaffected <- !full$target %in% c(panel$upstream,panel$downstream)
   }
-  safe <- function(x) if(length(x)) mean(x) else NA_real_
-  do.call(rbind,lapply(names(cats),function(w){
-    ix <- cats[[w]]
-    v <- c(trajectory_rmse=sqrt(safe((estimate[,ix,drop=FALSE]-truth[,ix,drop=FALSE])^2)),
-       active_amplitude_bias=safe((fitted_amp-amp)[ix & active]),
-       precision=safe(active[ix & sel]),recall=safe(sel[ix & active]),
-       selection_rate=safe(sel[ix]),selected=sum(sel[ix]))
-    data.frame(window=paste0("pairs-",w),metric=names(v),value=unname(v),cells=sum(ix))
-  }))
+  names(cats) <- paste0("pairs-", names(cats))
+  bdynets::gls_trajectory_metrics(truth, estimate, sel, cats)
 }
 
 fit_experiment_method <- function(method,panel,profile,seed,dir,cores,checkpoint_every,
@@ -115,7 +70,7 @@ fit_experiment_method <- function(method,panel,profile,seed,dir,cores,checkpoint
     p <- external_forecast(method,panel,profile,seed,dir)
     return(setNames(list(forecast_metrics(panel,p)),method))
   }
-  scaled <- scaled_lags(panel)
+  scaled <- bdynets::gls_lag_predictors(panel$Y, train, panel$pre_history)
   pairs <- bdynets::gls_all_pairs(panel$graph)
   if (method=="poisson-lasso") {
     f <- poisson_lasso(panel,scaled$X,profile=="smoke")
@@ -144,7 +99,7 @@ fit_experiment_method <- function(method,panel,profile,seed,dir,cores,checkpoint
       resume=resume && file.exists(file.path(dir,"checkpoint","run.rds")),
       chunk_size=chunk_size,cores=min(cores,physical))
     b <- colMeans(p$B)
-    fc <- mixture_forecast(p$lambda,observed,seed)
+    fc <- bdynets::gls_poisson_mixture_forecast(p$lambda, observed, seed = seed)
     select <- colMeans(abs(p$B)>control$delta_A)>.5
     out <- rbind(forecast_metrics(panel,fc),coefficient_metrics(panel,pairs,
       outer(rep(1,length(train)),b),select,scaled$scale))
@@ -197,7 +152,7 @@ fit_experiment_method <- function(method,panel,profile,seed,dir,cores,checkpoint
         p <- predict(fit,test,conditioning_rows=val,d=dss$multipliers[,i],
                      control=path_control,label="frozen support path")
         mu <- apply(p$lambda,1:2,mean)
-        mean(2*(ifelse(observed==0,0,observed*log(observed/mu))-observed+mu))
+        mean(bdynets::poisson_deviance(observed, mu))
       },numeric(1))
       dss$path$test_draws <- min(path_control$predictive_draws,
         control$n_chains*floor((control$n_iter-control$burn_mcmc)/control$thin))
@@ -205,7 +160,7 @@ fit_experiment_method <- function(method,panel,profile,seed,dir,cores,checkpoint
     decisions <- list(continuous=rep(1,nrow(pairs)),dss=dss$d,tolerance=dss$d_tolerance)
     forecasts <- lapply(decisions,function(d){
       pred <- predict(fit,test,conditioning_rows=val,d=d,label="paired test forecast")
-      fc <- mixture_forecast(pred$lambda,observed,seed,pred$y)
+      fc <- bdynets::gls_poisson_mixture_forecast(pred$lambda, observed, draws = pred$y)
       forecast_metrics(panel,fc)
     })
     saved <- list(identity=identity,trajectory=trajectory,marginal=marginal,decisions=decisions,

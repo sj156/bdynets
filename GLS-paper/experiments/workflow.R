@@ -1,32 +1,31 @@
 experiment_catalog <- list(
   `01-graph-error`=list(generator=graph_error_panel,ref="pooled-pnar",
     scenarios=c(outer(c("T100","T200"),c("error0","error25","error50"),paste,sep="-")),
-    methods=c("pooled-pnar","gls-restricted","gls","gls-flat")),
+    arms=list(competitors="pooled-pnar", gls=c("gls-restricted","gls","gls-flat"))),
   `02-sparse-grid`=list(generator=sparse_grid_panel,ref="poisson-lasso",
     scenarios=c("seasonal-null","local-static","local-dynamic","mixed-static",
                 "mixed-dynamic","mixed-dynamic-strong"),
-    methods=c("poisson-lasso","gls-static","gls","gls-flat")),
+    arms=list(competitors="poisson-lasso", gls=c("gls-static","gls","gls-flat"))),
   `03-surges`=list(generator=surge_panel,ref="gls-own",
     scenarios=c(outer(c("local-off","local-on"),c("transmit-off","transmit-on"),paste,sep="-")),
-    methods=c("gls-own","gls","pnar","sa-pgss","graph-wavenet"))
+    arms=list(gls=c("gls-own","gls"), competitors=c("pnar","sa-pgss","graph-wavenet")))
 )
+# The order also determines historical per-method RNG offsets.
+experiment_catalog <- lapply(experiment_catalog, function(study) {
+  study$methods <- unlist(study$arms, use.names = FALSE)
+  study
+})
 
 save_atomic <- function(x, path) {
-  tmp <- tempfile("pending-",dirname(path))
-  on.exit(unlink(tmp))
-  saveRDS(x,tmp)
-  if (!file.rename(tmp,path)) stop("Could not finalize ",path)
+  bdynets::bdynets_atomic_write(path, function(file) saveRDS(x,file))
 }
 write_table <- function(x, path) {
-  tmp <- tempfile("pending-",dirname(path))
-  on.exit(unlink(tmp))
-  write.csv(x,tmp,row.names=FALSE)
-  if (!file.rename(tmp,path)) stop("Could not finalize ",path)
+  bdynets::bdynets_atomic_write(path, function(file) utils::write.csv(x,file,row.names=FALSE))
 }
 cli_options <- function(args) {
   if (any(!grepl("^--[a-z-]+=.+" ,args))) stop("Options use --name=value")
   keys <- sub("^--([^=]+)=.*","\\1",args)
-  ok <- c("output","profile","replicate","scenario","method","cores","seed",
+  ok <- c("output","data-root","profile","replicate","scenario","method","cores","seed",
           "checkpoint-every","chunk-size","resume")
   if (anyDuplicated(keys)||!all(keys%in%ok)) stop("Invalid or duplicate option")
   setNames(sub("^[^=]+=","",args),keys)
@@ -65,6 +64,29 @@ experiment_runtime <- function() {
     rng=RNGkind(),packages=setNames(lapply(packages,fingerprint),packages))
 }
 
+# Inspect the two layout levels only; MCMC chunk directories can be large.
+replicate_directories <- function(root,scenarios) {
+  reps <- unlist(lapply(file.path(root,scenarios),function(dir)
+    list.dirs(dir,full.names=TRUE,recursive=FALSE)),use.names=FALSE)
+  if (!length(reps)) return(character())
+  reps[grepl("^rep-[0-9]+$",basename(reps))]
+}
+
+panel_records <- function(root,scenarios) {
+  paths <- file.path(replicate_directories(root,scenarios),"panel-info.rds")
+  paths[file.exists(paths)]
+}
+
+check_panel_info <- function(info_path,panel_path,case,scenario,replicate,seed,profile) {
+  info <- readRDS(info_path)
+  identity <- list(case=case,scenario=scenario,replicate=replicate,seed=seed,profile=profile)
+  if(!identical(info[names(identity)],identity))
+    stop("Saved panel belongs to a different study, condition, replicate, seed or profile: ",panel_path)
+  if(!file.exists(panel_path) || !identical(info$panel_md5,unname(tools::md5sum(panel_path))))
+    stop("Saved panel checksum changed: ",panel_path)
+  info
+}
+
 experiment_panel_seed <- function(case,profile,replicate,base_seed) {
   base_seed + replicate*211L + as.integer(substr(case,1,2))*193L +
     switch(profile,smoke=0L,pilot=400000000L,full=800000000L)
@@ -78,8 +100,8 @@ experiment_source_digest <- function(source_dir,files) {
   },character(1),USE.NAMES=FALSE),files)
 }
 
-experiment_job_identity <- function(source_dir,case,spec,runtime) {
-  common <- experiment_source_digest(source_dir,c("methods.R","workflow.R",file.path(case,"fit.R")))
+experiment_job_identity <- function(source_dir,spec,runtime,fit_sources) {
+  common <- experiment_source_digest(source_dir,c("methods.R","workflow.R",fit_sources))
   runtime_id <- digest::digest(runtime,algo="sha256")
   external <- new.env(parent=emptyenv())
   function(method,profile,method_seed,controls,output) {
@@ -96,18 +118,24 @@ experiment_job_identity <- function(source_dir,case,spec,runtime) {
   }
 }
 
-collect_experiment <- function(root,case,profile,spec,config,source_dir) {
-  records <- list.files(root,pattern="^job[.]rds$",recursive=TRUE,full.names=TRUE)
+collect_experiment <- function(root,case,profile,spec,config,source_dir,planned=NULL,data_root=root) {
+  panel_info <- panel_records(data_root,spec$scenarios)
+  # Enumerate completed jobs on the results volume independently. A missing
+  # dataset must invalidate its saved fits, even when another dataset exists.
+  result_dirs <- replicate_directories(root,spec$scenarios)
+  records <- unlist(lapply(result_dirs,function(dir)
+    file.path(dir,spec$methods,"job.rds")),use.names=FALSE)
+  records <- records[file.exists(records)]
   if (!length(records)) stop("Run method fits before collecting the experiment")
   jobs <- lapply(records,readRDS)
   jobs <- Filter(function(x) identical(x$profile,profile),jobs)
   if(!length(jobs)) stop("No jobs for this profile")
-  panel_files <- list.files(root,pattern="^panel[.]rds$",recursive=TRUE,full.names=TRUE)
-  info <- lapply(panel_files,function(path) {
-    record <- readRDS(file.path(dirname(path),"panel-info.rds"))
-    if(!identical(record$panel_md5,unname(tools::md5sum(path))))
-      stop("Saved panel checksum changed: ",path)
-    record
+  info <- lapply(panel_info,function(path) {
+    rep_dir <- dirname(path)
+    replicate <- as.integer(sub("^rep-","",basename(rep_dir)))
+    scenario <- basename(dirname(rep_dir))
+    seed <- experiment_panel_seed(case,profile,replicate,config$seed)
+    check_panel_info(path,file.path(rep_dir,"panel.rds"),case,scenario,replicate,seed,profile)
   })
   lookup <- setNames(lapply(info,"[[","panel_md5"),vapply(info,function(x)
     paste(x$scenario,x$replicate),character(1)))
@@ -167,6 +195,11 @@ collect_experiment <- function(root,case,profile,spec,config,source_dir) {
   panels <- Filter(function(x) identical(x$profile,profile),info)
   plan <- do.call(rbind,lapply(panels,function(x) data.frame(case=case,
     scenario=x$scenario,replicate=x$replicate,method=spec$methods)))
+  if (!is.null(planned)) {
+    scheduled <- merge(planned,data.frame(method=spec$methods),by=NULL)
+    scheduled$case <- case
+    plan <- unique(rbind(plan,scheduled[names(plan)]))
+  }
   status <- merge(plan,status,all.x=TRUE)
   status$status[is.na(status$status)] <- "pending"
   write_table(status,file.path(root,"jobs.csv"))
@@ -186,7 +219,7 @@ collect_experiment <- function(root,case,profile,spec,config,source_dir) {
     if(!is.null(curves)) write_table(curves,file.path(root,"support-path.csv"))
   }
   key <- c("case","scenario","replicate","window","metric")
-  references <- unique(c(spec$ref, spec$methods[grepl("^gls", spec$methods)]))
+  references <- unique(c(spec$ref, spec$arms$gls))
   comparisons <- lapply(references, function(reference) {
     ref <- scores[scores$method==reference,c(key,"value"),drop=FALSE]
     names(ref)[ncol(ref)] <- "reference_value"
@@ -217,39 +250,65 @@ collect_experiment <- function(root,case,profile,spec,config,source_dir) {
   message("Collected ",nrow(status)," expected jobs at ",root)
 }
 
-run_experiment <- function(case,action,args) {
+run_experiment <- function(case,action,args,source_dir=NULL,runtime=NULL,planned=NULL,
+                           fit_sources=file.path(case,"fit.R")) {
   opt <- cli_options(args)
   get <- function(key,default) if(key%in%names(opt)) opt[[key]] else default
   profile <- match.arg(get("profile","smoke"),c("smoke","pilot","full"))
   output <- path.expand(get("output",""))
   if (!grepl("^(/|[A-Za-z]:[/\\\\])",output)) stop("--output must be an absolute result root")
-  root <- file.path(output,case)
-  dir.create(root,recursive=TRUE,showWarnings=FALSE)
+  data_parent <- path.expand(get("data-root",output))
+  if (!grepl("^(/|[A-Za-z]:[/\\\\])",data_parent)) stop("--data-root must be absolute")
+  data_root <- file.path(data_parent,case)
+  root <- if(action=="generate") data_root else file.path(output,case)
+  separate <- !identical(normalizePath(root,mustWork=FALSE),normalizePath(data_root,mustWork=FALSE))
   # Each root represents a single study configuration across replicates.
   base_seed <- whole_number(get("seed","200425"),50000000)
-  script <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))
-  if(!file.exists(script)) script <- gsub("~+~", " ", script, fixed=TRUE)
-  source_dir <- dirname(dirname(normalizePath(script,mustWork=TRUE)))
+  if(is.null(source_dir)) {
+    script <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))
+    if(!file.exists(script)) script <- gsub("~+~", " ", script, fixed=TRUE)
+    source_dir <- dirname(dirname(normalizePath(script,mustWork=TRUE)))
+  }
   config_file <- file.path(root,"config.rds")
   spec <- experiment_catalog[[case]]
+  data_config_file <- file.path(data_root,"config.rds")
+  if (action!="generate" && !file.exists(data_config_file))
+    stop("Generate the shared panels first or supply their --data-root: ",data_root)
+  if (separate) {
+    data_config <- readRDS(data_config_file)
+    if (!identical(data_config$case,case) || !identical(data_config$profile,profile) ||
+        ((action!="compare" || "seed"%in%names(opt)) && !identical(data_config$seed,base_seed)))
+      stop("Requested case, profile or seed differs from the shared dataset")
+    data_id <- digest::digest(data_config,algo="sha256")
+  }
   if(action=="compare") {
     if(!file.exists(config_file)) stop("Generate and fit the experiment first.")
     saved <- readRDS(config_file)
     if(!identical(saved$case,case) || !identical(saved$profile,profile) ||
        ("seed" %in% names(opt) && !identical(saved$seed,base_seed)))
       stop("Requested case, profile or seed differs from the saved study")
-    return(collect_experiment(root,case,profile,spec,saved,source_dir))
+    if (separate && !identical(saved$data_config_id,data_id))
+      stop("The results belong to a different frozen dataset configuration")
+    if (!separate && !is.null(saved$data_config_id))
+      stop("Supply --data-root for these separately stored results")
+    return(collect_experiment(root,case,profile,spec,saved,source_dir,planned,data_root))
   }
-  generator_id <- digest::digest(file=file.path(source_dir,"designs.R"),algo="sha256")
-  runtime <- experiment_runtime()
+  dir.create(root,recursive=TRUE,showWarnings=FALSE)
+  generator_id <- if (separate) data_config$generator_id else
+    digest::digest(file=file.path(source_dir,"designs.R"),algo="sha256")
+  if(is.null(runtime)) runtime <- experiment_runtime()
   config <- list(case=case,profile=profile,seed=base_seed,generator_id=generator_id,
                  runtime=runtime)
-  lock <- job_lock(root)
-  if (file.exists(config_file)) {
-    if(!identical(config,readRDS(config_file))) stop("Saved study uses different generator code, R runtime, packages, seed or profile")
-  } else save_atomic(config,config_file)
-  filelock::unlock(lock)
-  signature <- experiment_job_identity(source_dir,case,spec,runtime)
+  if (separate) config$data_config_id <- data_id
+  lock <- job_lock(root,timeout=Inf)
+  tryCatch({
+    if (file.exists(config_file)) {
+      if(!identical(config,readRDS(config_file))) stop("Saved study uses different generator code, R runtime, packages, seed or profile")
+    } else {
+      save_atomic(config,config_file)
+    }
+  },finally=filelock::unlock(lock))
+  signature <- experiment_job_identity(source_dir,spec,runtime,fit_sources)
   rep <- whole_number(get("replicate","1"))
   cores <- whole_number(get("cores","1"))
   chunk_size <- whole_number(get("chunk-size","100"))
@@ -263,12 +322,13 @@ run_experiment <- function(case,action,args) {
 
   failed <- character()
   for (scenario in scenarios) {
-    dir <- file.path(root,scenario,sprintf("rep-%05d",rep))
-    dir.create(dir,recursive=TRUE,showWarnings=FALSE)
-    panel_path <- file.path(dir,"panel.rds")
-    info_path <- file.path(dir,"panel-info.rds")
+    rel <- file.path(scenario,sprintf("rep-%05d",rep))
+    dir <- file.path(root,rel)
+    panel_dir <- file.path(data_root,rel)
+    panel_path <- file.path(panel_dir,"panel.rds")
+    info_path <- file.path(panel_dir,"panel-info.rds")
     if(action=="generate") {
-      lock <- job_lock(dir)
+      lock <- job_lock(dir,timeout=Inf)
       tryCatch({
         if(!file.exists(info_path)) {
           panel <- spec$generator(scenario,profile,seed)
@@ -278,14 +338,23 @@ run_experiment <- function(case,action,args) {
             package=as.character(utils::packageVersion("bdynets")))
           save_atomic(info,info_path)
         }
-        if (!identical(readRDS(info_path)$panel_md5,unname(tools::md5sum(panel_path))))
-          stop("Saved panel checksum changed")
+        check_panel_info(info_path,panel_path,case,scenario,rep,seed,profile)
       },finally=filelock::unlock(lock))
       next
     }
-    if (!file.exists(info_path)) stop("Generate the shared panel first: ",dir)
-    info <- readRDS(info_path)
-    if(!identical(info$panel_md5,unname(tools::md5sum(panel_path)))) stop("Panel checksum changed")
+    if (!file.exists(info_path)) stop("Generate the shared panel first: ",panel_dir)
+    info <- check_panel_info(info_path,panel_path,case,scenario,rep,seed,profile)
+    if (separate) {
+      # Bind both arms to the same bytes, even across different mount paths.
+      panel_key <- info[c("case","profile","scenario","replicate","seed","panel_md5")]
+      lock <- job_lock(dir,timeout=Inf)
+      tryCatch({
+        reference <- file.path(dir,"input-id.rds")
+        if (!file.exists(reference)) save_atomic(panel_key,reference)
+        else if (!identical(readRDS(reference),panel_key))
+          stop("The saved results use a different shared panel: ",panel_dir)
+      },finally=filelock::unlock(lock))
+    }
     panel <- readRDS(panel_path)
     for(method in methods) {
       method_dir <- file.path(dir,method)

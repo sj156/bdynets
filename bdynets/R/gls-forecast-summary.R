@@ -37,3 +37,26 @@ gls_forecast_summary <- function(prediction, Y, level = 0.95, quantile_type = 1L
              mean_intensity = rowMeans(intensity), count_lower = interval[, 1L],
              count_upper = interval[, 2L], level = level, log_score = log_score)
 }
+
+#' Compact matrix forecasts from draws of a Poisson mixture
+#' @param lambda Finite nonnegative time-by-series-by-draw intensities.
+#' @param observed The observed count matrix for these forecast times.
+#' @param draws Optional predictive count draws in the same array layout.
+#' @param seed Optional simulation seed when generating predictive counts.
+#' @return A list of matrices named mean, lower, upper and logprob.
+#' @export
+gls_poisson_mixture_forecast <- function(lambda, observed, draws = NULL, seed = NULL) {
+  shape <- dim(lambda)
+  if (!is.numeric(lambda) || length(shape) != 3L || any(shape < 1L) ||
+      !identical(dim(observed), shape[1:2]) || any(!is.finite(lambda) | lambda < 0))
+    stop("lambda must have finite nonnegative draws for every observed time and series.")
+  if (is.null(draws)) {
+    if (!is.null(seed)) set.seed(seed)
+    draws <- array(stats::rpois(length(lambda), lambda), shape)
+  }
+  pred <- list(lambda = lambda, y = draws, label = "Poisson mixture", rows = seq_len(shape[1L]))
+  summary <- gls_forecast_summary(pred, observed)
+  as_panel <- function(values) matrix(values, shape[1L], shape[2L])
+  list(mean = as_panel(summary$mean_intensity), logprob = as_panel(summary$log_score),
+       lower = as_panel(summary$count_lower), upper = as_panel(summary$count_upper))
+}

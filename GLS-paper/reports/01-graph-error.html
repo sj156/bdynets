@@ -10,15 +10,77 @@ th{background:#edf3f2}pre{white-space:pre-wrap;overflow-wrap:anywhere;background
 img{max-width:100%;height:auto}a{color:#005c70}caption{font-weight:bold;text-align:left;margin:.6em 0}
 </style></head>
 <body><main><h1>When the supplied graph contains wrong links</h1><p>The
-published PNAR control uses a known network average and a separate own
-lag. The experiment measures forecast error on the same count panel as
-increasing fractions of the supplied directed edges are replaced. The
-full and restricted GLS fits show the effect of admitting predictors
-outside the supplied graph.</p>
-<p><strong>Run scope.</strong> Profile <strong>smoke</strong>, 6
-generated scenario(s), 1 distinct replicate ID(s). This execution check
-uses reduced dimensions or sampling budgets. Its scores cannot establish
-method rankings.</p>
+graph-error design uses a PNAR generator with a known network average
+and a separate own lag. The experiment measures forecast error on the
+same count panel as increasing fractions of the supplied directed edges
+are replaced. The full and restricted GLS fits show the effect of
+admitting predictors outside the supplied graph.</p>
+<div id="shared-synthetic-datasets" class="section level2">
+<h2>Shared synthetic datasets</h2>
+<p>The GLS arm fits graph-informed, restricted and constant-affinity
+GLS. The competitor arm fits pooled PNAR. Both arms read the same saved
+counts and chronological split for each condition and replicate. The
+full study uses 50 independent replicates per condition.</p>
+<p><strong>Data in this report.</strong> Profile <strong>smoke</strong>,
+6 condition(s), 1 distinct scheduled replicate ID(s). The displayed
+values are from a short execution check.</p>
+<table>
+<caption>Distinct replicate panels per condition. Completed jobs on a
+panel share its checksum.</caption>
+<colgroup>
+<col width="16%" />
+<col width="22%" />
+<col width="33%" />
+<col width="27%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th align="left">Condition</th>
+<th align="right">Scheduled panels</th>
+<th align="right">At least one fit complete</th>
+<th align="right">All methods complete</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">T100-error0</td>
+<td align="right">1</td>
+<td align="right">1</td>
+<td align="right">1</td>
+</tr>
+<tr class="even">
+<td align="left">T100-error25</td>
+<td align="right">1</td>
+<td align="right">1</td>
+<td align="right">1</td>
+</tr>
+<tr class="odd">
+<td align="left">T100-error50</td>
+<td align="right">1</td>
+<td align="right">1</td>
+<td align="right">1</td>
+</tr>
+<tr class="even">
+<td align="left">T200-error0</td>
+<td align="right">1</td>
+<td align="right">1</td>
+<td align="right">1</td>
+</tr>
+<tr class="odd">
+<td align="left">T200-error25</td>
+<td align="right">1</td>
+<td align="right">1</td>
+<td align="right">1</td>
+</tr>
+<tr class="even">
+<td align="left">T200-error50</td>
+<td align="right">1</td>
+<td align="right">1</td>
+<td align="right">1</td>
+</tr>
+</tbody>
+</table>
+</div>
 <div id="forecast-comparison" class="section level2">
 <h2>Forecast comparison</h2>
 <p>The table gives method minus pooled PNAR on mean count deviance.
@@ -137,42 +199,50 @@ panels)</caption>
 <div id="supplied-graph-error" class="section level2">
 <h2>Supplied graph error</h2>
 <table>
+<caption>Realized fraction of displaced true edges</caption>
 <thead>
 <tr class="header">
-<th align="left">scenario</th>
-<th align="right">replicate</th>
-<th align="right">graph_error</th>
+<th align="left"></th>
+<th align="right">Mean</th>
+<th align="right">Minimum</th>
+<th align="right">Maximum</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
 <td align="left">T100-error0</td>
-<td align="right">1</td>
+<td align="right">0.000</td>
+<td align="right">0.000</td>
 <td align="right">0.000</td>
 </tr>
 <tr class="even">
 <td align="left">T100-error25</td>
-<td align="right">1</td>
+<td align="right">0.222</td>
+<td align="right">0.222</td>
 <td align="right">0.222</td>
 </tr>
 <tr class="odd">
 <td align="left">T100-error50</td>
-<td align="right">1</td>
+<td align="right">0.500</td>
+<td align="right">0.500</td>
 <td align="right">0.500</td>
 </tr>
 <tr class="even">
 <td align="left">T200-error0</td>
-<td align="right">1</td>
+<td align="right">0.000</td>
+<td align="right">0.000</td>
 <td align="right">0.000</td>
 </tr>
 <tr class="odd">
 <td align="left">T200-error25</td>
-<td align="right">1</td>
+<td align="right">0.222</td>
+<td align="right">0.222</td>
 <td align="right">0.222</td>
 </tr>
 <tr class="even">
 <td align="left">T200-error50</td>
-<td align="right">1</td>
+<td align="right">0.500</td>
+<td align="right">0.500</td>
 <td align="right">0.500</td>
 </tr>
 </tbody>
@@ -255,19 +325,19 @@ supplied graph.</p>
 </div>
 <div id="reproduce-from-the-repository-root" class="section level2">
 <h2>Reproduce from the repository root</h2>
-<p>Set <code>RESULTS</code> to the external results directory. The
-generator stores a panel and its identity. The fit driver reads the
-panel and records a job by method. The comparison driver collects
-scores, numbers of matched replicates, Monte Carlo errors, and
-incomplete jobs. Select another cell with <code>--scenario</code> or an
-individual fit with <code>--method</code>.</p>
-<pre class="sh"><code>CASE=GLS-paper/experiments/01-graph-error
-Rscript &quot;$CASE/generate.R&quot; --output=&quot;$RESULTS&quot; --profile=smoke --scenario=T100-error25 --replicate=1
-Rscript &quot;$CASE/fit.R&quot; --output=&quot;$RESULTS&quot; --profile=smoke --scenario=T100-error25 --replicate=1 --method=all
-Rscript &quot;$CASE/compare.R&quot; --output=&quot;$RESULTS&quot; --profile=smoke
-Rscript GLS-paper/reports/render.R 01-graph-error &quot;$RESULTS/01-graph-error&quot;</code></pre>
-<p>The full results directory contains the individual job statuses, all
-metrics in <code>comparison.csv</code>, and replicate-level paired
-differences in <code>paired-replicates.csv</code>. Rendering reads those
-saved results.</p>
+<p>Generate all conditions once, then point both fitting arms to the
+same SSD directory. The full profile defaults to replicate IDs 1–50. The
+comparison collects both arms into this single study report.</p>
+<pre class="sh"><code>RESULTS=&quot;$HOME/bdynets-results/full&quot;
+TOOLS=GLS-paper/tools
+Rscript &quot;$TOOLS/study1-gls.R&quot; --action=data --profile=full --output=&quot;$RESULTS&quot;
+Rscript &quot;$TOOLS/study1-gls.R&quot; --action=run --profile=full --output=&quot;$RESULTS&quot;
+Rscript &quot;$TOOLS/study1-competitors.R&quot; --action=run --profile=full --output=&quot;$RESULTS&quot;
+Rscript &quot;$TOOLS/study1-gls.R&quot; --action=report --profile=full --output=&quot;$RESULTS&quot;</code></pre>
+<p>To check a single panel, use a separate output root, select
+<code>--profile=smoke</code> throughout and pass
+<code>--scenario=T100-error25</code> to generation and both fitting
+arms. Each method records the input checksum in <code>jobs.csv</code>.
+The collector writes per-panel metrics in <code>comparison.csv</code>
+and matched differences in <code>paired-replicates.csv</code>.</p>
 </div></main></body></html>

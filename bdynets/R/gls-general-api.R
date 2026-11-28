@@ -117,9 +117,8 @@ gls_fit_general <- function(
       graph, pairs, control$graph_laplace_rho0)
     attr(affinity_features, "edge_adjacency") <- NULL
   }
-  raw_lags <- make_lags(Y, pre_history, rep(0, ncol(Y)), rep(1, ncol(Y)), 1L)
-  standardized <- standardize_lags_from_train(raw_lags, train_rows)
-  X <- standardized$lags[, , 1L]
+  standardized <- gls_lag_predictors(unname(Y), train_rows, unname(pre_history))
+  X <- standardized$X
   if (is.null(means)) means <- pmax(colMeans(Y[train_rows, , drop = FALSE]),
                                    0.5 / length(train_rows))
   if (length(means) != ncol(Y) || any(!is.finite(means)) || any(means <= 0)) {

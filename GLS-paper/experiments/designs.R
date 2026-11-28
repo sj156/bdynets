@@ -85,10 +85,58 @@ simulate_grid_process <- function(n, graph, base, modulation, phase, mean_target
     x <- (log1p(previous) - log1p(mean_target))/source_scale
     contribution[tt,] <- scale_signal * (base + modulation*factor[tt]) %*% x
     mu[tt,] <- exp(log(mean_target) + calendar[tt,] + contribution[tt,])
-    if (any(!is.finite(mu[tt,]) | mu[tt,] > 1e5)) stop("Unstable grid intensity during simulation")
+    if (any(!is.finite(mu[tt,]) | mu[tt,] > 1e5))
+      stop(errorCondition("Unstable grid intensity during simulation",class="grid_intensity_error"))
     previous <- Y[tt,] <- stats::qpois(noise[tt,],mu[tt,])
   }
   list(Y=Y,lambda=mu,net=contribution,factor=factor,covariates=Q)
+}
+
+# Retain the four proportional pilot updates when they meet the RMS target.
+# If a proposed scale diverges, bracket the target between zero and that
+# scale. A fixed pilot innovation matrix makes all trials comparable.
+calibrate_grid_scale <- function(target, pilot_rms, context, tolerance=0.02) {
+  result <- function(scale,rms,method)
+    list(scale=scale,target_rms=target,pilot_rms=rms,relative_tolerance=tolerance,method=method)
+  if (target==0) return(result(0,0,"null"))
+  scale <- target
+  rms <- pilot_rms(scale)
+  for (iteration in seq_len(4L)) {
+    if (!is.finite(rms) || rms<=0) break
+    scale <- scale*(target/rms)^.7
+    rms <- pilot_rms(scale)
+  }
+  if (is.finite(rms) && abs(rms-target)<=tolerance*target)
+    return(result(scale,rms,"proportional"))
+
+  lower <- 0
+  upper <- scale
+  # A stable trial below target first needs an upper bracket. Treat only
+  # the generator's explicitly diagnosed runaway intensities as an upper bound.
+  for (iteration in seq_len(20L)) {
+    if (!is.finite(rms) || rms>=target) break
+    lower <- upper
+    upper <- upper*2
+    rms <- pilot_rms(upper)
+  }
+  best_scale <- 0
+  best_rms <- 0
+  if (!is.finite(rms) || rms>=target) {
+    for (iteration in seq_len(30L)) {
+      scale <- (lower+upper)/2
+      rms <- pilot_rms(scale)
+      if (is.finite(rms) && abs(rms-target)<abs(best_rms-target)) {
+        best_scale <- scale
+        best_rms <- rms
+        if (abs(rms-target)<=0.0025*target) return(result(scale,rms,"bracketed"))
+      }
+      if (!is.finite(rms) || rms>target) upper <- scale else lower <- scale
+    }
+    if (abs(best_rms-target)<=tolerance*target)
+      return(result(best_scale,best_rms,"bracketed"))
+  }
+  stop(sprintf("Grid calibration unresolved for %s: target RMS %.6g, last pilot RMS %.6g, scale bracket [%.6g, %.6g]",
+               context,target,rms,lower,upper),call.=FALSE)
 }
 
 sparse_grid_panel <- function(scenario, profile, seed) {
@@ -120,26 +168,27 @@ sparse_grid_panel <- function(scenario, profile, seed) {
   source_scale <- sqrt(target)/(target+1)
   phase <- runif(1,0,2*pi)
   period <- if (profile=="smoke") 24L else 300L
-  initial_scale <- q
   pilot_n <- if (profile=="smoke") 120L else 1000L
   set.seed(seed+101L)
   pilot_noise <- matrix(runif(k*pilot_n),pilot_n,k)
-  for (i in seq_len(4L)) if (q>0) {
+  pilot_rms <- function(scale) tryCatch({
     pilot <- simulate_grid_process(pilot_n,graph,base,modulation,phase,target,
-                                   pilot_noise,period,source_scale,initial_scale)
-    rms <- sqrt(mean(tail(pilot$net, floor(pilot_n*.8))^2))
-    initial_scale <- initial_scale * (q/rms)^.7
-  }
+                                   pilot_noise,period,source_scale,scale)
+    sqrt(mean(tail(pilot$net, floor(pilot_n*.8))^2))
+  },grid_intensity_error=function(e) Inf)
+  calibration <- calibrate_grid_scale(q,pilot_rms,paste(scenario,profile,"seed",seed))
+  scale <- calibration$scale
   set.seed(seed+102L)
   burn <- period
   realised <- simulate_grid_process(n+burn,graph,base,modulation,phase,target,
-    matrix(runif((n+burn)*k),n+burn,k),period,source_scale,initial_scale)
+    matrix(runif((n+burn)*k),n+burn,k),period,source_scale,scale)
   keep <- burn + seq_len(n)
   list(Y=realised$Y[keep,],lambda=realised$lambda[keep,],
     covariates=realised$covariates[keep,],pre_history=realised$Y[c(burn-1,burn),],
-    base=base*initial_scale,modulation=modulation*initial_scale,
+    base=base*scale,modulation=modulation*scale,
     factor=realised$factor[keep],generating_scale=source_scale,
-    split=panel_split(sizes),graph=graph,signal=q,realized_rms=sqrt(mean(realised$net[keep,]^2)))
+    split=panel_split(sizes),graph=graph,signal=q,calibration=calibration,
+    realized_rms=sqrt(mean(realised$net[keep,]^2)))
 }
 
 surge_panel <- function(scenario, profile, seed) {

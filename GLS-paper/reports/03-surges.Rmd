@@ -18,7 +18,15 @@ source("report.R", local = TRUE)
 x <- read_experiment(params$results, "03-surges")
 ```
 
-**Run scope.** Profile **`r x$config$profile`**, `r length(unique(x$jobs$scenario))` generated scenario(s), `r length(unique(x$jobs$replicate))` distinct replicate ID(s). `r if (x$config$profile == "smoke") "This execution check uses reduced dimensions or sampling budgets. Its scores cannot establish method rankings." else "Interpret comparisons using independent replicated panels and their paired Monte Carlo uncertainty."`
+## Shared synthetic datasets
+
+The GLS arm fits the full network and own-history specifications. The competitor arm fits PNAR, sa-PGSS and Graph WaveNet. Both arms read the same saved counts and chronological split for each condition and replicate. The full study uses 50 independent replicates per condition.
+
+**Data in this report.** Profile **`r x$config$profile`**, `r length(unique(x$jobs$scenario))` condition(s), `r length(unique(x$jobs$replicate))` distinct scheduled replicate ID(s). `r if (x$config$profile == "smoke") "The displayed values are from a short execution check." else "The paired comparisons below use the available matched replicates."`
+
+```{r shared-panels, echo=FALSE}
+report_panels(x)
+```
 
 ## Forecast comparison
 
@@ -58,14 +66,15 @@ if (nrow(problems)) print(knitr::kable(problems[c("scenario", "replicate", "meth
 
 ## Reproduce from the repository root
 
-Set `RESULTS` to the external results directory. The generator stores a panel and its identity. The fit driver reads the panel and records a job by method. The comparison driver collects scores, numbers of matched replicates, Monte Carlo errors, and incomplete jobs. Select another cell with `--scenario` or an individual fit with `--method`.
+Generate all conditions once, then point both fitting arms to the same SSD directory. The full profile defaults to replicate IDs 1–50. The comparison collects both arms into this single study report.
 
 ```sh
-CASE=GLS-paper/experiments/03-surges
-Rscript "$CASE/generate.R" --output="$RESULTS" --profile=smoke --scenario=local-on-transmit-on --replicate=1
-Rscript "$CASE/fit.R" --output="$RESULTS" --profile=smoke --scenario=local-on-transmit-on --replicate=1 --method=all
-Rscript "$CASE/compare.R" --output="$RESULTS" --profile=smoke
-Rscript GLS-paper/reports/render.R 03-surges "$RESULTS/03-surges"
+RESULTS="$HOME/bdynets-results/full"
+TOOLS=GLS-paper/tools
+Rscript "$TOOLS/study3-gls.R" --action=data --profile=full --output="$RESULTS"
+Rscript "$TOOLS/study3-gls.R" --action=run --profile=full --output="$RESULTS"
+Rscript "$TOOLS/study3-competitors.R" --action=run --profile=full --output="$RESULTS"
+Rscript "$TOOLS/study3-gls.R" --action=report --profile=full --output="$RESULTS"
 ```
 
-The full results directory contains the individual job statuses, all metrics in `comparison.csv`, and replicate-level paired differences in `paired-replicates.csv`. Rendering reads those saved results.
+To check a single panel, use a separate output root, select `--profile=smoke` throughout and pass `--scenario=local-on-transmit-on` to generation and both fitting arms. Each method records the input checksum in `jobs.csv`. The collector writes per-panel metrics in `comparison.csv` and matched differences in `paired-replicates.csv`.

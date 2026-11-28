@@ -14,10 +14,78 @@ directed road grid supplies known lag coefficients and a broad candidate
 dictionary. The design crosses the location of the active sources with
 static or dynamic coefficients. The continuous GLS fit and its
 validation-selected DSS projection share a posterior.</p>
-<p><strong>Run scope.</strong> Profile <strong>smoke</strong>, 6
-generated scenario(s), 1 distinct replicate ID(s). This execution check
-uses reduced dimensions or sampling budgets. Its scores cannot establish
-method rankings.</p>
+<p>The grid generator calibrates the lag contribution on separate pilot
+counts. If its initial scale causes unstable rates or misses the target
+RMS by more than 2%, the generator searches a bracket of scales on the
+same pilot draws. The fitted methods receive a fresh evaluation panel
+generated at the fixed scale.</p>
+<div id="shared-synthetic-datasets" class="section level2">
+<h2>Shared synthetic datasets</h2>
+<p>The GLS arm fits graph-informed, static and constant-affinity GLS.
+The competitor arm fits the all-pairs Poisson lasso. Both arms read the
+same saved counts and chronological split for each condition and
+replicate. The full study uses 50 independent replicates per
+condition.</p>
+<p><strong>Data in this report.</strong> Profile <strong>smoke</strong>,
+6 condition(s), 1 distinct scheduled replicate ID(s). The displayed
+values are from a short execution check.</p>
+<table>
+<caption>Distinct replicate panels per condition. Completed jobs on a
+panel share its checksum.</caption>
+<colgroup>
+<col width="24%" />
+<col width="20%" />
+<col width="30%" />
+<col width="24%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th align="left">Condition</th>
+<th align="right">Scheduled panels</th>
+<th align="right">At least one fit complete</th>
+<th align="right">All methods complete</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">local-dynamic</td>
+<td align="right">1</td>
+<td align="right">1</td>
+<td align="right">1</td>
+</tr>
+<tr class="even">
+<td align="left">local-static</td>
+<td align="right">1</td>
+<td align="right">1</td>
+<td align="right">1</td>
+</tr>
+<tr class="odd">
+<td align="left">mixed-dynamic</td>
+<td align="right">1</td>
+<td align="right">1</td>
+<td align="right">1</td>
+</tr>
+<tr class="even">
+<td align="left">mixed-dynamic-strong</td>
+<td align="right">1</td>
+<td align="right">1</td>
+<td align="right">1</td>
+</tr>
+<tr class="odd">
+<td align="left">mixed-static</td>
+<td align="right">1</td>
+<td align="right">1</td>
+<td align="right">1</td>
+</tr>
+<tr class="even">
+<td align="left">seasonal-null</td>
+<td align="right">1</td>
+<td align="right">1</td>
+<td align="right">1</td>
+</tr>
+</tbody>
+</table>
+</div>
 <div id="forecast-comparison" class="section level2">
 <h2>Forecast comparison</h2>
 <p>The table gives method minus static all-pairs Poisson lasso on test
@@ -321,19 +389,19 @@ candidates and replications are in <code>support-path.csv</code>.</p>
 </div>
 <div id="reproduce-from-the-repository-root" class="section level2">
 <h2>Reproduce from the repository root</h2>
-<p>Set <code>RESULTS</code> to the external results directory. The
-generator stores a panel and its identity. The fit driver reads the
-panel and records a job by method. The comparison driver collects
-scores, numbers of matched replicates, Monte Carlo errors, and
-incomplete jobs. Select another cell with <code>--scenario</code> or an
-individual fit with <code>--method</code>.</p>
-<pre class="sh"><code>CASE=GLS-paper/experiments/02-sparse-grid
-Rscript &quot;$CASE/generate.R&quot; --output=&quot;$RESULTS&quot; --profile=smoke --scenario=mixed-dynamic --replicate=1
-Rscript &quot;$CASE/fit.R&quot; --output=&quot;$RESULTS&quot; --profile=smoke --scenario=mixed-dynamic --replicate=1 --method=all
-Rscript &quot;$CASE/compare.R&quot; --output=&quot;$RESULTS&quot; --profile=smoke
-Rscript GLS-paper/reports/render.R 02-sparse-grid &quot;$RESULTS/02-sparse-grid&quot;</code></pre>
-<p>The full results directory contains the individual job statuses, all
-metrics in <code>comparison.csv</code>, and replicate-level paired
-differences in <code>paired-replicates.csv</code>. Rendering reads those
-saved results.</p>
+<p>Generate all conditions once, then point both fitting arms to the
+same SSD directory. The full profile defaults to replicate IDs 1–50. The
+comparison collects both arms into this single study report.</p>
+<pre class="sh"><code>RESULTS=&quot;$HOME/bdynets-results/full&quot;
+TOOLS=GLS-paper/tools
+Rscript &quot;$TOOLS/study2-gls.R&quot; --action=data --profile=full --output=&quot;$RESULTS&quot;
+Rscript &quot;$TOOLS/study2-gls.R&quot; --action=run --profile=full --output=&quot;$RESULTS&quot;
+Rscript &quot;$TOOLS/study2-competitors.R&quot; --action=run --profile=full --output=&quot;$RESULTS&quot;
+Rscript &quot;$TOOLS/study2-gls.R&quot; --action=report --profile=full --output=&quot;$RESULTS&quot;</code></pre>
+<p>To check a single panel, use a separate output root, select
+<code>--profile=smoke</code> throughout and pass
+<code>--scenario=mixed-dynamic</code> to generation and both fitting
+arms. Each method records the input checksum in <code>jobs.csv</code>.
+The collector writes per-panel metrics in <code>comparison.csv</code>
+and matched differences in <code>paired-replicates.csv</code>.</p>
 </div></main></body></html>

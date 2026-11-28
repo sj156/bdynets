@@ -392,9 +392,10 @@ make_lags <- function(Y, pre_history, center, scale, max_lag = 2L) {
 }
 
 standardize_lags_from_train <- function(raw_lags, train) {
-    center <- colMeans(raw_lags[train, , 1L, drop = FALSE][, , 1L])
-    scale <- apply(raw_lags[train, , 1L, drop = FALSE][, , 1L], 2L, sd)
-    scale[!is.finite(scale) | scale < 1e-08] <- 1
+    first <- matrix(raw_lags[, , 1L], nrow = dim(raw_lags)[1L], ncol = dim(raw_lags)[2L])
+    scaler <- .gls_lag_scaler(first, train)
+    center <- scaler$center
+    scale <- scaler$scale
     out <- raw_lags
     for (ell in seq_len(dim(raw_lags)[3L])) out[, , ell] <- sweep(sweep(raw_lags[, , ell], 2L, center, "-"), 2L, scale, "/")
     list(lags = out, center = center, scale = scale)
@@ -1132,6 +1133,11 @@ predict_gls <- function(fit, X, time_covariate, season_covariate, Y, rows, condi
     list(label = label, lambda = lam, y = array(rpois(length(lam), lam), dim(lam)))
 }
 
+#' Elementwise Poisson deviance for an observed count and predicted mean
+#' @param y Observed counts.
+#' @param mu Corresponding nonnegative means.
+#' @return Per-cell deviance, with infinity for a positive count at a zero mean.
+#' @export
 poisson_deviance <- function(y, mu) 2 * (ifelse(y == 0, 0, y * log(y/mu)) - (y - mu))
 
 prediction_metrics <- function(pred, Y, truth, rows, signal, cfg = CFG) {

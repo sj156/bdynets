@@ -11,4 +11,5 @@ output <- if (length(args) == 3L) args[3] else here
 if (!dir.exists(output)) dir.create(output, recursive = TRUE)
 if (!requireNamespace("rmarkdown", quietly = TRUE)) stop("Install the rmarkdown package for rendering.")
 rmarkdown::render(file.path(here, paste0(case, ".Rmd")), output_dir = output,
+  intermediates_dir = tempdir(), knit_root_dir = here,
   params = list(results = results), envir = new.env(parent = globalenv()), quiet = TRUE)

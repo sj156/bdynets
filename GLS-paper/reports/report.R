@@ -24,6 +24,26 @@ primary_report <- function(x, ref, window, metric = "deviance") {
   } else cat("No matched method and reference runs are available for this contrast.")
 }
 
+report_panels <- function(x) {
+  by_condition <- split(x$jobs, x$jobs$scenario)
+  counts <- lapply(by_condition, function(jobs) {
+    replicates <- split(jobs, jobs$replicate)
+    complete <- vapply(replicates, function(panel) {
+      hashes <- panel$panel_md5[panel$status == "complete"]
+      if (anyNA(hashes) || any(!nzchar(hashes)) || length(unique(hashes)) > 1L)
+        stop("Inconsistent completed-job panel checksums for ", panel$scenario[1],
+             ", replicate ", panel$replicate[1])
+      all(panel$status == "complete")
+    }, logical(1))
+    data.frame(Condition = jobs$scenario[1], Scheduled = length(replicates),
+               Started = length(unique(jobs$replicate[jobs$status == "complete"])),
+               Complete = sum(complete))
+  })
+  knitr::kable(do.call(rbind, counts), row.names = FALSE,
+               col.names = c("Condition", "Scheduled panels", "At least one fit complete", "All methods complete"),
+               caption = "Distinct replicate panels per condition. Completed jobs on a panel share its checksum.")
+}
+
 report_status <- function(x) {
   status <- as.data.frame.matrix(xtabs(~ method + status, data = x$jobs))
   knitr::kable(status, caption = "Method jobs by completion status")
@@ -38,15 +58,20 @@ read_application <- function(path, case) {
 
 application_scores <- function(frames) {
   values <- lapply(split(frames, frames$model), function(z) {
-    y <- z$observed
-    mu <- z$mean_intensity
-    dev <- mu - y
-    positive <- y > 0
-    dev[positive] <- dev[positive] + y[positive] * (log(y[positive]) - log(mu[positive]))
-    data.frame(Method = z$model[1L], Cells = length(y), Deviance = 2 * mean(dev),
-      MAE = mean(abs(y - mu)), RMSE = sqrt(mean((y - mu)^2)),
-      Log_score = mean(z$log_score), Coverage = mean(y >= z$count_lower & y <= z$count_upper),
-      Width = mean(z$count_upper - z$count_lower))
+    y <- as.matrix(z$observed)
+    forecast <- list(mean = as.matrix(z$mean_intensity))
+    if ("log_score" %in% names(z))
+      forecast$logprob <- as.matrix(as.numeric(z$log_score))
+    if (all(c("count_lower", "count_upper") %in% names(z))) {
+      forecast$lower <- as.matrix(as.numeric(z$count_lower))
+      forecast$upper <- as.matrix(as.numeric(z$count_upper))
+    }
+    values <- bdynets::gls_forecast_metrics(y, forecast)
+    score <- setNames(values$value, values$metric)
+    data.frame(Method = z$model[1L], Cells = length(y), Deviance = score["deviance"],
+      MAE = score["mae"], RMSE = sqrt(mean((y - forecast$mean)^2)),
+      Log_score = score["log_score"], Coverage = score["coverage95"],
+      Width = score["width95"], row.names = NULL)
   })
   knitr::kable(do.call(rbind, values), digits = 3, row.names = FALSE)
 }

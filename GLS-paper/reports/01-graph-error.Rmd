@@ -11,14 +11,22 @@ output:
     self_contained: true
 ---
 
-The published PNAR control uses a known network average and a separate own lag. The experiment measures forecast error on the same count panel as increasing fractions of the supplied directed edges are replaced. The full and restricted GLS fits show the effect of admitting predictors outside the supplied graph.
+The graph-error design uses a PNAR generator with a known network average and a separate own lag. The experiment measures forecast error on the same count panel as increasing fractions of the supplied directed edges are replaced. The full and restricted GLS fits show the effect of admitting predictors outside the supplied graph.
 
 ```{r setup, include=FALSE}
 source("report.R", local = TRUE)
 x <- read_experiment(params$results, "01-graph-error")
 ```
 
-**Run scope.** Profile **`r x$config$profile`**, `r length(unique(x$jobs$scenario))` generated scenario(s), `r length(unique(x$jobs$replicate))` distinct replicate ID(s). `r if (x$config$profile == "smoke") "This execution check uses reduced dimensions or sampling budgets. Its scores cannot establish method rankings." else "Interpret comparisons using independent replicated panels and their paired Monte Carlo uncertainty."`
+## Shared synthetic datasets
+
+The GLS arm fits graph-informed, restricted and constant-affinity GLS. The competitor arm fits pooled PNAR. Both arms read the same saved counts and chronological split for each condition and replicate. The full study uses 50 independent replicates per condition.
+
+**Data in this report.** Profile **`r x$config$profile`**, `r length(unique(x$jobs$scenario))` condition(s), `r length(unique(x$jobs$replicate))` distinct scheduled replicate ID(s). `r if (x$config$profile == "smoke") "The displayed values are from a short execution check." else "The paired comparisons below use the available matched replicates."`
+
+```{r shared-panels, echo=FALSE}
+report_panels(x)
+```
 
 ## Forecast comparison
 
@@ -32,7 +40,11 @@ primary_report(x, "pooled-pnar", "all", "deviance")
 
 ```{r graph-error, echo=FALSE}
 graph <- unique(x$jobs[is.finite(x$jobs$graph_error), c("scenario","replicate","graph_error")])
-knitr::kable(graph, digits = 3, row.names = FALSE)
+if (nrow(graph)) {
+  by_condition <- t(vapply(split(graph$graph_error, graph$scenario), function(values)
+    c(Mean = mean(values), Minimum = min(values), Maximum = max(values)), numeric(3)))
+  knitr::kable(by_condition, digits = 3, caption = "Realized fraction of displaced true edges")
+}
 ```
 
 Recall below is the average fraction of displaced true links recovered by each fit. The restricted fit can select only links in the supplied graph.
@@ -60,14 +72,15 @@ if (nrow(problems)) print(knitr::kable(problems[c("scenario", "replicate", "meth
 
 ## Reproduce from the repository root
 
-Set `RESULTS` to the external results directory. The generator stores a panel and its identity. The fit driver reads the panel and records a job by method. The comparison driver collects scores, numbers of matched replicates, Monte Carlo errors, and incomplete jobs. Select another cell with `--scenario` or an individual fit with `--method`.
+Generate all conditions once, then point both fitting arms to the same SSD directory. The full profile defaults to replicate IDs 1–50. The comparison collects both arms into this single study report.
 
 ```sh
-CASE=GLS-paper/experiments/01-graph-error
-Rscript "$CASE/generate.R" --output="$RESULTS" --profile=smoke --scenario=T100-error25 --replicate=1
-Rscript "$CASE/fit.R" --output="$RESULTS" --profile=smoke --scenario=T100-error25 --replicate=1 --method=all
-Rscript "$CASE/compare.R" --output="$RESULTS" --profile=smoke
-Rscript GLS-paper/reports/render.R 01-graph-error "$RESULTS/01-graph-error"
+RESULTS="$HOME/bdynets-results/full"
+TOOLS=GLS-paper/tools
+Rscript "$TOOLS/study1-gls.R" --action=data --profile=full --output="$RESULTS"
+Rscript "$TOOLS/study1-gls.R" --action=run --profile=full --output="$RESULTS"
+Rscript "$TOOLS/study1-competitors.R" --action=run --profile=full --output="$RESULTS"
+Rscript "$TOOLS/study1-gls.R" --action=report --profile=full --output="$RESULTS"
 ```
 
-The full results directory contains the individual job statuses, all metrics in `comparison.csv`, and replicate-level paired differences in `paired-replicates.csv`. Rendering reads those saved results.
+To check a single panel, use a separate output root, select `--profile=smoke` throughout and pass `--scenario=T100-error25` to generation and both fitting arms. Each method records the input checksum in `jobs.csv`. The collector writes per-panel metrics in `comparison.csv` and matched differences in `paired-replicates.csv`.

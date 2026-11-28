@@ -1,13 +1,5 @@
 #!/usr/bin/env Rscript
 # Prepared-data orchestration only. GLS fitting, DSS and prediction are bdynets APIs.
-# Commit files on the same filesystem so readers see complete artifacts.
-application_atomic <- function(path, writer) {
-  temp <- tempfile(".application-", tmpdir = dirname(path))
-  on.exit(unlink(temp), add = TRUE)
-  writer(temp)
-  if (!file.rename(temp, path)) stop("Could not publish application artifact: ", path)
-}
-
 application_identity <- function(input_md5, control, profile, retention, benchmarks,
                                  chunk_size, checkpoint_every, cores, script, paper, legacy) {
   files <- c(launcher = script)
@@ -123,13 +115,13 @@ main <- function() {
       bdynets::gls_forecast_summary, Y = saved$fit$Y, quantile_type = 7L))
     names(frames)[match(c("count_lower", "count_upper"), names(frames))] <-
       c("count_lower95", "count_upper95")
-    application_atomic(file.path(output, "predictions.csv"), function(path) utils::write.csv(frames, path, row.names = FALSE))
+    bdynets::bdynets_atomic_write(file.path(output, "predictions.csv"), function(path) utils::write.csv(frames, path, row.names = FALSE))
     diagnostics <- saved$diagnostics
     if (is.null(diagnostics)) diagnostics <- bdynets::gls_diagnostics(saved$fit)
-    application_atomic(file.path(output, "MCMC_diagnostics.csv"), function(path) utils::write.csv(diagnostics, path, row.names = FALSE))
-    application_atomic(file.path(output, "DSS_selection.csv"), function(path)
+    bdynets::bdynets_atomic_write(file.path(output, "MCMC_diagnostics.csv"), function(path) utils::write.csv(diagnostics, path, row.names = FALSE))
+    bdynets::bdynets_atomic_write(file.path(output, "DSS_selection.csv"), function(path)
       utils::write.csv(data.frame(saved$fit$pairs, multiplier = saved$dss$d), path, row.names = FALSE))
-    application_atomic(file.path(output, "configuration.R"), function(path) dput(unclass(saved$control), path))
+    bdynets::bdynets_atomic_write(file.path(output, "configuration.R"), function(path) dput(unclass(saved$control), path))
     cat("Exported saved prediction summaries, diagnostics and DSS selection to", output, "\n")
     return(invisible(NULL))
   }
@@ -227,7 +219,7 @@ main <- function() {
     draw_dir = draw_dir, chunk_size = chunk_size,
     command = commandArgs(), started = as.character(Sys.time()),
     session = capture.output(utils::sessionInfo()), status = "started")
-  if (action == "run") application_atomic(configuration, function(path)
+  if (action == "run") bdynets::bdynets_atomic_write(configuration, function(path)
     saveRDS(list(identity = identity, control = control, split = split, provenance = provenance), path))
   if (action == "resume") provenance$started <- previous$provenance$started
   results <- tryCatch(local({
@@ -277,7 +269,7 @@ main <- function() {
          case_id = input$case_id, provenance = provenance)
   }), error = function(e) {
     provenance$status <- "failed"; provenance$error <- conditionMessage(e)
-    application_atomic(file.path(output, "application_failure.rds"), function(path) saveRDS(provenance, path))
+    bdynets::bdynets_atomic_write(file.path(output, "application_failure.rds"), function(path) saveRDS(provenance, path))
     stop(e)
   })
   results$provenance$status <- "complete"
@@ -290,7 +282,7 @@ main <- function() {
     store = basename(results$fit$draw_store$path), draw_files = unlist(lapply(indexes, "[[", "files"), use.names = FALSE),
     draw_hashes = unlist(lapply(indexes, "[[", "hashes"), use.names = FALSE))
   # A result appears only after its verifiable completion record is committed.
-  application_atomic(file.path(output, "application_completion.rds"), function(path) saveRDS(completion, path))
+  bdynets::bdynets_atomic_write(file.path(output, "application_completion.rds"), function(path) saveRDS(completion, path))
   if (!file.rename(temporary, file.path(output, "application_results.rds")))
     stop("Could not finalize saved application.")
   rm(results)

@@ -5,19 +5,19 @@ The installable [bdynets package](../bdynets) owns the samplers, graph construct
 | Block | Contents | Entry point |
 | --- | --- | --- |
 | R package | Reusable computation, disk-backed draws and sampler restart | [Package APIs and historical settings](../bdynets/GLS.md) |
-| Experiments | Generate one panel, fit each method to that panel, collect paired comparisons | [Designs, methods and command-line options](experiments/README.md) |
+| Experiments | Two fitting arms per study, 50 shared datasets per condition and paired comparisons | [Designs, methods and command-line options](experiments/README.md) |
 | Applications | Clean raw records, visualize the count panel and fit models on chronological splits | [Divvy](applications/divvy/prepare.R) · [PeMS](applications/pems/prepare.R) · [analysis runner](applications/run.R) |
 | Reports | One executable R Markdown walkthrough and one self-contained HTML per case | [Render a report from saved results](reports/render.R) |
 
 ## Cases for collaborator review
 
-The bundled HTMLs were rendered from short execution checks. Each simulation uses one replicate per condition. Pilot and full runs write the same result formats, including paired Monte Carlo standard errors when independent replicates are available.
+The three study reports combine GLS and competitor fits on the same synthetic datasets. The bundled HTMLs show archived execution checks with one replicate per implemented condition. The full studies are designed for 50 replicates per condition. Their reports give the number of matched panels and the Monte Carlo standard error for each estimable comparison.
 
 | Case | Scientific question | Walkthrough | Rendered example |
 | --- | --- | --- | --- |
-| 1. Error in the supplied graph | How does forecast or recovery loss change when a known fraction of true PNAR edges is rewired? | [Rmd](reports/01-graph-error.Rmd) | [HTML](reports/01-graph-error.html) |
-| 2. Sparse directed grid | How well do physical graph shrinkage, time variation and validation-selected sparsification recover lag effects? | [Rmd](reports/02-sparse-grid.Rmd) | [HTML](reports/02-sparse-grid.html) |
-| 3. Upstream surges | Does the first observation of an upstream event improve the next downstream forecast when propagation is present? | [Rmd](reports/03-surges.Rmd) | [HTML](reports/03-surges.html) |
+| [1. Error in the supplied graph](study1-README.md) | How does forecast or recovery loss change when a known fraction of true PNAR edges is rewired? | [Rmd](reports/01-graph-error.Rmd) | [HTML](reports/01-graph-error.html) |
+| [2. Sparse directed grid](study2-README.md) | How well do physical graph shrinkage, time variation and validation-selected sparsification recover lag effects? | [Rmd](reports/02-sparse-grid.Rmd) | [HTML](reports/02-sparse-grid.html) |
+| [3. Upstream surges](study3-README.md) | Does the first observation of an upstream event improve the next downstream forecast when propagation is present? | [Rmd](reports/03-surges.Rmd) | [HTML](reports/03-surges.html) |
 | Divvy | Forecast departures on six training-selected origin–destination links during the bundled Chicago day | [Rmd](reports/divvy.Rmd) | [HTML](reports/divvy.html) |
 | PeMS | Forecast five-minute flow at four adjacent US-101 northbound stations during the bundled California day | [Rmd](reports/pems.Rmd) | [HTML](reports/pems.html) |
 
@@ -55,18 +55,19 @@ Install the R packages `rmarkdown` and `knitr` and make Pandoc available for rep
 
 ## Run the three experiments
 
-Choose an absolute results directory on the SSD. The loop below fits every method in all 16 conditions for one smoke replicate. Select an individual method or condition using the options in the [experiment guide](experiments/README.md). Use a separate results directory for each profile.
+Choose an absolute SSD directory for the shared panels, fits and draws. The full profile runs 50 replicates per condition. The example covers all 16 implemented conditions. Use `profile=smoke` with a separate output root for a one-replicate execution check. The [six study drivers](tools) default to a plan of the selected conditions and methods. The [experiment guide](experiments/README.md) documents the options.
 
 ```sh
-export RESULTS="$HOME/bdynets-results/gls-smoke"
+profile=full
+RESULTS="$HOME/bdynets-results/gls-$profile"
+TOOLS=GLS-paper/tools
 mkdir -p "$RESULTS"
 export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
-for study in 01-graph-error 02-sparse-grid 03-surges; do
-  case_dir="GLS-paper/experiments/$study"
-  Rscript "$case_dir/generate.R" --output="$RESULTS" --profile=smoke --replicate=1 || break
-  Rscript "$case_dir/fit.R" --output="$RESULTS" --profile=smoke --replicate=1 --method=all --cores=2 --chunk-size=100 --checkpoint-every=100 || break
-  Rscript "$case_dir/compare.R" --output="$RESULTS" --profile=smoke || break
-  Rscript GLS-paper/reports/render.R "$study" "$RESULTS/$study" "$RESULTS/reports" || break
+for study in 1 2 3; do
+  Rscript "$TOOLS/study${study}-gls.R" --action=data --profile="$profile" --output="$RESULTS" || break
+  Rscript "$TOOLS/study${study}-gls.R" --action=run --profile="$profile" --output="$RESULTS" --cores=2 || break
+  Rscript "$TOOLS/study${study}-competitors.R" --action=run --profile="$profile" --output="$RESULTS" || break
+  Rscript "$TOOLS/study${study}-gls.R" --action=report --profile="$profile" --output="$RESULTS" || break
 done
 ```
 

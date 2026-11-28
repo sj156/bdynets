@@ -65,24 +65,24 @@ For BC, the forecast mean is 25.1 vehicles and the 95% count interval is 20–34
 
 ## Reproduce the GLS paper workflows
 
-Each experiment generates one panel per replicate, fits GLS and competitors on the same chronological split, and collects paired comparisons. From the root of this checkout, the commands below run one graph-error condition and render its report. Set `RESULTS` to an absolute directory outside the checkout, preferably on the SSD used for draws. HTML rendering requires the R packages `rmarkdown` and `knitr`, plus Pandoc.
+For each condition, the GLS and competitor drivers use the same 50 synthetic datasets. A shared generator saves the panel and split once for each replicate. Each arm reads these inputs, and the study report compares their forecasts on matched panels. Running a driver without arguments prints its plan. The following commands run a short check on one graph-error condition. Set `RESULTS` to an SSD directory outside the checkout. HTML rendering requires `rmarkdown`, `knitr` and Pandoc.
 
 ```sh
 RESULTS="$HOME/bdynets-results/readme-smoke"
-CASE=GLS-paper/experiments/01-graph-error
-Rscript "$CASE/generate.R" --profile=smoke --scenario=T100-error25 --output="$RESULTS"
-Rscript "$CASE/fit.R" --profile=smoke --scenario=T100-error25 --method=all --output="$RESULTS"
-Rscript "$CASE/compare.R" --profile=smoke --output="$RESULTS"
-Rscript GLS-paper/reports/render.R 01-graph-error "$RESULTS/01-graph-error" "$RESULTS/reports"
+TOOLS=GLS-paper/tools
+Rscript "$TOOLS/study1-gls.R" --action=data --profile=smoke --scenario=T100-error25 --output="$RESULTS"
+Rscript "$TOOLS/study1-gls.R" --action=run --profile=smoke --scenario=T100-error25 --output="$RESULTS"
+Rscript "$TOOLS/study1-competitors.R" --action=run --profile=smoke --scenario=T100-error25 --output="$RESULTS"
+Rscript "$TOOLS/study1-gls.R" --action=report --profile=smoke --output="$RESULTS"
 ```
 
-Open `$RESULTS/reports/01-graph-error.html` to inspect the held-out comparisons. The bundled reports use one smoke replicate per condition. The [experiment guide](GLS-paper/experiments/README.md) gives the full designs and replication options.
+Open `$RESULTS/reports/01-graph-error.html` for the joint report. The [experiment guide](GLS-paper/experiments/README.md) lists all six drivers, their methods and the full 50-replicate command.
 
 | Walkthrough | Question and data |
 | --- | --- |
-| [Experiment 1 · Graph error](GLS-paper/reports/01-graph-error.Rmd) | How do forecasts and link recovery change as true edges are removed and false edges inserted? |
-| [Experiment 2 · Sparse dynamic grid](GLS-paper/reports/02-sparse-grid.Rmd) | Which signed, time-varying lag effects can GLS recover, and how does test error change as the selected network gets smaller? |
-| [Experiment 3 · Upstream surges](GLS-paper/reports/03-surges.Rmd) | Does observing an upstream surge improve the next downstream forecast when a transmission effect is present? |
+| [Experiment 1 · Graph error](GLS-paper/study1-README.md) | How do forecasts and link recovery change as true edges are removed and false edges inserted? |
+| [Experiment 2 · Sparse dynamic grid](GLS-paper/study2-README.md) | Which signed, time-varying lag effects can GLS recover, and how does test error change as the selected network gets smaller? |
+| [Experiment 3 · Upstream surges](GLS-paper/study3-README.md) | Does observing an upstream surge improve the next downstream forecast when a transmission effect is present? |
 | [Divvy · Chicago bike departures](GLS-paper/reports/divvy.Rmd) | Forecast one day of departures on six origin–destination links. The six-month projected-link analysis uses a [separate archive](GLS-paper/README.md#divvy-experiment-archive). |
 | [PeMS · California freeway counts](GLS-paper/reports/pems.Rmd) | Forecast five-minute vehicle counts at four adjacent northbound US-101 stations. |
 
