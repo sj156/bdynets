@@ -8,37 +8,17 @@ main <- function() {
         "[--data-root=/external/data] --output=/external/new-directory\n")
     return(invisible(NULL))
   }
-  if (any(!grepl("^--[^=]+=.+$", args))) stop("Use --name=value options.")
-  keys <- sub("^--([^=]+)=.*$", "\\1", args)
-  if (anyDuplicated(keys) ||
-      any(!keys %in% c("action", "profile", "cores", "chunk-size", "input", "data-root", "output")))
-    stop("Unknown or repeated option.")
-  opts <- stats::setNames(sub("^--[^=]+=", "", args), keys)
-  option <- function(name, default = NULL) if (name %in% names(opts)) opts[[name]] else default
-  action <- match.arg(option("action", "plan"), c("plan", "run", "report"))
-  profile <- match.arg(option("profile", "smoke"), c("smoke", "quick", "full"))
-  cores <- suppressWarnings(as.numeric(option("cores", "12")))
-  if (length(cores) != 1L || !is.finite(cores) || cores < 1 || cores != floor(cores))
-    stop("--cores must be a positive integer.")
-  chunk_size <- suppressWarnings(as.numeric(option("chunk-size", "100")))
-  if (!is.finite(chunk_size) || chunk_size < 1 || chunk_size != floor(chunk_size) ||
-      chunk_size > .Machine$integer.max)
-    stop("--chunk-size must be a positive integer.")
-  chunk_size <- as.integer(chunk_size)
-  script <- sub("^--file=", "", commandArgs(FALSE)[grepl("^--file=", commandArgs(FALSE))])
-  repo <- dirname(dirname(normalizePath(script, mustWork = TRUE)))
-  output <- option("output")
-  if (!is.null(output)) {
-    output <- path.expand(output)
-    if (!grepl("^(/|[A-Za-z]:[/\\\\])", output))
-      stop("--output must be an absolute external path.")
-    parent <- normalizePath(dirname(output), winslash = "/", mustWork = TRUE)
-    output <- file.path(parent, basename(output))
-    if (startsWith(paste0(output, "/"), paste0(normalizePath(repo, winslash = "/"), "/")))
-      stop("Keep run results outside the repository.")
-    if (action != "report" && file.exists(output)) stop("Output already exists; choose a new directory.")
-  } else if (action != "plan") stop("--output is required for run or report.")
-  draw_dir <- if (is.null(output)) NULL else file.path(output, "draws")
+  script <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))
+  script <- normalizePath(script, winslash = "/", mustWork = TRUE)
+  helper_file <- file.path(dirname(script), "R", "launcher_helpers.R")
+  sys.source(helper_file, envir = environment())
+  config <- gls_paper_options(args, dirname(dirname(script)), extra = c("input", "data-root"))
+  action <- config$action
+  profile <- config$profile
+  cores <- config$cores
+  chunk_size <- config$chunk_size
+  output <- config$output
+  draw_dir <- config$draw_dir
   if (!requireNamespace("bdynets", quietly = TRUE)) stop("Install bdynets before using this launcher.")
 
   if (action == "report") {
@@ -69,7 +49,7 @@ main <- function() {
     cat("Exported saved prediction summaries, diagnostics and DSS selection to", output, "\n")
     return(invisible(NULL))
   }
-  input_path <- option("input")
+  input_path <- config$input
   if (is.null(input_path)) {
     if (action == "run") stop("--input is required for run.")
     cat("Plan only. Supply --input=prepared.rds with Y, graph, covariates,",
@@ -80,8 +60,8 @@ main <- function() {
         if (is.null(draw_dir)) "<output>/draws" else draw_dir, "\n")
     return(invisible(NULL))
   }
-  if (!is.null(option("data-root"))) {
-    data_root <- normalizePath(path.expand(option("data-root")), mustWork = TRUE)
+  if (!is.null(config$data_root)) {
+    data_root <- normalizePath(path.expand(config$data_root), mustWork = TRUE)
     if (!dir.exists(data_root)) stop("--data-root must name a directory.")
     if (!grepl("^(/|[A-Za-z]:[/\\\\])", path.expand(input_path)))
       input_path <- file.path(data_root, input_path)
@@ -117,13 +97,8 @@ main <- function() {
     stop("Optional control must be a named list of gls_control settings.")
   control <- do.call(bdynets::gls_control,
     c(list(profile = if (profile == "full") "default" else profile), replacements))
-  physical <- suppressWarnings(parallel::detectCores(logical = FALSE))
-  if (length(physical) != 1L || is.na(physical) || physical < 1L) physical <- 1L
-  possible <- min(control$n_chains, physical)
-  windows_parallel <- utils::packageVersion("bdynets") >= "0.2.1"
-  control$parallel_chains <- isTRUE(control$parallel_chains) &&
-    (.Platform$OS.type != "windows" || windows_parallel) && cores >= possible && possible > 1L
-  workers <- if (control$parallel_chains) possible else 1L
+  workers <- gls_paper_chain_workers(control, cores, windows_parallel = utils::packageVersion("bdynets") >= "0.2.1")
+  control$parallel_chains <- workers > 1L
   input_md5 <- unname(tools::md5sum(input_path))
   cat("Action:", action, "| profile:", profile, "| input:", input_path, "\n")
   cat("Times:", nrow(Y), "| series:", ncol(Y), "| covariates:", ncol(Q),
@@ -140,13 +115,8 @@ main <- function() {
   if (!"draw_dir" %in% names(formals(bdynets::gls_fit_general)))
     stop("Install bdynets with GLS draw storage before running this launcher.")
   if (!dir.create(output)) stop("Could not create the new output directory.")
-  provenance <- list(input_path = input_path, input_md5 = input_md5,
-    package_version = as.character(utils::packageVersion("bdynets")),
-    package_path = find.package("bdynets"), launcher_md5 = unname(tools::md5sum(script)),
-    profile = profile, requested_cores = cores, chain_workers = workers,
-    draw_dir = draw_dir, chunk_size = chunk_size,
-    command = commandArgs(), started = as.character(Sys.time()),
-    session = capture.output(utils::sessionInfo()), status = "started")
+  provenance <- c(list(input_path = input_path, input_md5 = input_md5),
+                  gls_paper_provenance(config, script, helper_file, workers))
   saveRDS(list(control = control, split = split, provenance = provenance),
     file.path(output, "application_configuration.rds"))
   results <- tryCatch(local({
