@@ -114,6 +114,16 @@ update_general_targets_with_reference <- function(ystar, X, Q, Y, beta, omega,
 
 fit_general_chain <- function(Y, X, Q, pairs, means, chain_id, signal, cfg = CFG,
     draw_store = NULL, affinity_features = NULL) {
+    checkpointing <- !is.null(draw_store$checkpoint_dir)
+    previous <- NULL
+    if (checkpointing) {
+        checkpoint <- file.path(draw_store$checkpoint_dir, sprintf("chain-%04d", chain_id))
+        if (!dir.exists(checkpoint)) dir.create(checkpoint, showWarnings = FALSE)
+        lock <- .gls_checkpoint_lock(file.path(checkpoint, "chain.lock"))
+        on.exit(filelock::unlock(lock), add = TRUE)
+        previous <- .gls_restore_chain(checkpoint, draw_store, chain_id)
+        if (!is.null(previous$result)) return(previous$result)
+    }
     set.seed(method_seed("general MCMC", paste(signal, chain_id), cfg))
     start <- Sys.time()
     TT <- nrow(Y)
@@ -212,7 +222,20 @@ fit_general_chain <- function(Y, X, Q, pairs, means, chain_id, signal, cfg = CFG
     interweave_log_sd <- log(cfg$interweave_initial_sd)
     interweave_accepted <- 0L
     interweave_log_jump <- 0
-    for (iter in seq_len(cfg$n_iter)) {
+    last_iteration <- 0L
+    elapsed_before <- 0
+    if (checkpointing) state_names <- .gls_general_state_names(estimate_tau, learn_affinity)
+    if (!is.null(previous)) {
+        last_iteration <- previous$iteration
+        elapsed_before <- previous$elapsed
+        list2env(previous$state, envir = environment())
+        coefficient_trace[seq_len(last_iteration), ] <- previous$trace
+        buffer[names(previous$index)] <- previous$index
+        last_saved_iteration <- buffer$last_iteration
+        assign(".Random.seed", previous$rng, envir = .GlobalEnv)
+        rm(previous)
+    }
+    for (iter in seq.int(last_iteration + 1L, cfg$n_iter)) {
         iter_accepted <- iter_proposed <- 0L
         pcn_step <- exp(static_log_step)
         # H, offset and ref follow the last accepted coefficient state.
@@ -338,6 +361,19 @@ fit_general_chain <- function(Y, X, Q, pairs, means, chain_id, signal, cfg = CFG
                 }
             }
         }
+        if (checkpointing && iter < cfg$n_iter && iter %% draw_store$checkpoint_every == 0L) {
+            if (si > 0L) {
+                buffer <- .gls_write_draw_chunk(buffer, draw_arrays(), si, last_saved_iteration)
+                si <- 0L
+            }
+            record <- list(iteration = iter, chain_id = chain_id, index = .gls_draw_chunks(buffer),
+                rng = get(".Random.seed", envir = .GlobalEnv),
+                state = mget(state_names, envir = environment(), inherits = FALSE),
+                trace = coefficient_trace[seq_len(iter), , drop = FALSE],
+                elapsed = elapsed_before + as.numeric(difftime(Sys.time(), start, units = "secs")))
+            .gls_commit_chain(record, checkpoint)
+            rm(record)
+        }
         if (iter == 1L || iter%%cfg$progress_every == 0L || iter == cfg$n_iter) {
             progress_with_eta(sprintf("general GLS; q=%.2f; chain %d", signal, chain_id), iter, cfg$n_iter, start)
             message(sprintf("  coefficient blocks accepted: %d/%d; pCN step: %.4g",
@@ -358,12 +394,18 @@ fit_general_chain <- function(Y, X, Q, pairs, means, chain_id, signal, cfg = CFG
             interweave_accepted/(as.double(interweave_steps) * cfg$n_iter) else NA_real_,
         interweave_mean_abs_log_jump = if (interweave_steps > 0L)
             interweave_log_jump/(as.double(interweave_steps) * cfg$n_iter) else NA_real_,
-        elapsed = as.numeric(difftime(Sys.time(), start, units = "secs")))
+        elapsed = elapsed_before + as.numeric(difftime(Sys.time(), start, units = "secs")))
     if (learn_affinity) {
         metadata$chi_acceptance <- chi_accepted/cfg$n_iter
         metadata$chi_final_step <- exp(chi_log_sd)
     }
-    if (write_draws) return(c(metadata, list(draw_chunks = .gls_draw_chunks(buffer))))
+    if (write_draws) {
+        index <- .gls_draw_chunks(buffer)
+        result <- c(metadata, list(draw_chunks = index))
+        if (checkpointing) .gls_commit_chain(list(iteration = cfg$n_iter, chain_id = chain_id,
+            index = index, result = result), checkpoint)
+        return(result)
+    }
     .gls_merge_chain_draws(draw_arrays(), metadata)
 }
 
@@ -396,13 +438,14 @@ fit_general_chains_psock <- function(ids, workers, Y, X, Q, pairs, means, signal
 }
 
 fit_general_gls <- function(Y, X, Q, pairs, means, signal, cfg = CFG, draw_store = NULL,
-    affinity_features = NULL) {
+    affinity_features = NULL, max_workers = NULL) {
     start <- Sys.time()
     ids <- seq_len(cfg$n_chains)
     worker <- function(ch) fit_general_chain(Y, X, Q, pairs, means, ch, signal, cfg,
         draw_store = draw_store, affinity_features = affinity_features)
     cores <- parallel::detectCores(logical = FALSE)
     if (is.na(cores) || cores < 1L) cores <- 1L
+    if (!is.null(max_workers)) cores <- min(cores, as.integer(max_workers))
     workers <- if (isTRUE(cfg$parallel_chains)) min(length(ids), cores) else 1L
     chains <- if (workers == 1L) {
         lapply(ids, worker)
@@ -437,9 +480,24 @@ fit_general_gls <- function(Y, X, Q, pairs, means, signal, cfg = CFG, draw_store
     fit
 }
 
+.gls_general_prediction_fields <- c("alpha", "gamma", "final_beta", "B", "L",
+                                    "discount", "reference_mean", "reference_variance")
+
+.gls_general_draw_view <- function(fit, ids, fields) {
+    view <- .gls_general_draw_fields(fit, ids, fields)
+    view$pairs <- fit$pairs
+    view$factor_evolution <- fit$control$factor_evolution
+    view
+}
+
 predict_general_gls <- function(fit, X, Q, Y, rows, conditioning_rows = integer(0), d = NULL, label = fit$label, signal,
     cfg = CFG) {
-    ids <- balanced_indices(fit$chain_id, cfg$predictive_draws, method_seed("general prediction", paste(label, signal), cfg))
+    ids <- .gls_general_draw_indices(.gls_general_chain_ids(fit), cfg$predictive_draws,
+        method_seed("general prediction", paste(label, signal), cfg))
+    if (!is.null(fit$draw_store)) {
+        fit <- .gls_general_draw_view(fit, ids, .gls_general_prediction_fields)
+        ids <- seq_along(ids)
+    }
     Hn <- length(rows)
     k <- ncol(X)
     r <- ncol(fit$final_beta)
@@ -457,6 +515,8 @@ predict_general_gls <- function(fit, X, Q, Y, rows, conditioning_rows = integer(
             gamma <- matrix(gamma, ncol = 1L)
         beta <- fit$final_beta[s, ]
         ref <- stored_reference(fit, s)
+        discount <- stored_discount(fit, s)
+        evolution <- stored_evolution(fit)
         L <- fit$L[s, , , drop = TRUE]
         if (r == 1L)
             L <- matrix(L, ncol = 1L)
@@ -466,13 +526,13 @@ predict_general_gls <- function(fit, X, Q, Y, rows, conditioning_rows = integer(
             tt <- sequential[pos]
             Ht <- matrix(design$H[pos, , ], k, r)
             base <- design$base[pos, ]
-            step <- forecast_factor_step(beta, ref, stored_discount(fit, s), stored_evolution(fit), Ht, base,
+            step <- forecast_factor_step(beta, ref, discount, evolution, Ht, base,
                 Y[tt, ], rn[pos],
                 reference_backend = cfg$reference_backend)
             eta <- step$eta
             beta <- step$beta; ref <- step$ref
-            h <- match(tt, rows)
-            if (!is.na(h))
+            h <- pos - length(conditioning_rows)
+            if (h > 0L)
                 lam[h, , jj] <- exp(clamp(eta, -15, 12))
         }
     }
@@ -480,7 +540,7 @@ predict_general_gls <- function(fit, X, Q, Y, rows, conditioning_rows = integer(
     list(label = label, lambda = lam, y = array(rpois(length(lam), lam), dim(lam)))
 }
 
-validation_general_deviance <- function(fit, X, Q, Y, rows, d, draw_ids, seed, cfg = CFG) {
+validation_general_deviance <- function(fit, X, Q, Y, rows, d, draw_ids, seed, cfg = CFG, by_time = FALSE) {
     k <- ncol(X)
     r <- ncol(fit$final_beta)
     mu <- matrix(0, length(rows), k)
@@ -495,6 +555,8 @@ validation_general_deviance <- function(fit, X, Q, Y, rows, d, draw_ids, seed, c
             gamma <- matrix(gamma, ncol = 1L)
         beta <- fit$final_beta[s, ]
         ref <- stored_reference(fit, s)
+        discount <- stored_discount(fit, s)
+        evolution <- stored_evolution(fit)
         L <- fit$L[s, , , drop = TRUE]
         if (r == 1L)
             L <- matrix(L, ncol = 1L)
@@ -504,7 +566,7 @@ validation_general_deviance <- function(fit, X, Q, Y, rows, d, draw_ids, seed, c
             tt <- rows[h]
             Ht <- matrix(design$H[h, , ], k, r)
             base <- design$base[h, ]
-            step <- forecast_factor_step(beta, ref, stored_discount(fit, s), stored_evolution(fit), Ht, base,
+            step <- forecast_factor_step(beta, ref, discount, evolution, Ht, base,
                 Y[tt, ], rn[h],
                 reference_backend = cfg$reference_backend)
             eta <- step$eta
@@ -512,7 +574,8 @@ validation_general_deviance <- function(fit, X, Q, Y, rows, d, draw_ids, seed, c
             mu[h, ] <- mu[h, ] + exp(clamp(eta, -15, 12))
         }
     }
-    mean(poisson_deviance(Y[rows, , drop = FALSE], mu/length(draw_ids)))
+    loss <- poisson_deviance(Y[rows, , drop = FALSE], mu/length(draw_ids))
+    if (by_time) rowMeans(loss) else mean(loss)
 }
 
 .gls_general_prediction_design <- function(X, Q, pairs, alpha, gamma, B, L, d = NULL) {
@@ -521,8 +584,15 @@ validation_general_deviance <- function(fit, X, Q, Y, rows, d, draw_ids, seed, c
         base = baseline_general(alpha, gamma, Q) + static_network(X, pairs, B, d))
 }
 
-run_general_dss <- function(fit, Xtrain, Qtrain, Xall, Qall, Y, validation, signal, cfg = CFG) {
-    draws <- balanced_indices(fit$chain_id, cfg$dss_max_draws, method_seed("general DSS", signal, cfg))
+run_general_dss <- function(fit, Xtrain, Qtrain, Xall, Qall, Y, validation, signal, cfg = CFG, path_only = FALSE) {
+    chain_ids <- .gls_general_chain_ids(fit)
+    draws <- .gls_general_draw_indices(chain_ids, cfg$dss_max_draws, method_seed("general DSS", signal, cfg))
+    disk_fit <- NULL
+    if (!is.null(fit$draw_store)) {
+        disk_fit <- fit
+        fit <- .gls_general_draw_view(disk_fit, draws, c("alpha", "gamma", "B", "L", "beta_path", "final_beta"))
+        draws <- seq_along(draws)
+    }
     k <- ncol(Xtrain)
     P <- nrow(fit$pairs)
     objective <- vector("list", k)
@@ -577,8 +647,15 @@ run_general_dss <- function(fit, Xtrain, Qtrain, Xall, Qall, Y, validation, sign
     lambdas <- lambdas[ord]
     type <- type[ord]
     sizes <- sizes[ord]
-    draw_ids <- balanced_indices(fit$chain_id, cfg$dss_validation_draws, method_seed("general DSS validation draws", signal,
-        cfg))
+    if (path_only) return(list(multipliers = D, path = data.frame(
+        n_selected = sizes, candidate_type = type, lambda = lambdas)))
+    draw_ids <- .gls_general_draw_indices(chain_ids, cfg$dss_validation_draws,
+        method_seed("general DSS validation draws", signal, cfg))
+    if (!is.null(disk_fit)) {
+        fit <- NULL
+        fit <- .gls_general_draw_view(disk_fit, draw_ids, .gls_general_prediction_fields)
+        draw_ids <- seq_along(draw_ids)
+    }
     seed <- method_seed("general DSS validation CRN", signal, cfg)
     full <- validation_general_deviance(fit, Xall, Qall, Y, validation, rep(1, P), draw_ids, seed, cfg)
     loss <- rep(NA_real_, ncol(D))
@@ -603,16 +680,26 @@ run_general_dss <- function(fit, Xtrain, Qtrain, Xall, Qall, Y, validation, sign
 }
 
 basic_convergence <- function(fit, signal, cfg = CFG) {
-    quantities <- list()
-    types <- character(0)
+    monitor_discount <- !is.null(fit$discount) && all(is.finite(fit$discount))
+    n_parameters <- sum(ncol(fit$B), monitor_discount, 2L, !is.null(fit$chi),
+        ncol(fit$alpha), prod(dim(fit$gamma)[2:3]), ncol(fit$amplitude), ncol(fit$theta_average))
+    parameters <- types <- character(n_parameters)
+    rhats <- esses <- rep(NA_real_, n_parameters)
+    pos <- 0L
+    tau_is_fixed <- !is.null(fit$control$fixed_tau)
+    chain_indices <- split(seq_along(fit$chain_id), fit$chain_id)
     add_vector <- function(name, type, value) {
-        quantities[[name]] <<- value
-        types[name] <<- type
+        pos <<- pos + 1L
+        parameters[pos] <<- name
+        types[pos] <<- type
+        if (tau_is_fixed && name == "tau") return(invisible(NULL))
+        mat <- do.call(cbind, lapply(chain_indices, function(rows) value[rows]))
+        rhats[pos] <<- split_rhat(mat)
+        esses[pos] <<- acf_ess(mat)
     }
     add_matrix <- function(x, type, labels) for (j in seq_len(ncol(x))) add_vector(labels[j], type, x[, j])
     if (!is.null(fit$B)) add_matrix(fit$B, "static_propagation", paste0("B[", fit$pairs$pair, "]"))
-    if (!is.null(fit$discount) && all(is.finite(fit$discount))) add_vector("discount", "discount", fit$discount)
-    tau_is_fixed <- !is.null(fit$control$fixed_tau)
+    if (monitor_discount) add_vector("discount", "discount", fit$discount)
     add_vector("tau", if (tau_is_fixed) "tau_fixed" else "tau", fit$tau)
     if (!is.null(fit$chi)) add_vector("chi", "chi", fit$chi)
     add_vector("network_RMS", "network_RMS", fit$network_rms)
@@ -624,18 +711,9 @@ basic_convergence <- function(fit, signal, cfg = CFG) {
     pair_names <- fit$pairs$pair
     add_matrix(fit$amplitude, "trajectory_amplitude", paste0("amplitude[", pair_names, "]"))
     add_matrix(fit$theta_average, "mean_theta", paste0("mean_theta[", pair_names, "]"))
-    out <- lapply(names(quantities), function(nm) {
-        z <- quantities[[nm]]
-        if (tau_is_fixed && nm == "tau") {
-            rhat <- ess <- NA_real_
-        } else {
-            mat <- do.call(cbind, lapply(split(z, fit$chain_id), identity))
-            rhat <- split_rhat(mat)
-            ess <- acf_ess(mat)
-        }
-        data.frame(signal = signal, ParameterType = unname(types[nm]), Parameter = nm, SplitRhat = rhat, ESS = ess, PassRhat = is.finite(rhat) &&
-            rhat <= cfg$mcmc_rhat_threshold, PassESS = is.finite(ess) && ess >= cfg$mcmc_ess_threshold)
-    })
-    do.call(rbind, out)
+    data.frame(signal = signal, ParameterType = types, Parameter = parameters,
+        SplitRhat = rhats, ESS = esses,
+        PassRhat = is.finite(rhats) & rhats <= cfg$mcmc_rhat_threshold,
+        PassESS = is.finite(esses) & esses >= cfg$mcmc_ess_threshold)
 }
 

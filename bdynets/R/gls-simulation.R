@@ -24,12 +24,12 @@
   k <- nrow(edges)
   A_edge <- matrix(0, k, k,
     dimnames = list(target = edges$name, source = edges$name))
-  endpoints <- lapply(seq_len(k), function(j) c(edges$from[j], edges$to[j]))
-  for (a in seq_len(k)) for (b in seq_len(a - 1L)) {
-    if (length(intersect(endpoints[[a]], endpoints[[b]]))) {
-      A_edge[a, b] <- A_edge[b, a] <- 1
-    }
-  }
+  endpoints <- c(as.character(edges$from), as.character(edges$to))
+  if (!length(endpoints)) return(A_edge)
+  endpoint_ids <- match(endpoints, unique(endpoints))
+  incident <- split(rep(seq_len(k), length.out = length(endpoints)), endpoint_ids)
+  for (ids in incident) A_edge[ids, ids] <- 1
+  diag(A_edge) <- 0
   A_edge
 }
 
@@ -44,8 +44,9 @@
   precision <- diag(degree + 1, nrow(A_edge)) - rho0 * A_edge
   covariance <- chol2inv(chol(precision))
   marginal_sd <- sqrt(diag(covariance))
-  correlation <- covariance / outer(marginal_sd, marginal_sd)
-  raw <- correlation[cbind(pairs$target, pairs$source)]
+  indices <- cbind(pairs$target, pairs$source)
+  raw <- covariance[indices] / (marginal_sd[pairs$target] * marginal_sd[pairs$source])
+  raw <- unname(raw)
   raw_center <- mean(raw)
   raw_scale <- sqrt(mean((raw - raw_center)^2))
   if (!is.finite(raw_scale) || raw_scale <= tolerance) {

@@ -1,0 +1,64 @@
+---
+title: "Divvy departures and directed lag forecasts"
+params:
+  results: ""
+output:
+  html_document:
+    template: report-template.html
+    theme: null
+    highlight: null
+    mathjax: null
+    self_contained: true
+---
+
+The bundled workflow counts observed departures between training-selected geographic origin and destination cells in Chicago. The six-month paper analysis instead assigns trips to links along inferred shortest paths. A saved projected panel can be supplied separately.
+
+```{r setup, include=FALSE}
+source("report.R", local = TRUE)
+x <- read_application(params$results, "divvy")
+Y <- x$fit$Y
+```
+
+**Run scope.** The **`r x$provenance$profile`** run contains `r ncol(Y)` directed series and `r nrow(Y)` time bins, with `r length(x$split$test)` final bins reserved for sequential forecasting. `r if (x$provenance$profile == "smoke") "These scores check the workflow on the sample and are unsuitable for ranking methods in the manuscript." else "The following scores summarize the indicated held-out period."`
+
+## Forecast comparison
+
+Each method is scored on the same held-out counts. The log score integrates predictive uncertainty for models supplying a distribution. Larger log scores and smaller count errors indicate better forecasts. Interpret interval coverage with its width.
+
+```{r table, echo=FALSE}
+application_scores(x$forecast_summary)
+```
+
+```{r flow, echo=FALSE, fig.width=8, fig.height=3.3, fig.alt="Observed total counts and held-out DSS point forecast"}
+application_plot(x)
+```
+
+## From the raw observations to a time series
+
+```{r inputs, echo=FALSE}
+info <- x$provenance$input_provenance
+keys <- intersect(c("source","date","timezone","scope","selection","graph","observation_scope"), names(info))
+if (length(keys)) knitr::kable(data.frame(Field = keys, Detail = unlist(info[keys], use.names = FALSE)), row.names = FALSE)
+knitr::kable(data.frame(Block = names(x$split), Bins = lengths(x$split),
+  Counts = vapply(x$split, function(i) sum(Y[i,,drop=FALSE]), numeric(1)),
+  Zero_fraction = vapply(x$split, function(i) mean(Y[i,,drop=FALSE] == 0), numeric(1))), digits=3, row.names=FALSE)
+```
+
+## Model and diagnostics
+
+The continuous GLS fit and its sparse DSS projection share the training posterior. Validation selects the projection. Each test forecast uses observations available before the scored bin. The selected graph retains **`r sum(x$dss$d > x$control$dss_zero_tolerance)`** of **`r length(x$dss$d)`** candidate relationships. The diagnostic counts show how many monitored summaries have finite estimates and how many miss the declared thresholds.
+
+```{r diagnostics, echo=FALSE}
+knitr::kable(diagnostic_counts(x), row.names = FALSE)
+```
+
+## Reproduce from the repository root
+
+Install the optional Python dependencies for Graph WaveNet as described in the GLS paper README. Set `RESULTS` to an external directory on the data or SSD volume. Preparation writes the count panel, source checksums and an exploratory plot. The application runner fits the training window, selects on validation, scores the held-out window and saves compact outputs. Report mode exports individual forecast cells and diagnostics. The final command rebuilds the executive report without fitting.
+
+```sh
+Rscript GLS-paper/applications/divvy/prepare.R --output="$RESULTS/divvy-prepared.rds"
+Rscript GLS-paper/applications/run.R --action=run --profile=smoke --benchmarks=pnar1,pnar2,sa-pgss,graph-wavenet --input="$RESULTS/divvy-prepared.rds" --output="$RESULTS/divvy"
+Rscript GLS-paper/applications/run.R --action=report --output="$RESULTS/divvy"
+Rscript GLS-paper/reports/render.R divvy "$RESULTS/divvy"
+```

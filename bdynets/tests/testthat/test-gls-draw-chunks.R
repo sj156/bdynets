@@ -166,3 +166,44 @@ test_that("study GLS retains its empty fit layout when thinning saves no draws",
     expect_length(list.files(parent), 0L)
   })
 })
+
+test_that("selected general GLS draws and public postprocessing agree with full history", {
+  with_gls_chunk_test_directory(function(parent) {
+    data <- gls_chunk_test_data()
+    cfg <- gls_chunk_test_control(3L)
+    q <- cbind(sin(seq_len(nrow(data$Y))), cos(seq_len(nrow(data$Y))))
+    disk <- gls_fit_general(data$Y, data$graph, q, train_rows = data$train_rows,
+                            control = cfg, draw_dir = parent, chunk_size = 2L)
+    full <- gls_load_draws(disk)
+    fields <- c("alpha", "tau", "L", "beta_path", "amplitude")
+    seed_before <- .Random.seed
+    for (n in c(1L, 2L, 4L, 5L, 12L, 15L, 20L)) {
+      x <- gls_read_general_draws(disk, fields, max_draws = n, seed = 919L)
+      expect_identical(x, gls_read_general_draws(full, fields, max_draws = n, seed = 919L))
+      expect_length(x$draw_id, min(n, 15L))
+      expect_true(diff(range(tabulate(x$chain_id, 3L))) <= 1L)
+      expect_identical(x$alpha, full$alpha[x$draw_id, , drop = FALSE])
+      expect_identical(x$beta_path, full$beta_path[x$draw_id, , , drop = FALSE])
+    }
+    expect_identical(.Random.seed, seed_before)
+    expect_identical(gls_read_general_draws(disk, "tau")$tau, full$tau)
+    expect_error(gls_read_general_draws(disk, "chi"), "Unavailable")
+    expect_error(gls_read_general_draws(disk, "wrong"), "field")
+    expect_error(gls_read_general_draws(disk, "tau", 0), "positive integer")
+
+    # Any accidental full materialization in these public calls is a regression.
+    with_mocked_bindings({
+      expect_identical(predict(disk, 18:20, 15:17), predict(full, 18:20, 15:17))
+      expect_identical(gls_dss(disk, 15:17), gls_dss(full, 15:17))
+      expect_identical(gls_diagnostics(disk), gls_diagnostics(full))
+      expect_identical(summary(disk), summary(full))
+    }, gls_load_draws = function(...) stop("unexpected full draw load"), .package = "bdynets")
+
+    selected <- gls_read_general_draws(disk, "tau", 1L, seed = 42L)
+    omitted_chain <- setdiff(seq_along(disk$chains), selected$chain_id)[1L]
+    bad_path <- file.path(disk$draw_store$path, disk$chains[[omitted_chain]]$draw_chunks$files[1L])
+    writeBin(as.raw(0), bad_path)
+    expect_identical(gls_read_general_draws(disk, "tau", 1L, seed = 42L), selected)
+    expect_error(gls_read_general_draws(disk, "tau"), "Checksum")
+  })
+})

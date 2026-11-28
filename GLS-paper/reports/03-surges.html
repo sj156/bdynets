@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Downstream forecasts after an upstream surge</title>
+<style>
+body{max-width:58rem;margin:3rem auto;padding:0 1.5rem 4rem;color:#233339;background:#fff;font:17px/1.55 system-ui,sans-serif}
+h1,h2{line-height:1.18;color:#123b47}h1{font-size:2em}h2{font-size:1.35em;margin-top:2em}
+table{border-collapse:collapse;font-size:.9em;display:block;overflow:auto}th,td{padding:.4em .65em;border-bottom:1px solid #ccd5d5}
+th{background:#edf3f2}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f3f5f4;padding:1em}
+img{max-width:100%;height:auto}a{color:#005c70}caption{font-weight:bold;text-align:left;margin:.6em 0}
+</style></head>
+<body><main><h1>Downstream forecasts after an upstream surge</h1><p>The
+source experiences repeated unannounced surges. The target may have
+independent demand changes and may respond to the previous observed
+source count. Its first usable downstream forecast follows the observed
+upstream onset by one bin.</p>
+<div id="shared-synthetic-datasets" class="section level2">
+<h2>Shared synthetic datasets</h2>
+<p>The GLS arm fits the full network and own-history specifications. The
+competitor arm fits PNAR, sa-PGSS and Graph WaveNet. Both arms read the
+same saved counts and chronological split for each condition and
+replicate. The full study uses 50 independent replicates per
+condition.</p>
+<p><strong>Data in this report.</strong> Profile <strong>smoke</strong>,
+4 condition(s), 1 distinct scheduled replicate ID(s). The displayed
+values are from a short execution check.</p>
+<table>
+<caption>Distinct replicate panels per condition. Completed jobs on a
+panel share its checksum.</caption>
+<colgroup>
+<col width="26%" />
+<col width="19%" />
+<col width="29%" />
+<col width="24%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th align="left">Condition</th>
+<th align="right">Scheduled panels</th>
+<th align="right">At least one fit complete</th>
+<th align="right">All methods complete</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">local-off-transmit-off</td>
+<td align="right">1</td>
+<td align="right">1</td>
+<td align="right">1</td>
+</tr>
+<tr class="even">
+<td align="left">local-off-transmit-on</td>
+<td align="right">1</td>
+<td align="right">1</td>
+<td align="right">1</td>
+</tr>
+<tr class="odd">
+<td align="left">local-on-transmit-off</td>
+<td align="right">1</td>
+<td align="right">1</td>
+<td align="right">1</td>
+</tr>
+<tr class="even">
+<td align="left">local-on-transmit-on</td>
+<td align="right">1</td>
+<td align="right">1</td>
+<td align="right">1</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="forecast-comparison" class="section level2">
+<h2>Forecast comparison</h2>
+<p>The table gives method minus own-history GLS on target count MAE in
+the first bin after an upstream onset. Negative differences indicate a
+smaller error after the source becomes observable. With one matched
+dataset the Monte Carlo standard error is unavailable.</p>
+<table>
+<caption>Mean paired difference ± Monte Carlo SE when estimable (matched
+panels)</caption>
+<colgroup>
+<col width="16%" />
+<col width="21%" />
+<col width="20%" />
+<col width="20%" />
+<col width="19%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th align="left">method</th>
+<th align="left">local-off-transmit-off</th>
+<th align="left">local-off-transmit-on</th>
+<th align="left">local-on-transmit-off</th>
+<th align="left">local-on-transmit-on</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">gls</td>
+<td align="left">0.028 (1)</td>
+<td align="left">0.014 (1)</td>
+<td align="left">-0.960 (1)</td>
+<td align="left">-0.805 (1)</td>
+</tr>
+<tr class="even">
+<td align="left">gls-dss</td>
+<td align="left">-0.031 (1)</td>
+<td align="left">0.017 (1)</td>
+<td align="left">-0.960 (1)</td>
+<td align="left">-0.805 (1)</td>
+</tr>
+<tr class="odd">
+<td align="left">gls-own-dss</td>
+<td align="left">-0.085 (1)</td>
+<td align="left">-0.019 (1)</td>
+<td align="left">0.000 (1)</td>
+<td align="left">0.000 (1)</td>
+</tr>
+<tr class="even">
+<td align="left">gls-own-tolerance</td>
+<td align="left">-0.085 (1)</td>
+<td align="left">0.116 (1)</td>
+<td align="left">0.000 (1)</td>
+<td align="left">0.000 (1)</td>
+</tr>
+<tr class="odd">
+<td align="left">gls-tolerance</td>
+<td align="left">-0.031 (1)</td>
+<td align="left">0.033 (1)</td>
+<td align="left">-0.887 (1)</td>
+<td align="left">-0.785 (1)</td>
+</tr>
+<tr class="even">
+<td align="left">graph-wavenet</td>
+<td align="left">0.132 (1)</td>
+<td align="left">0.869 (1)</td>
+<td align="left">-3.332 (1)</td>
+<td align="left">-3.141 (1)</td>
+</tr>
+<tr class="odd">
+<td align="left">pnar</td>
+<td align="left">0.041 (1)</td>
+<td align="left">0.253 (1)</td>
+<td align="left">-7.575 (1)</td>
+<td align="left">-5.351 (1)</td>
+</tr>
+<tr class="even">
+<td align="left">sa-pgss</td>
+<td align="left">0.531 (1)</td>
+<td align="left">0.594 (1)</td>
+<td align="left">-6.163 (1)</td>
+<td align="left">-5.089 (1)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="timing-of-the-downstream-response" class="section level2">
+<h2>Timing of the downstream response</h2>
+<p>The table compares mean target-count error at the first informative
+bin, during the early and late response, and at quiet times in the cell
+with both local demand changes and transmission. Each panel receives
+equal weight within its window. The result files also give scores for
+disjoint source-only and local-only events.</p>
+<table>
+<thead>
+<tr class="header">
+<th align="left">method</th>
+<th align="right">early</th>
+<th align="right">first</th>
+<th align="right">late</th>
+<th align="right">quiet</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">gls</td>
+<td align="right">13.836</td>
+<td align="right">11.680</td>
+<td align="right">20.058</td>
+<td align="right">8.690</td>
+</tr>
+<tr class="even">
+<td align="left">gls-dss</td>
+<td align="right">13.836</td>
+<td align="right">11.680</td>
+<td align="right">20.058</td>
+<td align="right">8.690</td>
+</tr>
+<tr class="odd">
+<td align="left">gls-own</td>
+<td align="right">13.856</td>
+<td align="right">12.485</td>
+<td align="right">19.007</td>
+<td align="right">8.003</td>
+</tr>
+<tr class="even">
+<td align="left">graph-wavenet</td>
+<td align="right">12.461</td>
+<td align="right">9.344</td>
+<td align="right">17.926</td>
+<td align="right">3.952</td>
+</tr>
+<tr class="odd">
+<td align="left">pnar</td>
+<td align="right">8.903</td>
+<td align="right">7.135</td>
+<td align="right">9.705</td>
+<td align="right">4.308</td>
+</tr>
+<tr class="even">
+<td align="left">sa-pgss</td>
+<td align="right">9.777</td>
+<td align="right">7.396</td>
+<td align="right">16.033</td>
+<td align="right">7.854</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="method-completion" class="section level2">
+<h2>Method completion</h2>
+<table>
+<caption>Method jobs by completion status</caption>
+<thead>
+<tr class="header">
+<th align="left"></th>
+<th align="right">complete</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">gls</td>
+<td align="right">4</td>
+</tr>
+<tr class="even">
+<td align="left">gls-own</td>
+<td align="right">4</td>
+</tr>
+<tr class="odd">
+<td align="left">graph-wavenet</td>
+<td align="right">4</td>
+</tr>
+<tr class="even">
+<td align="left">pnar</td>
+<td align="right">4</td>
+</tr>
+<tr class="odd">
+<td align="left">sa-pgss</td>
+<td align="right">4</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="reproduce-from-the-repository-root" class="section level2">
+<h2>Reproduce from the repository root</h2>
+<p>Generate all conditions once, then point both fitting arms to the
+same SSD directory. The full profile defaults to replicate IDs 1–50. The
+comparison collects both arms into this single study report.</p>
+<pre class="sh"><code>RESULTS=&quot;$HOME/bdynets-results/full&quot;
+TOOLS=GLS-paper/tools
+Rscript &quot;$TOOLS/study3-gls.R&quot; --action=data --profile=full --output=&quot;$RESULTS&quot;
+Rscript &quot;$TOOLS/study3-gls.R&quot; --action=run --profile=full --output=&quot;$RESULTS&quot;
+Rscript &quot;$TOOLS/study3-competitors.R&quot; --action=run --profile=full --output=&quot;$RESULTS&quot;
+Rscript &quot;$TOOLS/study3-gls.R&quot; --action=report --profile=full --output=&quot;$RESULTS&quot;</code></pre>
+<p>To check a single panel, use a separate output root, select
+<code>--profile=smoke</code> throughout and pass
+<code>--scenario=local-on-transmit-on</code> to generation and both
+fitting arms. Each method records the input checksum in
+<code>jobs.csv</code>. The collector writes per-panel metrics in
+<code>comparison.csv</code> and matched differences in
+<code>paired-replicates.csv</code>.</p>
+</div></main></body></html>

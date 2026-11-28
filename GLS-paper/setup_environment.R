@@ -53,12 +53,14 @@ setup_gls_environment <- function(repo_root = ".", check = FALSE,
   if (installed != description[1L, "Version"])
     stop("Loaded bdynets ", installed, "; checkout version is ", description[1L, "Version"],
          ". Run setup again from a fresh R session.", call. = FALSE)
-  # Some earlier builds carry the same version but predate disk-backed draws.
-  required_api <- c("gls_fit_general", "gls_run_grid_study", "gls_load_draws")
+  # Some earlier builds have the same version but lack the research workflow APIs.
+  required_api <- c("gls_fit_general", "gls_run_grid_study", "gls_load_draws",
+                    "bdynets_atomic_write", "gls_lag_predictors", "gls_forecast_metrics",
+                    "gls_trajectory_metrics", "gls_poisson_mixture_forecast", "poisson_deviance")
   if (!all(required_api %in% getNamespaceExports("bdynets")) ||
       !all(c("draw_dir", "chunk_size") %in% names(formals(bdynets::gls_fit_general))) ||
       !all(c("draw_dir", "chunk_size") %in% names(formals(bdynets::gls_run_grid_study)))) {
-    stop("The loaded bdynets build lacks the draw-storage API used by the GLS launchers. ",
+    stop("The loaded bdynets build lacks the storage or evaluation APIs used by the GLS launchers. ",
          "Run Rscript GLS-paper/setup_environment.R from this checkout to reinstall it.",
          call. = FALSE)
   }

@@ -39,7 +39,7 @@ gmde_dynamic_diagnostics <- function(fits) {
       kappa_acceptance=mean(x[,"kappa_accepted"]),h_acceptance=mean(x[,"h_accepted"]),
       mean_occupied_discount=mean(x[,"mean_occupied_discount"]))
   }))
-  pairs<-combn(seq_along(fits),2)
+  pairs<-utils::combn(seq_along(fits),2)
   psm<-data.frame(chain_a=pairs[1,],chain_b=pairs[2,],
     rms=vapply(seq_len(ncol(pairs)),function(j){a<-fits[[pairs[1,j]]]$psm;b<-fits[[pairs[2,j]]]$psm;
       sqrt(mean((a[upper.tri(a)]-b[upper.tri(b)])^2))},numeric(1)))

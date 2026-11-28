@@ -26,6 +26,10 @@ source("GLS-paper/setup_environment.R")
 setup_gls_environment()
 ```
 
+For the 50-replicate comparisons, see the guides to [graph error](study1-README.md),
+[coefficient recovery](study2-README.md) and [upstream surges](study3-README.md).
+The directed-grid launcher below reproduces the original manuscript illustration.
+
 ## Directed-grid simulation
 
 The [simulation launcher](run_simulation.R) uses the package's
@@ -122,17 +126,20 @@ illustrates how to prepare station trips.
 
 ## Workers and saved draws
 
-The [shared launcher functions](R/launcher_helpers.R) handle options, output
-paths, worker counts and provenance. Both launchers default to `--action=plan`,
+The historical grid uses the [launcher helpers](R/launcher_helpers.R) for
+options, output paths, workers and provenance. The prepared-data launcher uses
+the [application workflow](applications/run.R), which can also resume an
+interrupted fit with its original input, output and controls. Both default to `--action=plan`,
 `--profile=smoke`, `--cores=12` and `--chunk-size=100`. Use `smoke` or `quick`
 to check the workflow and `full` for the study settings.
 
 For a three-chain application, put `n_chains = 3L` and `parallel_chains = TRUE`
 in the prepared input's `control` list and allow `--cores=3` on a machine with
 three available physical cores. Application chains use fork workers on Unix or
-socket workers on Windows with bdynets 0.2.1 or later. The simulation uses
-serial chains on Windows. When the requested core budget is below the planned
-worker count, chains run serially. On a Linux server, this command gives each
+socket workers on Windows. The application caps workers at the number of
+chains, available physical cores and the requested core budget. The historical
+grid runs serially on Windows or when the requested budget is below its planned
+worker count. On a Linux server, this command gives each
 worker one BLAS thread when run in the same terminal before launching the fit.
 
 ```sh

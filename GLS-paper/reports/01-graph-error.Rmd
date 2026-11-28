@@ -1,0 +1,86 @@
+---
+title: "When the supplied graph contains wrong links"
+params:
+  results: ""
+output:
+  html_document:
+    template: report-template.html
+    theme: null
+    highlight: null
+    mathjax: null
+    self_contained: true
+---
+
+The graph-error design uses a PNAR generator with a known network average and a separate own lag. The experiment measures forecast error on the same count panel as increasing fractions of the supplied directed edges are replaced. The full and restricted GLS fits show the effect of admitting predictors outside the supplied graph.
+
+```{r setup, include=FALSE}
+source("report.R", local = TRUE)
+x <- read_experiment(params$results, "01-graph-error")
+```
+
+## Shared synthetic datasets
+
+The GLS arm fits graph-informed, restricted and constant-affinity GLS. The competitor arm fits pooled PNAR. Both arms read the same saved counts and chronological split for each condition and replicate. The full study uses 50 independent replicates per condition.
+
+**Data in this report.** Profile **`r x$config$profile`**, `r length(unique(x$jobs$scenario))` condition(s), `r length(unique(x$jobs$replicate))` distinct scheduled replicate ID(s). `r if (x$config$profile == "smoke") "The displayed values are from a short execution check." else "The paired comparisons below use the available matched replicates."`
+
+```{r shared-panels, echo=FALSE}
+report_panels(x)
+```
+
+## Forecast comparison
+
+The table gives method minus pooled PNAR on mean count deviance. Negative differences favor the listed method. Rewiring within a replication changes the graph supplied to the methods and preserves the generated counts. With one matched dataset the Monte Carlo standard error is unavailable.
+
+```{r primary, echo=FALSE}
+primary_report(x, "pooled-pnar", "all", "deviance")
+```
+
+## Supplied graph error
+
+```{r graph-error, echo=FALSE}
+graph <- unique(x$jobs[is.finite(x$jobs$graph_error), c("scenario","replicate","graph_error")])
+if (nrow(graph)) {
+  by_condition <- t(vapply(split(graph$graph_error, graph$scenario), function(values)
+    c(Mean = mean(values), Minimum = min(values), Maximum = max(values)), numeric(3)))
+  knitr::kable(by_condition, digits = 3, caption = "Realized fraction of displaced true edges")
+}
+```
+
+Recall below is the average fraction of displaced true links recovered by each fit. The restricted fit can select only links in the supplied graph.
+
+```{r recall, echo=FALSE}
+removed <- subset(x$scores, window == "pairs-removed" & metric == "recall" &
+                    method %in% c("gls-dss", "gls-flat-dss", "gls-restricted-dss") & is.finite(value))
+if (nrow(removed)) {
+  by_graph <- aggregate(value ~ scenario + method, removed, mean)
+  knitr::kable(reshape(by_graph, idvar = "scenario", timevar = "method", direction = "wide"),
+               digits = 3, row.names = FALSE)
+}
+```
+
+## Method completion
+
+```{r status, echo=FALSE}
+report_status(x)
+```
+
+```{r problems, echo=FALSE, results='asis'}
+problems <- subset(x$jobs, status != "complete" & status != "pending")
+if (nrow(problems)) print(knitr::kable(problems[c("scenario", "replicate", "method", "status", "detail")]))
+```
+
+## Reproduce from the repository root
+
+Generate all conditions once, then point both fitting arms to the same SSD directory. The full profile defaults to replicate IDs 1–50. The comparison collects both arms into this single study report.
+
+```sh
+RESULTS="$HOME/bdynets-results/full"
+TOOLS=GLS-paper/tools
+Rscript "$TOOLS/study1-gls.R" --action=data --profile=full --output="$RESULTS"
+Rscript "$TOOLS/study1-gls.R" --action=run --profile=full --output="$RESULTS"
+Rscript "$TOOLS/study1-competitors.R" --action=run --profile=full --output="$RESULTS"
+Rscript "$TOOLS/study1-gls.R" --action=report --profile=full --output="$RESULTS"
+```
+
+To check a single panel, use a separate output root, select `--profile=smoke` throughout and pass `--scenario=T100-error25` to generation and both fitting arms. Each method records the input checksum in `jobs.csv`. The collector writes per-panel metrics in `comparison.csv` and matched differences in `paired-replicates.csv`.

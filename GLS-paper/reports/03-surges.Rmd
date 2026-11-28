@@ -1,0 +1,80 @@
+---
+title: "Downstream forecasts after an upstream surge"
+params:
+  results: ""
+output:
+  html_document:
+    template: report-template.html
+    theme: null
+    highlight: null
+    mathjax: null
+    self_contained: true
+---
+
+The source experiences repeated unannounced surges. The target may have independent demand changes and may respond to the previous observed source count. Its first usable downstream forecast follows the observed upstream onset by one bin.
+
+```{r setup, include=FALSE}
+source("report.R", local = TRUE)
+x <- read_experiment(params$results, "03-surges")
+```
+
+## Shared synthetic datasets
+
+The GLS arm fits the full network and own-history specifications. The competitor arm fits PNAR, sa-PGSS and Graph WaveNet. Both arms read the same saved counts and chronological split for each condition and replicate. The full study uses 50 independent replicates per condition.
+
+**Data in this report.** Profile **`r x$config$profile`**, `r length(unique(x$jobs$scenario))` condition(s), `r length(unique(x$jobs$replicate))` distinct scheduled replicate ID(s). `r if (x$config$profile == "smoke") "The displayed values are from a short execution check." else "The paired comparisons below use the available matched replicates."`
+
+```{r shared-panels, echo=FALSE}
+report_panels(x)
+```
+
+## Forecast comparison
+
+The table gives method minus own-history GLS on target count MAE in the first bin after an upstream onset. Negative differences indicate a smaller error after the source becomes observable. With one matched dataset the Monte Carlo standard error is unavailable.
+
+```{r primary, echo=FALSE}
+primary_report(x, "gls-own", "first", "mae")
+```
+
+## Timing of the downstream response
+
+The table compares mean target-count error at the first informative bin, during the early and late response, and at quiet times in the cell with both local demand changes and transmission. Each panel receives equal weight within its window. The result files also give scores for disjoint source-only and local-only events.
+
+```{r event-windows, echo=FALSE}
+events <- subset(x$scores, scenario == "local-on-transmit-on" & metric == "mae" &
+                   window %in% c("first", "early", "late", "quiet") &
+                   method %in% c("gls-own", "gls", "gls-dss", "pnar", "sa-pgss", "graph-wavenet") &
+                   is.finite(value))
+if (nrow(events)) {
+  scores <- aggregate(value ~ method + window, events, mean)
+  table <- reshape(scores, idvar="method", timevar="window", direction="wide")
+  names(table) <- sub("^value[.]", "", names(table))
+  knitr::kable(table, digits=3, row.names=FALSE)
+}
+```
+
+## Method completion
+
+```{r status, echo=FALSE}
+report_status(x)
+```
+
+```{r problems, echo=FALSE, results='asis'}
+problems <- subset(x$jobs, status != "complete" & status != "pending")
+if (nrow(problems)) print(knitr::kable(problems[c("scenario", "replicate", "method", "status", "detail")]))
+```
+
+## Reproduce from the repository root
+
+Generate all conditions once, then point both fitting arms to the same SSD directory. The full profile defaults to replicate IDs 1–50. The comparison collects both arms into this single study report.
+
+```sh
+RESULTS="$HOME/bdynets-results/full"
+TOOLS=GLS-paper/tools
+Rscript "$TOOLS/study3-gls.R" --action=data --profile=full --output="$RESULTS"
+Rscript "$TOOLS/study3-gls.R" --action=run --profile=full --output="$RESULTS"
+Rscript "$TOOLS/study3-competitors.R" --action=run --profile=full --output="$RESULTS"
+Rscript "$TOOLS/study3-gls.R" --action=report --profile=full --output="$RESULTS"
+```
+
+To check a single panel, use a separate output root, select `--profile=smoke` throughout and pass `--scenario=local-on-transmit-on` to generation and both fitting arms. Each method records the input checksum in `jobs.csv`. The collector writes per-panel metrics in `comparison.csv` and matched differences in `paired-replicates.csv`.

@@ -1,0 +1,107 @@
+---
+title: "Recovering time-varying directed effects"
+params:
+  results: ""
+output:
+  html_document:
+    template: report-template.html
+    theme: null
+    highlight: null
+    mathjax: null
+    self_contained: true
+---
+
+A directed road grid supplies known lag coefficients and a broad candidate dictionary. The design crosses the location of the active sources with static or dynamic coefficients. The continuous GLS fit and its validation-selected DSS projection share a posterior.
+
+```{r setup, include=FALSE}
+source("report.R", local = TRUE)
+x <- read_experiment(params$results, "02-sparse-grid")
+```
+
+The grid generator calibrates the lag contribution on separate pilot counts. If its initial scale causes unstable rates or misses the target RMS by more than 2%, the generator searches a bracket of scales on the same pilot draws. The fitted methods receive a fresh evaluation panel generated at the fixed scale.
+
+## Shared synthetic datasets
+
+The GLS arm fits graph-informed, static and constant-affinity GLS. The competitor arm fits the all-pairs Poisson lasso. Both arms read the same saved counts and chronological split for each condition and replicate. The full study uses 50 independent replicates per condition.
+
+**Data in this report.** Profile **`r x$config$profile`**, `r length(unique(x$jobs$scenario))` condition(s), `r length(unique(x$jobs$replicate))` distinct scheduled replicate ID(s). `r if (x$config$profile == "smoke") "The displayed values are from a short execution check." else "The paired comparisons below use the available matched replicates."`
+
+```{r shared-panels, echo=FALSE}
+report_panels(x)
+```
+
+## Forecast comparison
+
+The table gives method minus static all-pairs Poisson lasso on test deviance. Use the same scenarios to compare static GLS, constant-affinity GLS and graph-informed GLS. With one matched dataset the Monte Carlo standard error is unavailable.
+
+```{r primary, echo=FALSE}
+primary_report(x, "poisson-lasso", "all", "deviance")
+```
+
+## Network recovery
+
+For the continuous GLS fit, selection means that the fitted trajectory exceeds the amplitude threshold with posterior probability above one half. DSS selects by validation prediction loss.
+
+```{r recovery, echo=FALSE}
+z <- subset(x$scores, window == "pairs-cross" & metric %in% c("trajectory_rmse", "recall") & is.finite(value))
+z <- subset(z, method %in% c("gls", "gls-dss", "gls-static", "poisson-lasso"))
+if (nrow(z)) {
+  averages <- aggregate(value ~ scenario + method + metric, z, mean)
+  knitr::kable(reshape(averages, idvar=c("scenario", "method"), timevar="metric",
+                       direction="wide"), digits=3, row.names=FALSE)
+}
+```
+
+## Sparsity and test loss
+
+The curve follows the candidate graphs in one saved replication. The symbols locate the two decisions made using validation data. All candidates and replications are in `support-path.csv`.
+
+```{r support-path, echo=FALSE, fig.width=7.5, fig.height=3.6, fig.alt="Test deviance against number of retained relations for validation-selected graph candidates"}
+path_file <- file.path(params$results, "support-path.csv")
+if (file.exists(path_file)) {
+  path <- read.csv(path_file)
+  available <- unique(path$scenario[path$method == "gls"])
+  cell <- if ("mixed-dynamic" %in% available) "mixed-dynamic" else head(available, 1)
+  curve <- subset(path, method == "gls" & scenario %in% cell)
+  if (nrow(curve)) {
+    rep_id <- min(curve$replicate)
+    curve <- subset(curve, replicate == rep_id & is.finite(test_deviance))
+    if (nrow(curve)) {
+      curve <- curve[order(curve$n_selected), ]
+      plot(curve$n_selected, curve$test_deviance, type="b", col="#234b56",
+           xlab="Retained relations", ylab="Mean test deviance",
+           main=paste(cell, "• replication", rep_id))
+      points(curve$n_selected[curve$one_se], curve$test_deviance[curve$one_se], pch=17, col="#ad461b", cex=1.5)
+      points(curve$n_selected[curve$tolerance], curve$test_deviance[curve$tolerance], pch=1, col="#376d36", cex=2)
+      legend("topright", c("One standard error", "0.7% tolerance"), pch=c(17,1),
+             col=c("#ad461b","#376d36"), bty="n", cex=.8)
+    }
+  }
+}
+```
+
+## Method completion
+
+```{r status, echo=FALSE}
+report_status(x)
+```
+
+```{r problems, echo=FALSE, results='asis'}
+problems <- subset(x$jobs, status != "complete" & status != "pending")
+if (nrow(problems)) print(knitr::kable(problems[c("scenario", "replicate", "method", "status", "detail")]))
+```
+
+## Reproduce from the repository root
+
+Generate all conditions once, then point both fitting arms to the same SSD directory. The full profile defaults to replicate IDs 1–50. The comparison collects both arms into this single study report.
+
+```sh
+RESULTS="$HOME/bdynets-results/full"
+TOOLS=GLS-paper/tools
+Rscript "$TOOLS/study2-gls.R" --action=data --profile=full --output="$RESULTS"
+Rscript "$TOOLS/study2-gls.R" --action=run --profile=full --output="$RESULTS"
+Rscript "$TOOLS/study2-competitors.R" --action=run --profile=full --output="$RESULTS"
+Rscript "$TOOLS/study2-gls.R" --action=report --profile=full --output="$RESULTS"
+```
+
+To check a single panel, use a separate output root, select `--profile=smoke` throughout and pass `--scenario=mixed-dynamic` to generation and both fitting arms. Each method records the input checksum in `jobs.csv`. The collector writes per-panel metrics in `comparison.csv` and matched differences in `paired-replicates.csv`.

@@ -27,7 +27,8 @@
   if (is.null(draw_store)) return(list(capacity = n_saved, directory = NULL))
   chain <- sprintf("chain-%04d", chain_id)
   directory <- file.path(draw_store$path, chain)
-  if (!dir.create(directory, showWarnings = FALSE)) {
+  if (!dir.create(directory, showWarnings = FALSE) &&
+      (is.null(draw_store$checkpoint_dir) || !dir.exists(directory))) {
     stop("Could not create GLS chain directory: ", directory, call. = FALSE)
   }
   list(capacity = min(n_saved, draw_store$chunk_size), directory = directory,
@@ -82,45 +83,144 @@
   }
 }
 
-.gls_read_chain_draws <- function(chain, path, control) {
-  index <- chain$draw_chunks
-  count <- floor((control$n_iter - control$burn_mcmc) / control$thin)
-  if (!length(index$files) || length(index$files) != length(index$sizes) ||
-      length(index$files) != length(index$hashes) || any(index$sizes <= 0L) ||
-      index$n_saved != count || sum(index$sizes) != count) {
-    stop("Incomplete GLS draw index for chain ", chain$chain_id, ".", call. = FALSE)
+.gls_draw_store_path <- function(fit, draw_dir) {
+  path <- if (is.null(draw_dir)) fit$draw_store$path else draw_dir
+  if (!identical(fit$draw_store$version, 1L)) {
+    stop("Unknown GLS draw store version.", call. = FALSE)
   }
+  if (!is.character(path) || length(path) != 1L || is.na(path) || !dir.exists(path)) {
+    stop("GLS draw store directory is unavailable: ", path, call. = FALSE)
+  }
+  path
+}
+
+# ids are ordered, global, one-based retained draw indices across these chains.
+.gls_read_disk_draws <- function(chains, path, control, ids, fields = NULL) {
+  count <- floor((control$n_iter - control$burn_mcmc) / control$thin)
   history <- NULL
-  saved <- 0L
-  for (i in seq_along(index$files)) {
-    chunk_path <- file.path(path, index$files[i])
-    if (!file.exists(chunk_path)) {
-      stop("Missing GLS draw chunk: ", chunk_path, call. = FALSE)
+  offset <- 0L
+  for (chain in chains) {
+    index <- chain$draw_chunks
+    if (!length(index$files) || length(index$files) != length(index$sizes) ||
+        length(index$files) != length(index$hashes) || any(index$sizes <= 0L) ||
+        index$n_saved != count || sum(index$sizes) != count) {
+      stop("Incomplete GLS draw index for chain ", chain$chain_id, ".", call. = FALSE)
     }
-    if (!identical(unname(tools::md5sum(chunk_path)), index$hashes[i])) {
-      stop("Checksum mismatch for GLS draw chunk: ", chunk_path, call. = FALSE)
+
+    ends <- c(0L, cumsum(index$sizes))
+    positions <- findInterval(offset + ends, ids)
+    for (i in which(diff(positions) > 0L)) {
+      rows <- seq.int(positions[i] + 1L, positions[i + 1L])
+      path_i <- file.path(path, index$files[i])
+      if (!file.exists(path_i)) stop("Missing GLS draw chunk: ", path_i, call. = FALSE)
+      if (!identical(unname(tools::md5sum(path_i)), index$hashes[i])) {
+        stop("Checksum mismatch for GLS draw chunk: ", path_i, call. = FALSE)
+      }
+      chunk <- readRDS(path_i)
+      last <- ends[i + 1L]
+      if (chunk$chain_id != chain$chain_id || chunk$first_draw != ends[i] + 1L ||
+          chunk$last_draw != last || chunk$iteration != control$burn_mcmc + last * control$thin) {
+        stop("Unexpected draw range in GLS chunk: ", path_i, call. = FALSE)
+      }
+      if (is.null(fields)) fields <- names(chunk$draws)
+      missing <- setdiff(fields, names(chunk$draws))
+      if (length(missing)) stop("Unavailable draw fields: ", paste(missing, collapse = ", "), call. = FALSE)
+      if (is.null(history)) {
+        history <- lapply(chunk$draws[fields], .gls_draw_rows, rep(NA_integer_, length(ids)))
+      }
+      source_rows <- ids[rows] - offset - ends[i]
+      for (field in fields) {
+        value <- chunk$draws[[field]]
+        if (is.null(dim(value))) history[[field]][rows] <- value[source_rows]
+        else if (length(dim(value)) == 2L) history[[field]][rows, ] <- value[source_rows, , drop = FALSE]
+        else history[[field]][rows, , ] <- value[source_rows, , , drop = FALSE]
+      }
+      rm(chunk, value)
     }
-    last <- saved + index$sizes[i]
-    chunk <- readRDS(chunk_path)
-    if (chunk$chain_id != chain$chain_id || chunk$first_draw != saved + 1L ||
-        chunk$last_draw != last ||
-        chunk$iteration != control$burn_mcmc + last * control$thin) {
-      stop("Unexpected draw range in GLS chunk: ", chunk_path, call. = FALSE)
-    }
-    if (is.null(history)) {
-      history <- lapply(chunk$draws, .gls_draw_rows, rep(NA_integer_, count))
-    }
-    rows <- seq.int(saved + 1L, last)
-    for (field in names(history)) {
-      values <- chunk$draws[[field]]
-      if (is.null(dim(values))) history[[field]][rows] <- values
-      else if (length(dim(values)) == 2L) history[[field]][rows, ] <- values
-      else history[[field]][rows, , ] <- values
-    }
-    saved <- last
-    rm(chunk, values)
+    offset <- offset + count
   }
   history
+}
+
+.gls_read_chain_draws <- function(chain, path, control) {
+  count <- floor((control$n_iter - control$burn_mcmc) / control$thin)
+  .gls_read_disk_draws(list(chain), path, control, seq_len(count))
+}
+
+.gls_general_chain_ids <- function(fit) {
+  if (is.null(fit$draw_store)) return(fit$chain_id)
+  rep(vapply(fit$chains, `[[`, integer(1), "chain_id"),
+      times = vapply(fit$chains, function(ch) ch$draw_chunks$n_saved, integer(1)))
+}
+
+.gls_general_draw_indices <- function(chain_ids, n, seed) {
+  if (is.null(n) || n >= length(chain_ids)) return(seq_along(chain_ids))
+  # Preserve the existing seeded draws whenever they meet the requested balance.
+  selected <- unname(balanced_indices(chain_ids, n, seed))
+  counts <- tabulate(match(chain_ids[selected], unique(chain_ids)), length(unique(chain_ids)))
+  if (length(selected) == n && !anyDuplicated(selected) && diff(range(counts)) <= 1L) return(selected)
+  set.seed(seed)
+  groups <- split(seq_along(chain_ids), chain_ids)
+  per <- rep(n %/% length(groups), length(groups))
+  extra <- sample.int(length(groups), n %% length(groups))
+  per[extra] <- per[extra] + 1L
+  sort(unlist(Map(function(rows, size) rows[sample.int(length(rows), size)], groups, per),
+              use.names = FALSE))
+}
+
+.gls_general_draw_fields <- function(fit, ids, fields, draw_dir = NULL) {
+  if (!is.null(fit$draw_store)) {
+    return(.gls_read_disk_draws(fit$chains, .gls_draw_store_path(fit, draw_dir),
+                                fit$control, ids, fields))
+  }
+  missing <- fields[vapply(fit[fields], is.null, logical(1))]
+  if (length(missing)) stop("Unavailable draw fields: ", paste(missing, collapse = ", "), call. = FALSE)
+  if (length(ids) == nrow(fit$alpha)) return(fit[fields])
+  lapply(fit[fields], .gls_draw_rows, ids)
+}
+
+#' Read selected posterior arrays from a general GLS fit
+#'
+#' @param fit A fit returned by [gls_fit_general()].
+#' @param fields Names of retained draw arrays. Available fields are
+#'   `B`, `discount`, `initial_beta`, `reference_mean`, `reference_variance`,
+#'   `alpha`, `gamma`, `beta_path`, `final_beta`, `L`, `amplitude`,
+#'   `theta_average`, `tau`, `network_rms`, and `chi` for learned affinity.
+#' @param max_draws Optional positive integer maximum. Draws are sampled across
+#'   chains as evenly as possible. The default uses all retained iterations.
+#' @param seed Integer seed for subset selection.
+#' @inheritParams gls_load_draws
+#' @return A list of requested arrays with draws in their first dimension,
+#'   plus `draw_id` (one-based positions in the full history) and `chain_id`.
+#' @details Only chunks containing requested draws are read and checksum-checked.
+#'   Each visited chunk is decoded in full. Only the requested rows and fields
+#'   are retained in memory across chunks. Use [gls_load_draws()] for the
+#'   full fit with its per-chain arrays.
+#' @export
+gls_read_general_draws <- function(fit, fields, max_draws = NULL, seed = 1L, draw_dir = NULL) {
+  if (!inherits(fit, "gls_general_fit")) stop("fit must be a general GLS fit.", call. = FALSE)
+  available <- c("B", "discount", "initial_beta", "reference_mean", "reference_variance",
+                 "alpha", "gamma", "beta_path", "final_beta", "L", "amplitude",
+                 "theta_average", "tau", "network_rms", "chi")
+  if (!is.character(fields) || !length(fields) || anyDuplicated(fields) || !all(fields %in% available)) {
+    stop("fields must contain distinct general GLS draw field names.", call. = FALSE)
+  }
+  if (!is.null(max_draws) && (!is.numeric(max_draws) || length(max_draws) != 1L ||
+      !is.finite(max_draws) || max_draws < 1 || max_draws != floor(max_draws))) {
+    stop("max_draws must be NULL or a positive integer.", call. = FALSE)
+  }
+  if (!is.numeric(seed) || length(seed) != 1L || !is.finite(seed) ||
+      abs(seed) > .Machine$integer.max || seed != floor(seed)) {
+    stop("seed must be an integer.", call. = FALSE)
+  }
+  chains <- .gls_general_chain_ids(fit)
+  if (!is.null(max_draws) && max_draws < length(chains)) {
+    old_seed <- get0(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+    on.exit(if (is.null(old_seed)) rm(".Random.seed", envir = .GlobalEnv)
+            else assign(".Random.seed", old_seed, envir = .GlobalEnv), add = TRUE)
+  }
+  ids <- .gls_general_draw_indices(chains, max_draws, seed)
+  c(list(draw_id = ids, chain_id = chains[ids]), .gls_general_draw_fields(fit, ids, fields, draw_dir))
 }
 
 #' Load the retained draws of a disk-backed GLS fit
@@ -141,14 +241,7 @@ gls_load_draws <- function(fit, draw_dir = NULL) {
     stop("fit must be a GLS fit.", call. = FALSE)
   }
   if (is.null(fit$draw_store)) return(fit)
-  path <- if (is.null(draw_dir)) fit$draw_store$path else draw_dir
-  if (!identical(fit$draw_store$version, 1L)) {
-    stop("Unknown GLS draw store version.", call. = FALSE)
-  }
-  if (!is.character(path) || length(path) != 1L || is.na(path) ||
-      !dir.exists(path)) {
-    stop("GLS draw store directory is unavailable: ", path, call. = FALSE)
-  }
+  path <- .gls_draw_store_path(fit, draw_dir)
   study <- inherits(fit, "gls_study_fit")
   chains <- lapply(fit$chains, function(chain) {
     draws <- .gls_read_chain_draws(chain, path, fit$control)
