@@ -1,13 +1,99 @@
-# GLS paper workflows
+# GLS for dynamic count networks
 
-The installable [bdynets package](../bdynets) owns the samplers, graph construction, prediction, model fitting and draw storage. The code here defines the paper’s simulation designs, cleaning rules, comparison methods and reports. Run the commands below from the repository root.
+The GLS functions in `bdynets` model how earlier counts on one directed link
+help predict later counts on another. The continuous GLS fit estimates these
+relationships. Its sparse summary (GLSS) uses decoupled shrinkage and selection
+(DSS) on a validation window to select relationships for forecasting.
 
-| Block | Contents | Entry point |
-| --- | --- | --- |
-| R package | Reusable computation, disk-backed draws and sampler restart | [Package APIs and historical settings](../bdynets/GLS.md) |
-| Experiments | Two fitting arms per study, 50 shared datasets per condition and paired comparisons | [Designs, methods and command-line options](experiments/README.md) |
-| Applications | Clean raw records, visualize the count panel and fit models on chronological splits | [Divvy](applications/divvy/prepare.R) · [PeMS](applications/pems/prepare.R) · [analysis runner](applications/run.R) |
-| Reports | One executable R Markdown walkthrough and one self-contained HTML per case | [Render a report from saved results](reports/render.R) |
+## Install from GitHub
+
+<a id="linux-installation"></a>
+
+Use R 4.1 or later and the [C and C++17 build tools](REPLICATION.md#environment).
+These terminal commands download the package and paper scripts, skip the large
+datasets for other studies, and install `bdynets` in your R user library.
+
+```sh
+git clone --depth 1 --filter=blob:none --sparse https://github.com/sj156/bdynets.git
+cd bdynets
+git sparse-checkout set bdynets GLS-paper
+Rscript --vanilla GLS-paper/setup_environment.R
+```
+
+If you downloaded the [full repository ZIP](https://github.com/sj156/bdynets/archive/refs/heads/main.zip),
+unpack it, open a terminal in the directory containing `GLS-paper/`, and run
+just the last command. Then load the package in R.
+
+```r
+library(bdynets)
+```
+
+<details>
+<summary>Install directly from an R session with remotes</summary>
+
+This route downloads the entire repository archive, including the datasets for
+other studies. Use a longer timeout on slower connections.
+
+```r
+options(timeout = max(3600, getOption("timeout")))
+if (!requireNamespace("remotes", quietly = TRUE)) install.packages("remotes", repos = "https://cloud.r-project.org")
+remotes::install_github("sj156/bdynets", subdir = "bdynets", upgrade = "never")
+library(bdynets)
+```
+
+</details>
+
+## Fit a network, select relationships, and predict counts
+
+Imagine four intersections connected in a square. Each direction on each street
+has its own count series, giving eight directed links. This example simulates
+160 time points with two injected two-hop effects. It uses the first 106 time
+points for fitting, the next 26 for selection, and the final 28 for forecasting.
+It runs using the installed package alone.
+
+**Fit the network.** Run the example with short chains and inspect the fitted
+model. The fit summary prints the number of candidate relationships and saved draws.
+
+```r
+demo <- gls_run_multihop_example("smoke", side = 2L)
+print(demo$fit)
+```
+
+**Inspect the sparse selection.** This example models self and one-hop
+effects separately, leaving 48 candidate relationships for DSS. The table
+gives the source and target link for each relationship retained on validation.
+
+```r
+keep <- demo$dss$selected
+demo$fit$pairs[keep, c("source", "target", "pair"), drop = FALSE]
+```
+
+**Compare test forecasts.** The two rows compare continuous GLS and sparse GLSS.
+`MAECount` measures absolute error in counts. `Coverage95` is the fraction of
+held-out counts inside the model's 95% predictive interval.
+
+```r
+demo$scores[, c("Model", "MAECount", "Coverage95")]
+```
+
+The short chains are for learning the workflow. For inference, use longer
+chains and examine the diagnostics for the parameters you report.
+
+## Check the paper environment
+
+From the [downloaded checkout](#install-from-github), check that R can load
+the installed package, its compiled numerical code and the interfaces the
+paper scripts use.
+
+```sh
+Rscript --vanilla GLS-paper/setup_environment.R --check
+```
+
+Rendering the case reports requires the R packages `rmarkdown` and `knitr` and
+an installation of Pandoc. For the Graph WaveNet comparison, point
+`BDYNETS_PYTHON` to a Python environment with NumPy and PyTorch. For offline
+use, set `BDYNETS_GWNET_MODEL` to the checksum-verified
+[upstream model.py](https://github.com/nnzhan/Graph-WaveNet/blob/6b162e80c59a1d494809252eca055cff93dc66b1/model.py).
 
 ## Cases for collaborator review
 
@@ -21,59 +107,28 @@ The three study reports combine GLS and competitor fits on the same synthetic da
 | Divvy | Forecast departures on six training-selected origin–destination links during the bundled Chicago day | [Rmd](reports/divvy.Rmd) | [HTML](reports/divvy.html) |
 | PeMS | Forecast five-minute flow at four adjacent US-101 northbound stations during the bundled California day | [Rmd](reports/pems.Rmd) | [HTML](reports/pems.html) |
 
-## Linux installation
-
-Use R 4.1 or later and a C++17 toolchain. On Debian or Ubuntu, install the system prerequisites if needed.
-
-```sh
-sudo apt-get update &&
-sudo apt-get install -y r-base r-base-dev build-essential pkg-config \
-  libcurl4-openssl-dev libssl-dev ca-certificates fonts-dejavu-core
-```
-
-On a managed server, use the site's R and compiler environment. Install the package from this checkout into a personal R library. The command reads its required dependencies from [DESCRIPTION](../bdynets/DESCRIPTION).
-
-```sh
-export R_LIBS_USER="$HOME/.local/lib/bdynets"
-mkdir -p "$R_LIBS_USER" &&
-Rscript --vanilla -e '
-  fields <- read.dcf("bdynets/DESCRIPTION", fields = c("Depends", "Imports", "LinkingTo"))
-  entries <- unlist(strsplit(paste(fields[!is.na(fields)], collapse = ","), ","))
-  deps <- setdiff(unique(trimws(sub("[(].*$", "", entries))), c("R", ""))
-  missing <- deps[!vapply(deps, requireNamespace, logical(1), quietly = TRUE)]
-  if (length(missing))
-    install.packages(missing, lib = Sys.getenv("R_LIBS_USER"), repos = "https://cloud.r-project.org")
-  stopifnot(all(vapply(deps, requireNamespace, logical(1), quietly = TRUE)))
-' &&
-R CMD INSTALL --preclean --clean --library="$R_LIBS_USER" ./bdynets &&
-Rscript --vanilla -e 'library(bdynets); print(packageVersion("bdynets"))'
-```
-
-Repeat the `export R_LIBS_USER` line when starting a new terminal.
-
-Install the R packages `rmarkdown` and `knitr` and make Pandoc available for report rendering. The Graph WaveNet benchmark also uses Python with NumPy and PyTorch. Set `BDYNETS_PYTHON` to that interpreter. For offline use, set `BDYNETS_GWNET_MODEL` to the [upstream model.py at the pinned commit](https://github.com/nnzhan/Graph-WaveNet/blob/6b162e80c59a1d494809252eca055cff93dc66b1/model.py). The adapter verifies its SHA-256 before fitting.
-
 ## Run the three experiments
 
-Choose an absolute SSD directory for the shared panels, fits and draws. The full profile runs 50 replicates per condition. The example covers all 16 implemented conditions. Use `profile=smoke` with a separate output root for a one-replicate execution check. The [six study drivers](tools) default to a plan of the selected conditions and methods. The [experiment guide](experiments/README.md) documents the options.
+The six [study drivers](tools) share the package's fitting, forecasting and scoring functions. Running either arm without arguments prints its plan. Use one arm to generate the data, then run both arms on the saved panels. Either arm can collect their paired scores and render one joint report. The example runs one short graph-error condition from the repository root.
 
 ```sh
-profile=full
-RESULTS="$HOME/bdynets-results/gls-$profile"
+RESULTS="$HOME/bdynets-results/graph-error-smoke"
 TOOLS=GLS-paper/tools
-mkdir -p "$RESULTS"
-export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
-for study in 1 2 3; do
-  Rscript "$TOOLS/study${study}-gls.R" --action=data --profile="$profile" --output="$RESULTS" || break
-  Rscript "$TOOLS/study${study}-gls.R" --action=run --profile="$profile" --output="$RESULTS" --cores=2 || break
-  Rscript "$TOOLS/study${study}-competitors.R" --action=run --profile="$profile" --output="$RESULTS" || break
-  Rscript "$TOOLS/study${study}-gls.R" --action=report --profile="$profile" --output="$RESULTS" || break
-done
+Rscript "$TOOLS/study1-gls.R" --action=data --profile=smoke --scenario=T100-error25 --output="$RESULTS"
+Rscript "$TOOLS/study1-gls.R" --action=run --profile=smoke --scenario=T100-error25 --output="$RESULTS"
+Rscript "$TOOLS/study1-competitors.R" --action=run --profile=smoke --scenario=T100-error25 --output="$RESULTS"
+Rscript "$TOOLS/study1-gls.R" --action=report --profile=smoke --output="$RESULTS"
 ```
 
-The collector records pending and failed jobs, cell-wise metrics, replicate-level contrasts and Monte Carlo uncertainty. The grid study also saves test deviance across the frozen validation path. These files let collaborators inspect both the model comparison and the effect of sparse selection.
+Open `$RESULTS/reports/01-graph-error.html`. In the full profile each arm defaults to replicate IDs 1–50. For a separate frozen dataset directory, pass the same `--data-root` to all commands. The study guides above give the complete runs and outputs. [Driver options and scenarios](experiments/README.md)
 
 ## Run the applications
+
+For a sparse checkout, add the input directories for the cases you want to run. The full repository archive already contains them.
+
+```sh
+git sparse-checkout add examples/DivvyBike/data/raw examples/pems-flow/data/raw
+```
 
 Both preparations read the repository’s raw example files, choose series using the training period, and write a prepared count panel and a count plot. Run the following for either `divvy` or `pems`. The default competitors are PNAR(1) and PNAR(2). The example also requests sa-PGSS and Graph WaveNet.
 
@@ -91,68 +146,35 @@ Rscript GLS-paper/reports/render.R "$case_id" "$RESULTS/$case_id" "$RESULTS/repo
 
 Use `--action=plan` to inspect settings before fitting. To restart an interrupted application, repeat its fit command with `--action=resume` and the same inputs and settings. The application fits the training window, selects the DSS projection on validation, and compares sequential one-step forecasts on the test window. Compact outputs include cell-wise predictive summaries, diagnostics, selection and provenance. `--retention=draws` additionally saves predictive draws. The historical [application launcher](run_application.R) retains its original output convention.
 
-## Prepared-data application
-
-Provide an RDS list with the following fields. The names on the right refer to objects created by your preprocessing code.
-
-```r
-prepared <- list(
-  Y = counts,                    # time by series, finite nonnegative integers
-  graph = graph,                 # edges, A and W aligned with the columns of Y
-  covariates = calendar_design,  # one row per time, including validation and test
-  split = list(train = train_rows, validation = validation_rows, test = test_rows)
-)
-saveRDS(prepared, "prepared.rds")
-```
-
-The three windows must be consecutive and adjacent, with at least three training rows. Earlier rows can supply lag history. The launcher forwards optional `pre_history`, `pairs` and positive `means` to `gls_fit_general()`. Optional named settings in `prepared$control` override settings from the profile. For example, the earlier three-chain Divvy input `bdynets_input_r1000_dt03h_n5000_b4000_thin1_c3.rds` specifies 5,000 iterations, 4,000 warmup iterations and `thin = 1`.
-
-To analyze a different prepared panel, pass its path to the application runner with `--input`. The case reports use the named case metadata added by their preparation scripts.
-
 ## SSD storage and workers
 
 Dynamic general GLS fits support on-disk draw chunks, a checkpoint interval in **MCMC iterations** (including warmup), and restart from the last committed state. Chunk size controls the number of **retained draws** buffered per chain. Each worker has its own chain directory. Keep the complete run directory and its input for restart. For a selected subset of draws or fields, use `gls_read_general_draws()`. Diagnostics and some DSS/post-processing operations can still require substantial memory on large panels.
 
 Set `--cores` to budget chain workers. A three-chain general GLS fit can use two workers, and `parallel_chains = FALSE` in the prepared control selects serial execution. Use one layer of parallelism at a time, or divide the available cores between simultaneous method jobs. General GLS supports Unix fork and Windows socket workers. The static comparison and older directed-grid launcher have their own worker settings. The result tables report the actual configuration and diagnostics for review.
 
-## Directed-grid simulation
+## Original directed-grid and prepared-data workflows
 
-This smoke run generates its data, fits the simulation and rebuilds its report. Each invocation creates a fresh output directory.
+<a id="directed-grid-simulation"></a>
 
-```sh
-(
-  set -e
-  mkdir -p "$HOME/bdynets-results"
-  run_root="$(mktemp -d "$HOME/bdynets-results/gls-smoke.XXXXXX")"
-  output="$run_root/run"
-  Rscript --vanilla GLS-paper/run_simulation.R --action=plan --profile=smoke \
-    --cores=1 --output="$output"
-  Rscript --vanilla GLS-paper/run_simulation.R --action=run --profile=smoke \
-    --cores=1 --chunk-size=100 --output="$output"
-  Rscript --vanilla GLS-paper/run_simulation.R --action=report --output="$output"
-  printf 'GLS results: %s\n' "$output"
-)
-```
-
-`--profile=full` uses the settings from `gls_study_control("full")`. The simulation saves the study in `GLS_simulation_summary.rds`, together with draws, tables, figures, benchmark inputs and configuration. Report mode rebuilds the tables and figures from saved results. The historical Simulation 1 benchmark outputs and post-processing use separate archived projects.
-
-The packaged two-hop example uses the same exported function as the original example script.
+**Run a small version of Simulation 1.** Preview its settings, then fit the
+directed-grid study. The run creates a new output directory, including
+`tables/predictive_performance.csv`. Use a fresh output name for a second fit.
 
 ```sh
-Rscript --vanilla -e 'x <- bdynets::gls_run_multihop_example(profile = "smoke", signal = 0.20, side = 3L); print(x$fit); print(x$dss); print(x$scores)'
+Rscript --vanilla GLS-paper/run_simulation.R --action=plan --profile=smoke --cores=1
+Rscript --vanilla GLS-paper/run_simulation.R --action=run --profile=smoke --cores=1 --output="$HOME/gls-grid-smoke"
 ```
 
-## Divvy experiment archive
+<a id="prepared-data-application"></a>
+<a id="divvy-experiment-archive"></a>
 
-The Divvy manuscript table uses three-hour counts on 1,427 projected directed links. The recorded run used three parallel chains, 4,000 iterations per chain, 3,200 warmup, `thin = 1`, `fixed_tau = 0.02`, `affinity_model = "graph_laplace"` and `interweave_steps = 0L`. An expanded DSS search on validation selected 970 of 8,429 candidate relations.
-
-For reproduction, obtain the separate `divvy simulation` workspace and the Simulation 1 benchmark sources. Inside the workspace the run is under `results_local_projection/graph_laplace_tau002_sparse_reuse_n4000_b3200_thin1_c3_20261117_235025/`. Keep the following together.
-
-| Location in the external run | Purpose |
+| Analysis | Inputs |
 | --- | --- |
-| `run_manifest.json`, `provenance/` | Input and package checksums, prepared data, package source archive, worktree patch and fit launcher |
-| `fit/settings.rds`, `fit/fit_index.rds`, `fit/draws/` | Fit controls, chain index and all 2,400 retained draws |
-| `prediction_evaluation_20261118/`, `dss_three_way_20261118/` | Evaluation settings, expanded DSS search, frozen selection and test forecasts |
-| `simulation1_benchmarks_20261119/` | PNAR, sa-PGSS and neural benchmark artifacts, combined test metrics and paired comparisons |
+| [Simulation 1 on a directed grid](REPLICATION.md#directed-grid-simulation) | The launcher generates counts and fits GLS, GLSS and the PNAR comparisons. |
+| [Fit GLS to prepared counts](REPLICATION.md#prepared-data-application) | Use the example data generator or supply your own counts, graph, covariates and time split. |
+| [Reproduce the Divvy manuscript result](REPLICATION.md#divvy-experiment-archive) | Requires the external projected Divvy data, archived fit and expanded DSS search that selected 970 relationships. |
 
-The external workspace's `scripts/` directory contains the projection, DSS, scoring and benchmark drivers. The repository's [DivvyBike example](../examples/DivvyBike/README.md) illustrates data preparation for one day. For the reported 970-relation result, use the archived input, package version, scripts and evaluation protocol together.
+The [general GLS functions](../bdynets/R/gls-general-api.R) and [compiled kernels](../bdynets/src)
+implement the models. [Data generation](data/generate_example_data.R) creates
+a prepared example without fitting. The [simulation](run_simulation.R) and
+[prepared-data](run_application.R) scripts call the package and save results.
