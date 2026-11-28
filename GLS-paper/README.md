@@ -7,18 +7,41 @@ relationships. Its sparse summary (GLSS) uses decoupled shrinkage and selection
 
 ## Install from GitHub
 
-With R 4.1 or later and the build tools for C and C++17, run the following in R.
-The installable package is in the `bdynets` subdirectory. GitHub sends the entire
-repository archive to `remotes`, including other studies' data, so allow time
-for the download. The [terminal installation below](#reproduce-the-paper)
-downloads just the files needed for GLS.
+<a id="linux-installation"></a>
+
+Use R 4.1 or later and the [C and C++17 build tools](REPLICATION.md#environment).
+These terminal commands download the package and paper scripts, skip the large
+datasets for other studies, and install `bdynets` in your R user library.
+
+```sh
+git clone --depth 1 --filter=blob:none --sparse https://github.com/sj156/bdynets.git
+cd bdynets
+git sparse-checkout set bdynets GLS-paper
+Rscript --vanilla GLS-paper/setup_environment.R
+```
+
+If you downloaded the [full repository ZIP](https://github.com/sj156/bdynets/archive/refs/heads/main.zip),
+unpack it, open a terminal in the directory containing `GLS-paper/`, and run
+just the last command. Then load the package in R.
 
 ```r
-options(timeout = max(900, getOption("timeout")))
+library(bdynets)
+```
+
+<details>
+<summary>Install directly from an R session with remotes</summary>
+
+This route downloads the entire repository archive, including the datasets for
+other studies. Use a longer timeout on slower connections.
+
+```r
+options(timeout = max(3600, getOption("timeout")))
 if (!requireNamespace("remotes", quietly = TRUE)) install.packages("remotes", repos = "https://cloud.r-project.org")
 remotes::install_github("sj156/bdynets", subdir = "bdynets", upgrade = "never")
 library(bdynets)
 ```
+
+</details>
 
 ## Fit a network, select relationships, and predict counts
 
@@ -58,25 +81,11 @@ chains and examine the diagnostics for the parameters you report.
 
 ## Reproduce the paper
 
-<a id="linux-installation"></a>
-
-For the package and paper scripts together, use a sparse checkout in a
-terminal. This skips the large datasets for the other studies. You can also
-download and unpack the [full repository ZIP](https://github.com/sj156/bdynets/archive/refs/heads/main.zip).
+From the [downloaded checkout](#install-from-github), check that R can load
+the installed package, its compiled numerical code and the interfaces the
+paper scripts use.
 
 ```sh
-git clone --depth 1 --filter=blob:none --sparse https://github.com/sj156/bdynets.git
-cd bdynets
-git sparse-checkout set bdynets GLS-paper
-```
-
-From the directory containing `GLS-paper/`, run the following in a terminal.
-The first command installs dependencies and builds this checkout in your R user
-library. The second checks the installation. See the
-[platform prerequisites](REPLICATION.md#environment) if you need a compiler.
-
-```sh
-Rscript --vanilla GLS-paper/setup_environment.R
 Rscript --vanilla GLS-paper/setup_environment.R --check
 ```
 

@@ -1,6 +1,6 @@
 # Reproduce the GLS analyses
 
-Run these commands from the repository root after [installing the checkout](README.md#reproduce-the-paper).
+Run these commands from the repository root after [installing the checkout](README.md#install-from-github).
 The shell examples use Linux or macOS paths. Use an absolute path with an existing
 parent, outside the checkout, for every output directory. Choose a new directory
 for each fit and use the same directory to rebuild its reports.

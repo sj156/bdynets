@@ -19,7 +19,7 @@ library(bdynets)
 To install the published GitHub version directly, use
 `pak::pak("sj156/bdynets/bdynets")`. For GLS, see the
 [installation and eight-link example](GLS-paper/README.md) or
-[set up a downloaded checkout](GLS-paper/README.md#reproduce-the-paper).
+[set up a downloaded checkout](GLS-paper/README.md#install-from-github).
 
 ## Run an analysis
 
